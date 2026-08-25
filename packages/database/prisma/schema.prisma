@@ -1,0 +1,89 @@
+// Prisma schema for the ERP Platform Foundation.
+//
+// Ownership note (multi-agent repo): this file is a shared resource.
+// - `User`, `UserCredential`, `Session` below are owned by FOUNDATION-001 (Claude / core/auth, core/users).
+// - Tenant, Organization, Company, Membership, Role/Permission models are owned by other
+//   Foundation tasks (see docs/tasks/CURRENT.md) and should be appended, not interleaved,
+//   by whoever implements them, to keep diffs reviewable.
+//
+// Conventions (docs/ARCHITECTURE.md §8, docs/MULTITENANCY.md):
+// - snake_case table/column names via @map/@@map, PascalCase/camelCase in Prisma/TS.
+// - UUIDv7 primary keys generated in application code (see packages/database/src/ids.ts),
+//   not database-generated, so ordering/portability don't depend on a Postgres extension.
+// - timestamptz in UTC for all instants.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Global authentication identity (docs/MULTITENANCY.md §4.8).
+/// Not tenant-scoped: a User can hold Memberships in multiple tenants.
+/// Tenant-scoped authorization (Membership, RoleAssignment) is out of scope
+/// for FOUNDATION-001 and owned by the Access Control / Tenancy tracks.
+model User {
+  id          String     @id @db.Uuid
+  email       String     @unique @db.VarChar(320)
+  displayName String     @map("display_name") @db.VarChar(200)
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  credential UserCredential?
+  sessions   Session[]
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// Password credential for a User. Kept separate from User so additional
+/// credential types (future: passkeys, OAuth identities) don't overload one row.
+/// `passwordHash` is a self-describing PHC-format string (algorithm, version
+/// and parameters embedded) — see ADR-006 — so no separate algorithm column
+/// is needed; the hasher can detect stale parameters directly from the hash.
+model UserCredential {
+  id           String   @id @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credentials")
+}
+
+/// A logged-in session: one row per session, tokens rotate in place on refresh
+/// (docs/DECISIONS.md ADR-006). Revocation is explicit and immediate.
+model Session {
+  id               String        @id @db.Uuid
+  userId           String        @map("user_id") @db.Uuid
+  accessTokenHash  String        @unique @map("access_token_hash") @db.VarChar(64)
+  refreshTokenHash String        @unique @map("refresh_token_hash") @db.VarChar(64)
+  status           SessionStatus @default(ACTIVE)
+  accessExpiresAt  DateTime      @map("access_expires_at") @db.Timestamptz(6)
+  refreshExpiresAt DateTime      @map("refresh_expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime?     @map("revoked_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime      @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  ipAddress        String?       @map("ip_address") @db.VarChar(64)
+  userAgent        String?       @map("user_agent") @db.VarChar(512)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+}

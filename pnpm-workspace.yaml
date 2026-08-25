@@ -1,0 +1,36 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  ',': true
+  '-': true
+  '@prisma/engines': true
+  a: true
+  b: true
+  c: true
+  d: true
+  e: true
+  g: true
+  i: true
+  k: true
+  l: true
+  m: true
+  p: true
+  prisma: true
+  r: true
+  s: true
+  t: true
+  u: true
+  unrs-resolver: true
+  x: true
+minimumReleaseAgeExclude:
+  - '@prisma/client-runtime-utils@7.10.0'
+  - '@prisma/client@7.10.0'
+  - '@prisma/config@7.10.0'
+  - '@prisma/debug@7.10.0'
+  - '@prisma/engines@7.10.0'
+  - '@prisma/fetch-engine@7.10.0'
+  - '@prisma/get-platform@7.10.0'
+  - prisma@7.10.0
+  - '@prisma/adapter-pg@7.10.0'
+  - '@prisma/driver-adapter-utils@7.10.0'
