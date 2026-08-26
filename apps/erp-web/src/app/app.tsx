@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { TenantSummary } from "../shared/api/contracts";
+import type { TenantSummary } from "@erp/api-client";
 import { useAuth } from "../shared/auth/auth-context";
 import { useRouter } from "../shared/navigation/router";
 import { LoginPage } from "../features/auth/login-page";

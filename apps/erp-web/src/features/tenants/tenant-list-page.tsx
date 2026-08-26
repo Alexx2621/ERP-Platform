@@ -1,7 +1,7 @@
 import { ArrowClockwise, ArrowRight, Buildings, Plus } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { apiClient } from "../../shared/api/api-client";
-import type { TenantSummary } from "../../shared/api/contracts";
+import type { TenantSummary } from "@erp/api-client";
+import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";

@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
-import { apiClient } from "../api/api-client";
+import { apiClient } from "../api/client";
 import { AuthProvider, useAuth } from "./auth-context";
 
 const expiredSession = {

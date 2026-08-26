@@ -108,6 +108,9 @@ importers:
 
   apps/erp-web:
     dependencies:
+      '@erp/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.2.8
         version: 5.3.0
@@ -169,6 +172,15 @@ importers:
       vite:
         specifier: ^8.0.0
         version: 8.2.2(@types/node@26.3.0)(jiti@2.7.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@types/node@26.3.0)(jsdom@28.1.0(@noble/hashes@1.8.0)(supports-color@8.1.1))(vite@8.2.2(@types/node@26.3.0)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/api-client:
+    devDependencies:
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^4.1.0
         version: 4.1.11(@types/node@26.3.0)(jsdom@28.1.0(@noble/hashes@1.8.0)(supports-color@8.1.1))(vite@8.2.2(@types/node@26.3.0)(jiti@2.7.0)(yaml@2.9.0))

@@ -6,7 +6,7 @@ import {
   LockKey,
   SquaresFour,
 } from "@phosphor-icons/react";
-import type { TenantSummary } from "../../shared/api/contracts";
+import type { TenantSummary } from "@erp/api-client";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
 import { ProductShell } from "./product-shell";

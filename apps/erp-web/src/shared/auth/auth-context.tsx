@@ -7,8 +7,8 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { apiClient } from "../api/api-client";
-import type { LoginInput, RegisterInput, SessionResponse } from "../api/contracts";
+import type { LoginInput, RegisterInput, SessionResponse } from "@erp/api-client";
+import { apiClient } from "../api/client";
 
 const EXPIRY_MARGIN_MS = 30_000;
 

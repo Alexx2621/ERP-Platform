@@ -1,4 +1,4 @@
-import { ApiError } from "./api-client";
+import { ApiError } from "@erp/api-client";
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   INVALID_CREDENTIALS: "El correo o la contraseña no son correctos.",

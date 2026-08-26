@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { apiClient } from "../../shared/api/api-client";
+import { apiClient } from "../../shared/api/client";
 import { AuthProvider } from "../../shared/auth/auth-context";
 import { LoginPage } from "./login-page";
 

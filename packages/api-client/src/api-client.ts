@@ -8,7 +8,7 @@ import type {
   SessionResponse,
   TenantExecutionContext,
   TenantSummary,
-} from "./contracts";
+} from "./contracts.js";
 
 const DEFAULT_API_BASE_URL = "/api/v1";
 
@@ -19,6 +19,11 @@ interface RequestOptions {
   tenantSlug?: string;
   companyId?: string;
   signal?: AbortSignal;
+}
+
+export interface ApiClientOptions {
+  baseUrl?: string;
+  fetch?: typeof fetch;
 }
 
 export class ApiError extends Error {
@@ -52,9 +57,11 @@ function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
 
 export class ApiClient {
   private readonly baseUrl: string;
+  private readonly fetchImplementation: typeof fetch;
 
-  constructor(baseUrl = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL) {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+  constructor(options: ApiClientOptions = {}) {
+    this.baseUrl = (options.baseUrl ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
+    this.fetchImplementation = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   async register(input: RegisterInput): Promise<SessionResponse> {
@@ -134,7 +141,7 @@ export class ApiClient {
 
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await this.fetchImplementation(`${this.baseUrl}${path}`, {
         method: options.method ?? "GET",
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -171,5 +178,3 @@ export class ApiClient {
     });
   }
 }
-
-export const apiClient = new ApiClient();

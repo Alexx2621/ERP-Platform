@@ -1,4 +1,5 @@
-import { ApiClient, ApiError } from "./api-client";
+import { ApiClient, ApiError } from "./api-client.js";
+import { describe, expect, it, vi } from "vitest";
 
 const session = {
   accessToken: "access-token",
@@ -11,9 +12,12 @@ const session = {
 describe("ApiClient", () => {
   it("sends the login payload to the versioned API", async () => {
     const fetchMock = vi
-      .spyOn(globalThis, "fetch")
+      .fn<typeof fetch>()
       .mockResolvedValue(new Response(JSON.stringify(session), { status: 200 }));
-    const client = new ApiClient("https://api.example.test/api/v1/");
+    const client = new ApiClient({
+      baseUrl: "https://api.example.test/api/v1/",
+      fetch: fetchMock,
+    });
 
     await expect(
       client.login({ email: "ana@example.com", password: "Password1" }),
@@ -31,11 +35,15 @@ describe("ApiClient", () => {
   });
 
   it("adds bearer and tenant context headers", async () => {
-    const context = { tenantId: "tenant-1", membershipId: "membership-1", companyId: "company-1" };
+    const context = {
+      tenantId: "tenant-1",
+      membershipId: "membership-1",
+      companyId: "company-1",
+    };
     const fetchMock = vi
-      .spyOn(globalThis, "fetch")
+      .fn<typeof fetch>()
       .mockResolvedValue(new Response(JSON.stringify(context), { status: 200 }));
-    const client = new ApiClient("/api/v1");
+    const client = new ApiClient({ fetch: fetchMock });
 
     await client.getTenantContext("access-token", "grupo-aurora", "company-1");
 
@@ -47,7 +55,7 @@ describe("ApiClient", () => {
   });
 
   it("preserves the backend error envelope", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
           statusCode: 401,
@@ -58,7 +66,7 @@ describe("ApiClient", () => {
         { status: 401 },
       ),
     );
-    const client = new ApiClient("/api/v1");
+    const client = new ApiClient({ fetch: fetchMock });
 
     const error = await client
       .login({ email: "ana@example.com", password: "wrong-pass" })
@@ -73,8 +81,8 @@ describe("ApiClient", () => {
   });
 
   it("maps transport failures without leaking low-level details", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("connection refused"));
-    const client = new ApiClient("/api/v1");
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("connection refused"));
+    const client = new ApiClient({ fetch: fetchMock });
 
     await expect(client.listTenants("access-token")).rejects.toMatchObject({
       statusCode: 0,
