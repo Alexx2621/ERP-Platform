@@ -17,6 +17,7 @@ coverage/
 Thumbs.db
 
 .vscode/settings.local.json
+.claude/settings.local.json
 
 tmp/
 temp/

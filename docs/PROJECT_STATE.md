@@ -1,21 +1,27 @@
 # Project State
 
-Última actualización: 2026-08-26 (sesión 3), tras integrar el trabajo de
-Codex (`ai/codex`, 4 commits) a `develop`: ERP Web, `@erp/api-client`,
-integration tests con Testcontainers, y CI.
+Última actualización: 2026-08-26 (sesión 4), tras integrar la suite E2E de
+Playwright y los primitivos de Design System (`Table`/`Modal`/`Select`/
+`Tabs`) de Codex a `develop`.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
 ## Current Phase
 
-PHASE 1 — Foundation, primer vertical slice integrado y verificado
-(Identity + Tenancy + onboarding HTTP + frontend + CI). Fase 0 no está
-formalmente cerrada:
-ADR-001, ADR-002, ADR-003, ADR-004, ADR-005 siguen sin escribirse
-(`docs/DECISIONS.md` solo tiene ADR-006), y `ARCHITECTURE.md`/
-`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta para aprobación"
-en sus propios encabezados. Se avanzó en paralelo por decisión explícita
-del usuario, no por reinterpretación del proceso.
+PHASE 1 — Foundation, primer vertical slice integrado y verificado de
+extremo a extremo: backend + frontend + CI + E2E de navegador real contra
+infraestructura real (Identity + Tenancy + onboarding). Fase 0 no está
+formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
+`ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
+para aprobación" en sus propios encabezados. **Corrección respecto a
+versiones previas de este archivo**: ADR-004 (Event Architecture) y ADR-005
+(Plugin Architecture) NO carecen de diseño — `docs/EVENTS.md` (338 líneas)
+y `docs/PLUGINS.md` (368 líneas) tienen propuestas completas desde el
+commit inicial del repositorio; afirmar que estaban "vacíos" fue un error
+mío en sesiones anteriores, detectado por el usuario y corregido aquí y en
+`docs/WORK_QUEUE.md`. Lo pendiente es ratificarlos formalmente (numerarlos)
+y, para ADR-004, implementarlos — no diseñarlos. Se avanzó en paralelo por
+decisión explícita del usuario, no por reinterpretación del proceso.
 
 ## Completed
 
@@ -63,9 +69,18 @@ del usuario, no por reinterpretación del proceso.
   el mismo escenario de rechazo cross-tenant que se validó a mano.
 - **CI** (`.github/workflows/ci.yml`, Codex): lint/typecheck/test/build +
   job de integración Postgres; acciones fijadas a SHA de commit.
-- 62 tests unitarios pasando (api 54, api-client 4, erp-web 4) + 2 tests
-  de integración con Postgres real, incluyendo pruebas de wiring real de
-  NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
+- **`apps/e2e`** (Playwright, Codex): E2E de navegador real (Chromium) que
+  levanta Postgres+Redis efímeros vía Testcontainers, el proceso compilado
+  real de `apps/api` y el dev server real de Vite, y cubre registro →
+  onboarding → workspace verificando códigos de respuesta HTTP y estado
+  final de la UI. Job `e2e` nuevo en CI.
+- **Primitivos de UI** (`apps/erp-web/src/shared/ui`, Codex): `Table`,
+  `Modal` (elemento nativo `<dialog>`), `Select`, `Tabs` (patrón WAI-ARIA
+  completo) — listos para la futura UI de RBAC.
+- 66 tests unitarios pasando (api 54, api-client 4, erp-web 8) + 2 tests
+  de integración con Postgres real + **1 test E2E de Playwright pasando
+  contra infraestructura real completa**, incluyendo pruebas de wiring
+  real de NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
   `tenants.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
@@ -99,11 +114,11 @@ Control / RBAC).
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Access Control/RBAC → Configuración tipada → Audit → Event Bus →
-Files → Notifications → Workers → OpenAPI/Swagger.
-También pendientes: ADR-001 a ADR-005; E2E con Playwright (Codex, recién
-desbloqueado ahora que erp-web+API+CI existen); expandir el Design System
-del frontend.
+Resumen: Access Control/RBAC → Configuración tipada → Audit → Event Bus
+(diseño ya existe en `docs/EVENTS.md`, falta implementar) → Files →
+Notifications → Workers → OpenAPI/Swagger. También pendiente: ratificar
+ADR-001 a ADR-005 formalmente. Para Codex: UI de RBAC (contrato ya definido
+en `docs/WORK_QUEUE.md`, bloqueada hasta que el backend exista).
 
 ## Production Status
 
