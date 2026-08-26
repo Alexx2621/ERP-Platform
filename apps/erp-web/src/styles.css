@@ -26,6 +26,7 @@
   --danger: #a63c3c;
   --danger-soft: #f8e7e3;
   --danger-line: #ecc5be;
+  --overlay: rgb(13 18 16 / 0.65);
 }
 
 * {
@@ -44,7 +45,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
