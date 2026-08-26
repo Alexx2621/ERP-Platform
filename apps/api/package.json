@@ -7,8 +7,9 @@
     "start": "node dist/main.js",
     "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "jest",
+    "test:integration": "jest --config jest.integration.config.js --runInBand"
   },
   "dependencies": {
     "@erp/database": "workspace:*",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.2.1",
+    "@testcontainers/postgresql": "^12.1.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.3.0",
