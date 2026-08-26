@@ -2,9 +2,10 @@
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-26
-(sesión 2, tras validación real contra Docker + integración de Tenant Context).
+(sesión 3, integración de `ai/codex` → `develop`).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
+`develop` y `ai/claude` están sincronizados en `3e2b706` (origin, ambas ramas).
 
 ---
 
@@ -13,10 +14,10 @@ Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 ### Próximo, en orden de dependencia técnica
 
 1. **Access Control / RBAC** — Role, Permission, RoleAssignment, catálogo de
-   permisos, guards deny-by-default (`docs/MULTITENANCY.md` §9). Ya no está
-   bloqueado: `TenantContextGuard` existe y está verificado end-to-end contra
-   infraestructura real (ver abajo), así que una policy de permisos ya tiene
-   `TenantExecutionContext` (tenantId, membershipId, companyId) disponible.
+   permisos, guards deny-by-default (`docs/MULTITENANCY.md` §9). No
+   bloqueado: `TenantContextGuard` existe y está verificado end-to-end
+   (código y automatizado vía testcontainers), así que una policy de
+   permisos ya tiene `TenantExecutionContext` disponible.
 2. **Configuración tipada** (`SettingDefinition`/`SettingValue` por scope —
    platform/tenant/company — per `docs/ARCHITECTURE.md` §8.2, MASTER_SPEC §28).
 3. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
@@ -27,127 +28,123 @@ Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 6. **Notifications** — solicitud + adapter in-app/email vía worker.
 7. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
 8. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
-   existe todavía. Bajo costo, alto valor para que Codex genere un SDK real
-   en vez de tipos hand-written.
+   existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
+   generarse desde el contrato en vez de mantenerse a mano.
 
-### Hecho — sesión 1 (auditoría de integración)
+### Hecho — sesión 3 (integración de Codex a develop)
 
-- Auditoría completa del repo tras integrar Authentication+Users (Claude)
-  con Tenancy+Membership+Organization+Company (Codex).
-- Corregido: `TenantsModule`/`OrganizationsModule`/`CompaniesModule` no
-  estaban importados en `AppModule` — el código de tenancy existía pero no
-  se ejecutaba en la app real.
-- Generada la migración faltante para `tenants`/`memberships`/
-  `organizations`/`companies` (el schema había avanzado sin migración).
-- Añadidas pruebas de wiring de NestJS (`auth.module.spec.ts`,
-  `app.module.spec.ts`) que hubieran detectado el bug de integración.
-- `docker-compose.yml` (PostgreSQL 16, Redis 7, MinIO) — escrito.
-- **Redis** integrado (`apps/api/src/shared/redis`), rate limiter de
-  `/api/v1/auth/*` ahora respaldado por Redis en vez de memoria.
+Revisado como Tech Lead (arquitectura, seguridad, tenant isolation,
+compatibilidad de API, cambios de DB, tests, cumplimiento de MASTER_SPEC) e
+integrado sin cambios: los 4 commits de `ai/codex` eran correctos tal cual.
 
-### Hecho — sesión 2 (validación real + Tenant Context HTTP)
+- **ERP Web** (`apps/erp-web`, React 19 + Vite + Tailwind v4): registro,
+  login, refresh automático (rota 30s antes de expirar, deduplicando
+  refrescos concurrentes), logout, listado/selección de tenant,
+  onboarding (provisioning de tenant+organización+empresa), workspace de
+  confirmación. Access/refresh tokens **solo en memoria** (ni
+  localStorage, ni sessionStorage, ni cookies) — la elección correcta para
+  la pregunta que dejé abierta en ADR-006, documentada explícitamente en
+  `apps/erp-web/README.md` citando el ADR.
+- **`@erp/api-client`**: SDK tipado — verificado campo por campo contra mis
+  DTOs/controllers reales (coincide exactamente) y verificado en runtime
+  contra el servidor real esta misma sesión (register → me → listTenants →
+  provisionTenant → getTenantContext → refresh → logout → 401 posterior).
+- **Integration tests con Testcontainers** (`apps/api/test/integration`):
+  levantan PostgreSQL real efímero, corren mis migraciones reales, y
+  prueban el mismo escenario crítico que validé a mano en la sesión
+  anterior (la FK compuesta rechaza una compañía cross-tenant) — ahora
+  automatizado y repetible en CI.
+- **CI** (`.github/workflows/ci.yml`): job de lint/typecheck/test/build +
+  job separado de integración Postgres; acciones de terceros fijadas a
+  SHA de commit (no a tag mutable).
+- Ajustes menores de config compartidos, todos correctos: `apps/api/tsconfig.json`
+  separa `test/` (integración) del build principal vía `tsconfig.test.json`;
+  `jest.config.js` excluye `test/integration/` de la corrida unitaria;
+  `pnpm-workspace.yaml` añade `cpu-features/protobufjs/ssh2: false` a
+  `allowBuilds` (deniega explícitamente scripts de postinstall de
+  dependencias transitivas de testcontainers — buena higiene de
+  supply-chain, no solo permitir todo).
+- Merge sin conflictos (`ai/codex` ya había sincronizado `origin/develop`
+  antes de reportar). Validación completa: `pnpm install --frozen-lockfile`,
+  lint, typecheck, 62 tests unitarios (api 54 + api-client 4 + erp-web 4),
+  2 tests de integración con Postgres real, build de los 4 paquetes
+  (incluyendo build de producción de Vite). `develop` y `ai/claude`
+  empujados a origin en `3e2b706`.
 
-- **Verificación real contra Docker** (usuario instaló Docker Desktop):
-  - `docker compose up -d` → postgres/redis/minio healthy.
-  - `prisma migrate deploy` aplicó ambas migraciones limpiamente contra
-    PostgreSQL real; `prisma migrate status` confirma cero drift.
-  - Prueba directa con Prisma real: la FK compuesta
-    `companies_tenant_id_organization_id_fkey` rechaza una compañía cuyo
-    `organizationId` pertenece a otro tenant — el aislamiento cross-tenant
-    se verificó a nivel de base de datos real, no solo con fakes.
-  - Redis: roundtrip set/get real confirmado.
-  - **Bug real encontrado y corregido**: `"incremental": true` en
-    `tsconfig.base.json` dejó un `dist/` incompleto tras builds repetidos
-    (varios `.js` no se emitían, aunque `tsc` reportaba éxito) — causa raíz
-    de un caché `.tsbuildinfo` corrupto. Se quitó `incremental` de la base
-    config; los builds ya tardan 3-5s así que no valía el riesgo de
-    correctitud. Confirmado con conteo exacto fuente vs. compilado (92=92,
-    luego 102=102 tras añadir Tenant Context).
-  - Servidor real (`node dist/main.js`) arrancado contra Postgres+Redis
-    reales; flujo completo probado por HTTP: login válido/inválido, `/me`,
-    `/refresh` con rotación, reuso de refresh token rotado rechazado,
-    logout, sesión revocada rechazada, rate limiting (verificado que la
-    clave de throttle vive en Redis, no en memoria).
-- **Integración HTTP de Tenant Context** (`apps/api/src/core/tenants/presentation`):
-  - `TenantContextGuard`: corre después de `SessionAuthGuard`, resuelve
-    `TenantExecutionContext` vía header `X-Tenant-Slug` (+ `X-Company-Id`
-    opcional). Nunca confía en el header solo — siempre re-valida membership
-    activo del usuario autenticado contra el tenant pedido.
-  - `POST /api/v1/tenants` (provisioning, requiere sesión),
-    `GET /api/v1/tenants` (lista de tenants del usuario — única query
-    intencionalmente cross-tenant, ver `MembershipRepository.findActiveByUserId`),
-    `GET /api/v1/tenants/current` (demuestra la cadena completa de guards).
-  - `POST /api/v1/auth/register` (crea usuario + password + sesión en un
-    solo paso, MASTER_SPEC §68).
-  - Probado end-to-end contra la base real: registro → provisioning →
-    listar tenants → `/tenants/current` con slug correcto/incorrecto/
-    ausente → 401 sin autenticar. Los 4 casos se comportan exactamente
-    como se diseñó.
-  - 9 tests nuevos (unit + wiring), 54 tests totales pasando.
+### Hecho — sesiones 1-2 (resumen; detalle en versiones previas de este archivo)
+
+Auditoría de integración auth+tenancy, corrección de `AppModule` sin
+`TenantsModule`, migración de tenancy generada, Redis integrado, Docker
+verificado con Postgres/Redis reales, integración HTTP de Tenant Context
+(`TenantContextGuard`, `POST /auth/register`, `POST/GET /tenants`,
+`GET /tenants/current`) probada end-to-end contra infraestructura real.
+Bug real encontrado y corregido: `"incremental": true` en tsc dejaba
+`dist/` incompleto sin fallar el build.
 
 ---
 
 ## Codex — frontend / testing / tooling / backend aislado
 
-### Disponible ahora (contrato backend estable y verificado end-to-end)
+### Completado esta sesión (retirado de la cola)
 
-- **ERP Web bootstrap** (`apps/erp-web`, React + Vite) + Design System
-  mínimo: pantallas de registro/login (`POST /api/v1/auth/register`,
-  `/login`, `/refresh`, `/logout`, `GET /me`) y onboarding de tenant
-  (`POST /api/v1/tenants`, `GET /api/v1/tenants`, `GET /api/v1/tenants/current`
-  con header `X-Tenant-Slug`). Contrato estable, no cambiará de forma
-  incompatible sin ADR.
-- **Integration tests con Testcontainers** (Postgres real) para los
-  repositorios Prisma de auth y tenancy — hoy la verificación contra DB
-  real se hizo manualmente en esta sesión; formalizarla en la suite de
-  tests es justo el tipo de brecha que `docs/ARCHITECTURE.md` §12 pide.
-- **CI (GitHub Actions)**: lint + typecheck + test + build en cada PR
-  (MASTER_SPEC §40). No existe todavía.
-- **API client/SDK** tipado para `/api/v1/auth/*` y `/api/v1/tenants/*`
-  (hand-written está bien mientras Claude no añada OpenAPI).
+- ~~ERP Web bootstrap~~ — hecho, integrado.
+- ~~Integration tests con Testcontainers~~ — hecho, integrado.
+- ~~CI (GitHub Actions)~~ — hecho, integrado.
+- ~~API client/SDK~~ — hecho, integrado.
 
-### Ya no bloqueado
+### Disponible ahora (recién desbloqueado por esta integración)
 
-- UI de onboarding (crear tenant/empresa): el endpoint HTTP ya existe y
-  está verificado contra base real.
+- **E2E tests (Playwright)** contra la app real: con `apps/erp-web` y la
+  API ya integradas y con CI corriendo Postgres real vía Docker, el
+  siguiente paso natural de `docs/ARCHITECTURE.md` §12 es un flujo E2E
+  real (registro → onboarding → workspace) en un job de CI nuevo,
+  siguiendo el mismo patrón que `postgres-integration` (levantar API +
+  erp-web + Postgres, correr Playwright).
+- **Expandir el Design System** (`apps/erp-web/src/shared/ui`): hoy solo
+  existen `Button`, `FormField`, `Notice`, `BrandMark`. A medida que se
+  agreguen pantallas (tenant management, próximamente RBAC) van a hacer
+  falta más primitivos (Table/DataGrid, Modal, Select, Tabs — MASTER_SPEC
+  §6 "Estilos").
+- **Documentación**: `docs/EVENTS.md` y `docs/PLUGINS.md` siguen vacíos;
+  documentar el diseño ya descrito en `docs/MASTER_SPEC.md` §11-17 no toca
+  código de nadie.
 
-### Sigue bloqueado
+### Bloqueado
 
 - Cualquier pantalla que dependa de RBAC/permisos visibles (RBAC es el
-  próximo ítem de la cola Claude).
-
-### Backend aislado que Codex puede tomar sin conflicto
-
-- `docs/EVENTS.md` y `docs/PLUGINS.md` están vacíos; documentar el diseño
-  ya descrito en `docs/MASTER_SPEC.md` §11-17 no toca código de nadie.
+  próximo ítem de la cola Claude — cuando exista el catálogo de permisos,
+  Codex puede construir la UI de gestión de roles).
 
 ---
 
 ## Blocked
 
-Nada bloqueado por infraestructura en este momento — Docker, PostgreSQL,
-Redis y MinIO están arriba y verificados. `docker compose up -d` debe
-seguir corriendo para que `apps/api` arranque localmente.
+Nada bloqueado por infraestructura — Docker, PostgreSQL, Redis y MinIO
+están arriba y verificados. `docker compose up -d` debe seguir corriendo
+para desarrollo local.
 
 ## Dependencies
 
 - Files depende de que el código de MinIO se escriba y se pruebe contra el
   contenedor ya disponible (no bloqueado, solo pendiente de implementar).
 - Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
-- UI de Codex para cualquier módulo depende de que ese módulo tenga
-  contrato HTTP estable (no solo use cases internos).
+- UI de Codex para RBAC depende de que Claude entregue el catálogo de
+  permisos primero.
+- E2E de Codex depende de nada nuevo — API, erp-web y Docker ya están listos.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Próximo en la cola Claude.
+  todavía. Próximo en la cola Claude, junto con RBAC.
 
 ## Architecture decisions needed
 
 Ninguna pendiente de aprobación en este momento. Decisiones ya registradas:
-`docs/DECISIONS.md` ADR-006 (Identity & Session Strategy). Pendientes de
-numerar cuando corresponda: ADR-001 (Modular Monolith), ADR-002
-(PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — la implementación ya sigue el
-patrón de `docs/MULTITENANCY.md` §8, verificado contra Postgres real, pero
-no está registrada como ADR formal), ADR-004 (Event Architecture), ADR-005
-(Plugin Architecture).
+`docs/DECISIONS.md` ADR-006 (Identity & Session Strategy) — su pregunta
+abierta sobre almacenamiento de tokens en el cliente quedó resuelta en la
+práctica por `apps/erp-web` (memoria, no persistente); vale la pena anotar
+esa resolución en el ADR cuando se numeren los pendientes: ADR-001 (Modular
+Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón
+de `docs/MULTITENANCY.md` §8 ya está verificado dos veces contra Postgres
+real, manual y automatizado, pero sigue sin registrarse como ADR formal),
+ADR-004 (Event Architecture), ADR-005 (Plugin Architecture).

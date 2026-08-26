@@ -1,14 +1,16 @@
 # Project State
 
-Última actualización: 2026-08-26 (sesión 2), tras validación real contra
-Docker (PostgreSQL + Redis) y la integración HTTP de Tenant Context.
+Última actualización: 2026-08-26 (sesión 3), tras integrar el trabajo de
+Codex (`ai/codex`, 4 commits) a `develop`: ERP Web, `@erp/api-client`,
+integration tests con Testcontainers, y CI.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
 ## Current Phase
 
 PHASE 1 — Foundation, primer vertical slice integrado y verificado
-(Identity + Tenancy + onboarding HTTP). Fase 0 no está formalmente cerrada:
+(Identity + Tenancy + onboarding HTTP + frontend + CI). Fase 0 no está
+formalmente cerrada:
 ADR-001, ADR-002, ADR-003, ADR-004, ADR-005 siguen sin escribirse
 (`docs/DECISIONS.md` solo tiene ADR-006), y `ARCHITECTURE.md`/
 `MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta para aprobación"
@@ -48,7 +50,21 @@ del usuario, no por reinterpretación del proceso.
   `/api/v1/auth/*` respaldado por Redis — **conexión real verificada**
   (roundtrip set/get, y la clave de throttle confirmada dentro de Redis,
   no en memoria).
-- 54 tests pasando (`pnpm test`), incluyendo pruebas de wiring real de
+- **ERP Web** (`apps/erp-web`, React 19 + Vite + Tailwind v4, Codex):
+  registro, login, refresh automático, logout, listado/selección de
+  tenant, onboarding, workspace. Tokens en memoria únicamente (sin
+  localStorage/sessionStorage/cookies).
+- **`@erp/api-client`** (Codex): SDK tipado para Auth+Tenants, verificado
+  campo por campo contra los DTOs reales y en runtime contra el servidor
+  real (register → me → listTenants → provisionTenant → getTenantContext
+  → refresh → logout → 401 posterior, todo exitoso).
+- **Integration tests con Testcontainers** (`apps/api/test/integration`,
+  Codex): PostgreSQL real efímero por corrida, migraciones reales, incluye
+  el mismo escenario de rechazo cross-tenant que se validó a mano.
+- **CI** (`.github/workflows/ci.yml`, Codex): lint/typecheck/test/build +
+  job de integración Postgres; acciones fijadas a SHA de commit.
+- 62 tests unitarios pasando (api 54, api-client 4, erp-web 4) + 2 tests
+  de integración con Postgres real, incluyendo pruebas de wiring real de
   NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
   `tenants.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
 
@@ -85,10 +101,9 @@ Control / RBAC).
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
 Resumen: Access Control/RBAC → Configuración tipada → Audit → Event Bus →
 Files → Notifications → Workers → OpenAPI/Swagger.
-También pendientes: ADR-001 a ADR-005, CI (GitHub Actions), integration
-tests automatizados con Postgres real (la verificación de esta sesión fue
-manual; formalizarla en la suite de tests — candidato natural para Codex,
-ver `docs/WORK_QUEUE.md`).
+También pendientes: ADR-001 a ADR-005; E2E con Playwright (Codex, recién
+desbloqueado ahora que erp-web+API+CI existen); expandir el Design System
+del frontend.
 
 ## Production Status
 
