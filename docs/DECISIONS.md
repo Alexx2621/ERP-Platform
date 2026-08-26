@@ -94,13 +94,12 @@ revocation.
    never leaks account status either — only someone who already has the
    correct password learns the account is disabled.
 
-8. **Rate limiting:** `@nestjs/throttler` with its default in-memory store
-   guards the whole `/api/v1/auth/*` surface (`AuthController`), configured
-   via `LOGIN_RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_WINDOW_SECONDS`. This is a
-   single-instance limiter — it does not coordinate across multiple API
-   processes. MASTER_SPEC §87 asks for rate limiting on login; a
-   Redis-backed distributed limiter is Foundation infrastructure (1B/1G),
-   not something to bootstrap unilaterally inside this module.
+8. **Rate limiting:** `@nestjs/throttler` guards the whole `/api/v1/auth/*`
+   surface (`AuthController`), configured via `LOGIN_RATE_LIMIT_MAX` /
+   `LOGIN_RATE_LIMIT_WINDOW_SECONDS`. Originally an in-memory, single-instance
+   store; backed by Redis since 2026-08-26 (`@nest-lab/throttler-storage-redis`,
+   `apps/api/src/shared/redis`) so the limit coordinates across multiple API
+   processes, per MASTER_SPEC §87.
 
 **Consequences**
 

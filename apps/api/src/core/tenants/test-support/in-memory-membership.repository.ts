@@ -15,6 +15,10 @@ export class InMemoryMembershipRepository implements MembershipRepository {
     return null;
   }
 
+  async findActiveByUserId(userId: string): Promise<Membership[]> {
+    return [...this.records.values()].filter((m) => m.userId === userId && m.isActive());
+  }
+
   async save(membership: Membership): Promise<void> {
     this.records.set(this.key(membership.tenantId, membership.id), membership);
   }

@@ -12,6 +12,9 @@ export class EnvironmentVariables {
   @IsString()
   DATABASE_URL!: string;
 
+  @IsString()
+  REDIS_URL!: string;
+
   /** Access token lifetime. Short-lived by design (ADR-006). */
   @IsInt()
   @Min(60)

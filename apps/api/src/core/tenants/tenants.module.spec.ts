@@ -1,25 +1,54 @@
 import { Global, Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { RedisService } from "../../shared/redis/redis.service";
 import { ProvisionTenantUseCase } from "./application/provision-tenant.use-case";
 import { ResolveTenantContextUseCase } from "./application/resolve-tenant-context.use-case";
+import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
+import { TenantContextGuard } from "./presentation/tenant-context.guard";
+import { TenantsController } from "./presentation/tenants.controller";
 import { TenantsModule } from "./tenants.module";
 
+// TenantsModule now imports AuthModule (for SessionAuthGuard on TenantsController),
+// which in turn needs Redis for its throttler storage — see auth.module.spec.ts
+// for why these have to be @Global() stub modules rather than plain providers.
 @Global()
 @Module({
-  providers: [{ provide: PrismaService, useValue: {} }],
-  exports: [PrismaService],
+  providers: [
+    { provide: PrismaService, useValue: {} },
+    { provide: RedisService, useValue: {} },
+  ],
+  exports: [PrismaService, RedisService],
 })
-class StubPrismaModule {}
+class StubInfraModule {}
 
 describe("TenantsModule wiring", () => {
-  it("resolves provisioning and tenant-context use cases", async () => {
+  it("resolves provisioning, tenant-context and HTTP-layer providers", async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [StubPrismaModule, TenantsModule],
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [
+            () => ({
+              LOGIN_RATE_LIMIT_MAX: 5,
+              LOGIN_RATE_LIMIT_WINDOW_SECONDS: 60,
+              ACCESS_TOKEN_TTL_SECONDS: 900,
+              REFRESH_TOKEN_TTL_SECONDS: 2_592_000,
+            }),
+          ],
+        }),
+        StubInfraModule,
+        TenantsModule,
+      ],
     }).compile();
 
     expect(moduleRef.get(ProvisionTenantUseCase)).toBeInstanceOf(ProvisionTenantUseCase);
     expect(moduleRef.get(ResolveTenantContextUseCase)).toBeInstanceOf(ResolveTenantContextUseCase);
+    expect(moduleRef.get(ListMyTenantsUseCase)).toBeInstanceOf(ListMyTenantsUseCase);
+    expect(moduleRef.get(TenantContextGuard)).toBeInstanceOf(TenantContextGuard);
+    expect(moduleRef.get(TenantsController)).toBeInstanceOf(TenantsController);
 
     await moduleRef.close();
   });

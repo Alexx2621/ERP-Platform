@@ -28,7 +28,7 @@ covers *why* each control looks the way it does.
 | Threat | Control |
 | --- | --- |
 | Password database compromise | Argon2id hashing (OWASP baseline params, ADR-006); no reversible storage; no plaintext ever logged. |
-| Credential stuffing / brute force on login | `@nestjs/throttler` on `/api/v1/auth/*` (`LOGIN_RATE_LIMIT_MAX`/`_WINDOW_SECONDS`). Single-instance limiter — see Known limitations. |
+| Credential stuffing / brute force on login | `@nestjs/throttler` on `/api/v1/auth/*` (`LOGIN_RATE_LIMIT_MAX`/`_WINDOW_SECONDS`), backed by Redis (`@nest-lab/throttler-storage-redis`) since 2026-08-26 — the limit holds across multiple API instances, not just per-process. |
 | Timing-based user enumeration via login | `LoginUseCase` always runs a password verification, even against a dummy hash when the email doesn't exist, before returning `INVALID_CREDENTIALS`. |
 | Status-based user enumeration via login | Account-disabled is only reported *after* a correct password; a wrong-password guess gets the same `INVALID_CREDENTIALS` whether the account exists, is disabled, or the password is simply wrong. |
 | Stolen/leaked access token | Short TTL (15 min default) bounds the exposure window; immediate server-side revocation is possible because sessions are opaque DB-backed rows, not self-contained JWTs (ADR-006). |
@@ -42,11 +42,9 @@ covers *why* each control looks the way it does.
 
 ### Known limitations (accepted for this Foundation slice, not silently ignored)
 
-- **Rate limiting is per-process, in-memory.** Running multiple API instances
-  behind a load balancer means the effective limit multiplies by instance
-  count. A Redis-backed throttler storage is straightforward to swap in
-  behind the same `@nestjs/throttler` config once Redis is bootstrapped
-  (Roadmap 1B); it does not require revisiting this module's design.
+- ~~Rate limiting is per-process, in-memory.~~ Closed 2026-08-26: now backed
+  by Redis (`apps/api/src/shared/redis`), so the limit holds across multiple
+  API instances.
 - **No refresh-token reuse-detection/family revocation.** A replayed stale
   refresh token fails (session lookup misses), but the system does not treat
   that as a signal to revoke the rest of the session's lineage, because there
@@ -60,8 +58,12 @@ covers *why* each control looks the way it does.
   module (Roadmap 1F) doesn't exist yet. This module's use cases are the
   natural place to add audit calls once that port exists; it should not
   require changing the use cases' external behavior.
-- **No password strength/breach-list policy enforced** at `SetPasswordUseCase`
-  beyond DTO length bounds — deferred as a product/UX decision.
+- **No password strength/breach-list policy enforced** beyond an 8-character
+  minimum on `RegisterDto` (`core/auth/presentation/dto/register.dto.ts`,
+  added 2026-08-26 with the `/auth/register` endpoint). `SetPasswordUseCase`
+  itself still enforces nothing — a future password-reset flow reusing it
+  directly should apply the same DTO-level bound. Complexity rules and a
+  breach-list check remain a deferred product/UX decision.
 
 ### Tenant isolation review (FOUNDATION-001)
 
@@ -79,6 +81,21 @@ into a tenant). Consequences for this module specifically:
   `docs/MULTITENANCY.md` §9), which does not exist yet. Any endpoint built on
   top of `SessionAuthGuard` before Access Control lands must not assume
   tenant-scoped authorization is already handled.
+
+## Tenant Context HTTP integration (2026-08-26)
+
+Scope: `TenantContextGuard`, `POST /api/v1/tenants` (provisioning), `GET
+/api/v1/tenants` (list mine), `GET /api/v1/tenants/current`, `POST
+/api/v1/auth/register` — the pieces connecting Authentication to Tenancy
+(`docs/WORK_QUEUE.md`).
+
+| Threat | Control |
+| --- | --- |
+| Client claims a tenant it has no access to via the `X-Tenant-Slug` header | `TenantContextGuard` never trusts the header alone: it calls `ResolveTenantContextUseCase`, which re-checks an *active* `Membership` for the *authenticated* user (from `SessionAuthGuard`, not the header) against that tenant. A guessed/arbitrary slug for a tenant the user has no membership in fails closed (`MEMBERSHIP_INACTIVE`/`TENANT_NOT_FOUND`), regardless of what the header says. |
+| Guard ordering bypass (resolving tenant context without authenticating first) | `TenantContextGuard.canActivate` throws a 500 (`TENANT_CONTEXT_REQUIRES_AUTH`) if `request.authContext` is absent, rather than silently treating the request as unscoped — this fails loud in development if a controller applies the guards out of order, instead of silently accepting unauthenticated tenant access in production. |
+| Company id from another tenant via `X-Company-Id` | Rejected: `ResolveTenantContextUseCase` looks the company up scoped to the already-resolved `tenantId`, so a company id belonging to a different tenant is simply not found (`CompanyContextUnavailableError`) — exercised in `resolve-tenant-context.use-case.spec.ts`. |
+| Tenant provisioning abuse (unauthenticated or scripted account+tenant creation) | `POST /api/v1/tenants` requires a valid session (`SessionAuthGuard`) — no anonymous tenant creation. **Gap:** unlike `/auth/*`, this route and `/auth/register` are not rate-limited (`ThrottlerGuard` is only applied to `AuthController`). Acceptable for now (both still require either no prior state or an authenticated session), but should be revisited once Access Control lands and tenant creation has a real cost/quota model (MASTER_SPEC §56 licensing). |
+| Weak passwords at registration | `RegisterDto` enforces an 8-character minimum (see Known limitations above) — a floor, not a full policy. |
 
 ### Required tests (from `docs/tasks/FOUNDATION-001.md`) and where they live
 

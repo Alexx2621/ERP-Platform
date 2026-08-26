@@ -14,7 +14,9 @@ import { LoginUseCase } from "../application/use-cases/login.use-case";
 import { RefreshSessionUseCase } from "../application/use-cases/refresh-session.use-case";
 import { LogoutUseCase } from "../application/use-cases/logout.use-case";
 import { RevokeAllSessionsUseCase } from "../application/use-cases/revoke-all-sessions.use-case";
+import { RegisterUseCase } from "../application/use-cases/register.use-case";
 import { LoginDto } from "./dto/login.dto";
+import { RegisterDto } from "./dto/register.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { SessionResponseDto } from "./dto/session-response.dto";
 import { SessionAuthGuard } from "./session-auth.guard";
@@ -31,7 +33,26 @@ export class AuthController {
     private readonly refreshSessionUseCase: RefreshSessionUseCase,
     private readonly logoutUseCase: LogoutUseCase,
     private readonly revokeAllSessionsUseCase: RevokeAllSessionsUseCase,
+    private readonly registerUseCase: RegisterUseCase,
   ) {}
+
+  /** MASTER_SPEC §68 "crear cuenta" step — logs the new account in immediately. */
+  @Post("register")
+  @HttpCode(HttpStatus.CREATED)
+  async register(@Body() dto: RegisterDto, @Req() request: Request): Promise<SessionResponseDto> {
+    try {
+      const result = await this.registerUseCase.execute({
+        email: dto.email,
+        password: dto.password,
+        displayName: dto.displayName,
+        ipAddress: request.ip,
+        userAgent: request.header("user-agent"),
+      });
+      return SessionResponseDto.fromResult(result);
+    } catch (error) {
+      handleAuthError(error);
+    }
+  }
 
   @Post("login")
   @HttpCode(HttpStatus.OK)

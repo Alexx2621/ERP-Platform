@@ -2,22 +2,26 @@ import { Global, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { RedisService } from "../../shared/redis/redis.service";
 import { AuthModule } from "./auth.module";
 import { AuthController } from "./presentation/auth.controller";
 import { LoginUseCase } from "./application/use-cases/login.use-case";
 import { ValidateSessionUseCase } from "./application/use-cases/validate-session.use-case";
 
-// The real PrismaModule is @Global() (see shared/prisma/prisma.module.ts) so its
-// export is visible inside AuthModule/UsersModule without either importing it
-// explicitly. A plain `providers: [...]` entry on the *test* root module would
-// NOT be visible inside AuthModule's own encapsulated scope, so the stub has
-// to be wrapped the same way the real module is.
+// The real PrismaModule/RedisModule are @Global() (see shared/prisma,
+// shared/redis) so their exports are visible inside AuthModule/UsersModule
+// without either importing them explicitly. A plain `providers: [...]` entry
+// on the *test* root module would NOT be visible inside AuthModule's own
+// encapsulated scope, so the stubs have to be wrapped the same way.
 @Global()
 @Module({
-  providers: [{ provide: PrismaService, useValue: {} }],
-  exports: [PrismaService],
+  providers: [
+    { provide: PrismaService, useValue: {} },
+    { provide: RedisService, useValue: {} },
+  ],
+  exports: [PrismaService, RedisService],
 })
-class StubPrismaModule {}
+class StubInfraModule {}
 
 /**
  * Verifies the real Nest DI graph resolves (providers registered under the
@@ -41,7 +45,7 @@ describe("AuthModule wiring", () => {
             }),
           ],
         }),
-        StubPrismaModule,
+        StubInfraModule,
         AuthModule,
       ],
     }).compile();

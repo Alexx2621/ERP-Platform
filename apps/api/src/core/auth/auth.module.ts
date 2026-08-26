@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis";
 import { UsersModule } from "../users";
+import { RedisService } from "../../shared/redis/redis.service";
 import type { EnvironmentVariables } from "../../shared/config/environment-variables";
 import { CREDENTIAL_REPOSITORY } from "./domain/credential.repository";
 import { SESSION_REPOSITORY } from "./domain/session.repository";
@@ -20,6 +22,7 @@ import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.u
 import { LogoutUseCase } from "./application/use-cases/logout.use-case";
 import { RevokeAllSessionsUseCase } from "./application/use-cases/revoke-all-sessions.use-case";
 import { ValidateSessionUseCase } from "./application/use-cases/validate-session.use-case";
+import { RegisterUseCase } from "./application/use-cases/register.use-case";
 import { AuthController } from "./presentation/auth.controller";
 import { SessionAuthGuard } from "./presentation/session-auth.guard";
 
@@ -28,13 +31,18 @@ import { SessionAuthGuard } from "./presentation/session-auth.guard";
     UsersModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<EnvironmentVariables, true>) => [
-        {
-          ttl: config.get("LOGIN_RATE_LIMIT_WINDOW_SECONDS", { infer: true }) * 1000,
-          limit: config.get("LOGIN_RATE_LIMIT_MAX", { infer: true }),
-        },
-      ],
+      inject: [ConfigService, RedisService],
+      useFactory: (config: ConfigService<EnvironmentVariables, true>, redis: RedisService) => ({
+        throttlers: [
+          {
+            ttl: config.get("LOGIN_RATE_LIMIT_WINDOW_SECONDS", { infer: true }) * 1000,
+            limit: config.get("LOGIN_RATE_LIMIT_MAX", { infer: true }),
+          },
+        ],
+        // Redis-backed so the limit holds across multiple API instances,
+        // not just per-process (docs/DECISIONS.md ADR-006 §8 limitation, closed).
+        storage: new ThrottlerStorageRedisService(redis),
+      }),
     }),
   ],
   controllers: [AuthController],
@@ -51,6 +59,7 @@ import { SessionAuthGuard } from "./presentation/session-auth.guard";
     LogoutUseCase,
     RevokeAllSessionsUseCase,
     ValidateSessionUseCase,
+    RegisterUseCase,
     SessionAuthGuard,
   ],
   exports: [SessionAuthGuard, ValidateSessionUseCase, SetPasswordUseCase, RevokeAllSessionsUseCase],

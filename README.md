@@ -8,18 +8,24 @@ is actually built right now.
 
 - Node.js >= 20
 - pnpm (`packageManager` in `package.json` pins the exact version)
-- A PostgreSQL instance reachable via `DATABASE_URL` (no Docker Compose setup
-  exists yet — see `docs/PROJECT_STATE.md` Pending)
+- Docker (for `docker-compose.yml`: PostgreSQL, Redis, MinIO)
 
 ## Setup
 
 ```bash
+docker compose up -d
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp packages/database/.env.example packages/database/.env
-# edit both .env files to point at a real PostgreSQL instance, then:
+# .env.example values already match docker-compose.yml's defaults
 pnpm --filter @erp/database migrate:dev
 ```
+
+`pnpm --filter @erp/database migrate:dev` has not been run against a real
+PostgreSQL instance yet in this codebase's history (see
+`docs/PROJECT_STATE.md`) — the existing migrations were generated with
+`prisma migrate diff` against no live database. Running it for the first time
+against the `docker-compose.yml` database is the next verification step.
 
 ## Common commands (run from the repo root, orchestrated by Turborepo)
 

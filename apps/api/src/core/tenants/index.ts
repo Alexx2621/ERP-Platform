@@ -27,6 +27,10 @@ export {
 } from "./application/tenant-execution-context";
 export type { ProvisionedTenant } from "./application/ports/tenant-provisioning.repository";
 export {
+  ListMyTenantsUseCase,
+  type MyTenantSummary,
+} from "./application/list-my-tenants.use-case";
+export {
   TenantSlugAlreadyInUseError,
   ProvisioningUserUnavailableError,
   TenantContextNotFoundError,
@@ -35,3 +39,9 @@ export {
   CompanyContextUnavailableError,
 } from "./application/errors";
 export { TenantsModule } from "./tenants.module";
+export {
+  TenantContextGuard,
+  TENANT_SLUG_HEADER,
+  COMPANY_ID_HEADER,
+} from "./presentation/tenant-context.guard";
+export { CurrentTenantContext } from "./presentation/current-tenant-context.decorator";

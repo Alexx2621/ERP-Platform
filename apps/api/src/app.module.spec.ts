@@ -1,0 +1,44 @@
+import { Test } from "@nestjs/testing";
+import { AppModule } from "./app.module";
+import { PrismaService } from "./shared/prisma/prisma.service";
+import { RedisService } from "./shared/redis/redis.service";
+import { AuthController } from "./core/auth/presentation/auth.controller";
+import {
+  ListMyTenantsUseCase,
+  ProvisionTenantUseCase,
+  ResolveTenantContextUseCase,
+  TenantContextGuard,
+} from "./core/tenants";
+import { TenantsController } from "./core/tenants/presentation/tenants.controller";
+import { CreateOrganizationUseCase } from "./core/organizations";
+import { CreateCompanyUseCase } from "./core/companies";
+
+/**
+ * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
+ * Companies) with only PrismaService stubbed out, so a broken import, a
+ * missing provider, or a circular dependency between core modules fails here
+ * instead of only being discoverable at real server startup. This is the
+ * check that would have caught TenantsModule never being wired into
+ * AppModule (docs/PROJECT_STATE.md — fixed 2026-08-26).
+ */
+describe("AppModule wiring", () => {
+  it("compiles the full module graph with every cross-module use case resolvable", async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .overrideProvider(RedisService)
+      .useValue({})
+      .compile();
+
+    expect(moduleRef.get(AuthController)).toBeInstanceOf(AuthController);
+    expect(moduleRef.get(TenantsController)).toBeInstanceOf(TenantsController);
+    expect(moduleRef.get(ProvisionTenantUseCase)).toBeInstanceOf(ProvisionTenantUseCase);
+    expect(moduleRef.get(ResolveTenantContextUseCase)).toBeInstanceOf(ResolveTenantContextUseCase);
+    expect(moduleRef.get(ListMyTenantsUseCase)).toBeInstanceOf(ListMyTenantsUseCase);
+    expect(moduleRef.get(TenantContextGuard)).toBeInstanceOf(TenantContextGuard);
+    expect(moduleRef.get(CreateOrganizationUseCase)).toBeInstanceOf(CreateOrganizationUseCase);
+    expect(moduleRef.get(CreateCompanyUseCase)).toBeInstanceOf(CreateCompanyUseCase);
+
+    await moduleRef.close();
+  });
+});

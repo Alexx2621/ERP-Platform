@@ -21,6 +21,11 @@ export class PrismaMembershipRepository implements MembershipRepository {
     return record ? Membership.create(record) : null;
   }
 
+  async findActiveByUserId(userId: string): Promise<Membership[]> {
+    const records = await this.prisma.membership.findMany({ where: { userId, status: "ACTIVE" } });
+    return records.map((record) => Membership.create(record));
+  }
+
   async save(membership: Membership): Promise<void> {
     const props = membership.toProps();
     await this.prisma.membership.upsert({

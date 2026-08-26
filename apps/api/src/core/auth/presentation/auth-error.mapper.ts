@@ -1,5 +1,6 @@
 import { HttpStatus } from "@nestjs/common";
 import { AppException } from "../../../shared/errors/app.exception";
+import { EmailAlreadyInUseError } from "../../users";
 import {
   AccountDisabledError,
   InvalidCredentialsError,
@@ -28,6 +29,9 @@ export function handleAuthError(error: unknown): never {
   }
   if (error instanceof SessionRevokedError) {
     throw new AppException("SESSION_REVOKED", error.message, HttpStatus.UNAUTHORIZED);
+  }
+  if (error instanceof EmailAlreadyInUseError) {
+    throw new AppException("EMAIL_ALREADY_IN_USE", error.message, HttpStatus.CONFLICT);
   }
   throw error;
 }

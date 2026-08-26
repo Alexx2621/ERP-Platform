@@ -14,8 +14,9 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // CommonJS tooling config files (jest.config.js, etc.), not part of the TS build.
-    files: ["**/*.config.js", "**/jest.config.js"],
+    // Plain .js files are always CommonJS tooling/config (jest.config.js, test
+    // setup scripts, etc.) — all real application source in this repo is .ts.
+    files: ["**/*.js"],
     languageOptions: {
       sourceType: "commonjs",
       globals: {
