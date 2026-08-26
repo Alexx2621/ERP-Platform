@@ -1,0 +1,164 @@
+import { ArrowClockwise, ArrowRight, Buildings, Plus } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import type { TenantSummary } from "@erp/api-client";
+import { apiClient } from "../../shared/api/client";
+import { getErrorMessage } from "../../shared/api/error-message";
+import { useAuth } from "../../shared/auth/auth-context";
+import type { AppPath } from "../../shared/navigation/router";
+import { Button } from "../../shared/ui/button";
+import { ErrorNotice } from "../../shared/ui/notice";
+import { ProductShell } from "../workspace/product-shell";
+
+interface TenantListPageProps {
+  navigate: (path: AppPath, replace?: boolean) => void;
+  onSelect: (tenant: TenantSummary) => void;
+}
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; tenants: TenantSummary[] };
+
+export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
+  const { getAccessToken } = useAuth();
+  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  const [openingSlug, setOpeningSlug] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoadState({ status: "loading" });
+
+    void getAccessToken()
+      .then((token) => apiClient.listTenants(token, controller.signal))
+      .then((tenants) => setLoadState({ status: "ready", tenants }))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setLoadState({ status: "error", message: getErrorMessage(error) });
+      });
+
+    return () => controller.abort();
+  }, [attempt, getAccessToken]);
+
+  const openTenant = async (tenant: TenantSummary) => {
+    setOpenError(null);
+    setOpeningSlug(tenant.slug);
+    try {
+      const token = await getAccessToken();
+      await apiClient.getTenantContext(token, tenant.slug);
+      onSelect(tenant);
+      navigate("/workspace");
+    } catch (error) {
+      setOpenError(getErrorMessage(error));
+    } finally {
+      setOpeningSlug(null);
+    }
+  };
+
+  return (
+    <ProductShell
+      eyebrow="Contexto empresarial"
+      title="Tus espacios"
+      description="Selecciona el tenant donde quieres trabajar. La plataforma validará tu membresía antes de entrar."
+      action={
+        <Button type="button" onClick={() => navigate("/onboarding")}>
+          <Plus size={17} weight="bold" aria-hidden="true" />
+          Nuevo espacio
+        </Button>
+      }
+    >
+      <section className="pt-8" aria-live="polite">
+        {openError ? (
+          <div className="mb-5">
+            <ErrorNotice message={openError} />
+          </div>
+        ) : null}
+
+        {loadState.status === "loading" ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {[0, 1].map((item) => (
+              <div
+                key={item}
+                className="h-32 animate-pulse rounded-[12px] border border-[var(--line)] bg-[var(--paper)]"
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {loadState.status === "error" ? (
+          <div className="max-w-[580px]">
+            <ErrorNotice message={loadState.message} />
+            <Button
+              type="button"
+              variant="secondary"
+              className="mt-4"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              <ArrowClockwise size={17} weight="bold" aria-hidden="true" />
+              Reintentar
+            </Button>
+          </div>
+        ) : null}
+
+        {loadState.status === "ready" && loadState.tenants.length === 0 ? (
+          <div className="grid min-h-72 place-items-center rounded-[12px] border border-dashed border-[var(--line-strong)] bg-[var(--paper)] px-6 text-center">
+            <div className="max-w-[420px]">
+              <Buildings
+                size={34}
+                weight="duotone"
+                className="mx-auto text-[var(--accent)]"
+                aria-hidden="true"
+              />
+              <h2 className="mt-5 text-[20px] font-extrabold tracking-[-0.035em]">
+                Todavía no tienes un espacio
+              </h2>
+              <p className="mt-2 text-[13px] font-medium leading-6 text-[var(--muted-strong)]">
+                Crea el primer tenant, su organización y una empresa opcional para comenzar.
+              </p>
+              <Button type="button" className="mt-5" onClick={() => navigate("/onboarding")}>
+                Configurar ahora
+                <ArrowRight size={17} weight="bold" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {loadState.status === "ready" && loadState.tenants.length > 0 ? (
+          <ul className="grid gap-3 md:grid-cols-2">
+            {loadState.tenants.map((tenant) => (
+              <li key={tenant.tenantId}>
+                <button
+                  type="button"
+                  disabled={openingSlug !== null}
+                  onClick={() => void openTenant(tenant)}
+                  className="group flex min-h-32 w-full items-center gap-4 rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-5 text-left transition-[border-color,transform,background-color] duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--field)] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent)]">
+                    <Buildings size={22} weight="duotone" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-extrabold tracking-[-0.02em]">
+                      {tenant.name}
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+                      {tenant.slug}
+                    </span>
+                  </span>
+                  <ArrowRight
+                    size={18}
+                    weight="bold"
+                    className="text-[var(--muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent)]"
+                    aria-hidden="true"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    </ProductShell>
+  );
+}

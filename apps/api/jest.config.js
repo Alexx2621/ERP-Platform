@@ -7,6 +7,7 @@ module.exports = {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
   },
   testRegex: ".*\\.spec\\.ts$",
+  testPathIgnorePatterns: ["<rootDir>/test/integration/"],
   moduleFileExtensions: ["js", "json", "ts"],
   collectCoverageFrom: ["src/**/*.(t|j)s"],
   coverageDirectory: "coverage",

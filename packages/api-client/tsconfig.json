@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vitest/globals"],
+    "rootDir": ".",
+    "outDir": "dist",
+    "noEmit": true,
+    "declaration": true,
+    "declarationMap": true,
+    "isolatedModules": true
+  },
+  "include": ["src"]
+}
