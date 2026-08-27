@@ -119,6 +119,7 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     runtime.redis = await new RedisContainer(REDIS_IMAGE).start();
 
     const databaseUrl = runtime.postgres.getConnectionUri();
+    process.env.E2E_POSTGRES_CONTAINER_ID = runtime.postgres.getId();
     await deployMigrations(databaseUrl);
 
     runtime.api = startNodeProcess("api", path.join(repoRoot, "apps/api/dist/main.js"), [], {
@@ -143,8 +144,12 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     );
     await waitForHttp(ERP_WEB_URL, runtime.erpWeb, 200);
 
-    return async () => stopRuntime(runtime);
+    return async () => {
+      delete process.env.E2E_POSTGRES_CONTAINER_ID;
+      await stopRuntime(runtime);
+    };
   } catch (error) {
+    delete process.env.E2E_POSTGRES_CONTAINER_ID;
     await stopRuntime(runtime);
     throw error;
   }

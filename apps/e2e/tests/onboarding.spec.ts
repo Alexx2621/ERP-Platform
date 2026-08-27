@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { createMembershipWithoutRoles } from "../src/database-fixture.js";
 
 test("completes onboarding, RBAC and the authenticated session lifecycle", async ({
   page,
@@ -67,7 +69,13 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
 
   const provisioned = await provisioningResponse;
   expect(provisioned.status()).toBe(201);
-  await expect(provisioned.json()).resolves.toMatchObject({
+  const provisionedBody = (await provisioned.json()) as {
+    tenant: { id: string; slug: string; name: string };
+    membership: { id: string };
+    organization: { code: string };
+    company: { id: string; code: string };
+  };
+  expect(provisionedBody).toMatchObject({
     tenant: { slug: tenantSlug, name: tenantName },
     organization: { code: "E2EORG" },
     company: { code: "E2ECO" },
@@ -216,6 +224,125 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
     scopeId: companyId,
   });
   await expect(page.getByRole("status")).toContainText("El rol fue asignado");
+
+  const auditResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/audit-entries?limit=50") &&
+      response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: "Auditoría" }).click();
+  const auditResponse = await auditResponsePromise;
+  expect(auditResponse.status()).toBe(200);
+  const activeAuthorization = auditResponse.request().headers().authorization;
+  expect(activeAuthorization).toMatch(/^Bearer /);
+  await expect(page).toHaveURL(/\/audit$/);
+  await expect(page.getByRole("heading", { name: "Auditoría", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Espacio creado/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Rol creado/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Rol asignado/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Ajuste modificado/ })).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Ver detalle de configuration.setting.changed" })
+    .click();
+  const auditDialog = page.getByRole("dialog", { name: "Ajuste modificado" });
+  await expect(auditDialog).toContainText('"source": "DEFAULT"');
+  await expect(auditDialog).toContainText('"scopeType": "COMPANY"');
+  await auditDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("navigation", { name: "Navegación del espacio" })).toBeVisible();
+  await expect(
+    page.getByRole("region", {
+      name: "Actividad del tenant, desplázate horizontalmente para ver todas las columnas",
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  const firstTenantAuditResponse = await request.get("/api/v1/audit-entries?limit=200", {
+    headers: {
+      Authorization: activeAuthorization as string,
+      "X-Tenant-Slug": tenantSlug,
+    },
+  });
+  expect(firstTenantAuditResponse.status()).toBe(200);
+  const firstTenantEntries = (await firstTenantAuditResponse.json()) as Array<{
+    id: string;
+    tenantId: string;
+    action: string;
+  }>;
+  expect(firstTenantEntries.length).toBeGreaterThanOrEqual(5);
+  expect(firstTenantEntries.every((entry) => entry.tenantId === provisionedBody.tenant.id)).toBe(
+    true,
+  );
+
+  const secondTenantSlug = `isolation-e2e-${runId}`;
+  const secondTenantResponse = await request.post("/api/v1/tenants", {
+    headers: { Authorization: activeAuthorization as string },
+    data: {
+      slug: secondTenantSlug,
+      name: `Isolation E2E ${runId}`,
+      organization: { code: "ISOORG", name: "Isolation Organization" },
+      company: { code: "ISOCO", name: "Isolation Company" },
+    },
+  });
+  expect(secondTenantResponse.status()).toBe(201);
+  const secondTenantBody = (await secondTenantResponse.json()) as { tenant: { id: string } };
+  const secondTenantAuditResponse = await request.get("/api/v1/audit-entries?limit=200", {
+    headers: {
+      Authorization: activeAuthorization as string,
+      "X-Tenant-Slug": secondTenantSlug,
+    },
+  });
+  expect(secondTenantAuditResponse.status()).toBe(200);
+  const secondTenantEntries = (await secondTenantAuditResponse.json()) as Array<{
+    id: string;
+    tenantId: string;
+    action: string;
+  }>;
+  expect(secondTenantEntries).toHaveLength(2);
+  expect(secondTenantEntries.every((entry) => entry.tenantId === secondTenantBody.tenant.id)).toBe(
+    true,
+  );
+  const firstTenantEntryIds = new Set(firstTenantEntries.map((entry) => entry.id));
+  expect(secondTenantEntries.some((entry) => firstTenantEntryIds.has(entry.id))).toBe(false);
+
+  const unprivilegedRegistration = await request.post("/api/v1/auth/register", {
+    data: {
+      email: `observer-${runId}@example.com`,
+      password: "PlatformE2E9!",
+      displayName: "Observador E2E",
+    },
+  });
+  expect(unprivilegedRegistration.status()).toBe(201);
+  const unprivilegedSession = (await unprivilegedRegistration.json()) as {
+    accessToken: string;
+    user: { id: string };
+  };
+  await createMembershipWithoutRoles({
+    id: randomUUID(),
+    tenantId: provisionedBody.tenant.id,
+    userId: unprivilegedSession.user.id,
+  });
+
+  for (const protectedPath of ["/api/v1/roles", "/api/v1/audit-entries"] as const) {
+    const deniedResponse = await request.get(protectedPath, {
+      headers: {
+        Authorization: `Bearer ${unprivilegedSession.accessToken}`,
+        "X-Tenant-Slug": tenantSlug,
+      },
+    });
+    expect(deniedResponse.status()).toBe(403);
+    await expect(deniedResponse.json()).resolves.toMatchObject({
+      statusCode: 403,
+      code: "PERMISSION_DENIED",
+    });
+  }
 
   const logoutResponsePromise = page.waitForResponse(
     (response) =>
