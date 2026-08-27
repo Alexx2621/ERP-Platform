@@ -135,6 +135,79 @@ describe("ApiClient", () => {
     );
   });
 
+  it("uses the documented Settings and Preferences endpoints", async () => {
+    const definition = {
+      key: "localization.locale",
+      dataType: "STRING",
+      description: "BCP 47 language tag.",
+      defaultValue: "en",
+      allowedScopes: ["PLATFORM", "TENANT", "COMPANY"],
+    };
+    const effective = { key: definition.key, value: "es-GT", source: "COMPANY" };
+    const settingValue = {
+      key: definition.key,
+      scopeType: "COMPANY",
+      companyId: "company-1",
+      value: "es-GT",
+      updatedAt: "2026-08-27T12:00:00.000Z",
+    };
+    const preference = {
+      key: "ui.theme",
+      value: "dark",
+      updatedAt: "2026-08-27T12:00:00.000Z",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([definition]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([effective]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(settingValue), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([preference]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(preference), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listSettingDefinitions("access-token", "grupo-aurora");
+    await client.listEffectiveSettings("access-token", "grupo-aurora", "company-1");
+    await client.setSettingValue("access-token", "grupo-aurora", "localization/locale", {
+      scopeType: "COMPANY",
+      companyId: "company-1",
+      value: "es-GT",
+    });
+    await client.listUserPreferences("access-token");
+    await client.setUserPreference("access-token", "ui/theme", "dark");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/settings",
+      expect.objectContaining({ method: "GET" }),
+    );
+    const effectiveHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    expect(effectiveHeaders.get("X-Tenant-Slug")).toBe("grupo-aurora");
+    expect(effectiveHeaders.get("X-Company-Id")).toBe("company-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/settings/localization%2Flocale",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          scopeType: "COMPANY",
+          companyId: "company-1",
+          value: "es-GT",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/preferences/ui%2Ftheme",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ value: "dark" }) }),
+    );
+    for (const callIndex of [3, 4]) {
+      const headers = new Headers(fetchMock.mock.calls[callIndex]?.[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBeNull();
+      expect(headers.get("Authorization")).toBe("Bearer access-token");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

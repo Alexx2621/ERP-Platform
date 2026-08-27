@@ -85,6 +85,72 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
   await expect(page.getByText("Contexto activo")).toBeVisible();
   await expect(page.getByText(tenantSlug, { exact: false })).toBeVisible();
 
+  const definitionsResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/settings/definitions") &&
+      response.request().method() === "GET",
+  );
+  const effectiveSettingsResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/settings") && response.request().method() === "GET",
+  );
+  const preferencesResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/preferences") && response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: "Ajustes" }).click();
+  expect((await definitionsResponsePromise).status()).toBe(200);
+  expect((await effectiveSettingsResponsePromise).status()).toBe(200);
+  expect((await preferencesResponsePromise).status()).toBe(200);
+
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole("heading", { name: "Ajustes", exact: true })).toBeVisible();
+  const localeRow = page.getByRole("row").filter({ hasText: "localization.locale" });
+  await expect(localeRow).toContainText("Predeterminado");
+  await localeRow.getByRole("button", { name: "Editar ajuste localization.locale" }).click();
+  const settingDialog = page.getByRole("dialog", { name: "Editar localization.locale" });
+  await expect(settingDialog.getByRole("combobox", { name: "Alcance" })).toHaveValue("COMPANY");
+  await settingDialog.getByLabel("Valor").fill("es-GT");
+
+  const settingUpdateResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/settings/localization.locale") &&
+      response.request().method() === "PUT",
+  );
+  const effectiveReloadResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/settings") && response.request().method() === "GET",
+  );
+  await settingDialog.getByRole("button", { name: "Guardar ajuste" }).click();
+  const settingUpdateResponse = await settingUpdateResponsePromise;
+  expect(settingUpdateResponse.status()).toBe(200);
+  expect(settingUpdateResponse.request().postDataJSON()).toMatchObject({
+    scopeType: "COMPANY",
+    value: "es-GT",
+  });
+  expect((await effectiveReloadResponsePromise).status()).toBe(200);
+  await expect(localeRow).toContainText("es-GT");
+  await expect(localeRow).toContainText("Empresa");
+
+  await page.getByRole("tab", { name: /Preferencias/ }).click();
+  await page.getByRole("button", { name: "Nueva preferencia" }).click();
+  const preferenceDialog = page.getByRole("dialog", { name: "Nueva preferencia" });
+  await preferenceDialog.getByLabel("Clave").fill("ui.density");
+  await preferenceDialog.getByRole("textbox", { name: "Valor", exact: true }).fill("compact");
+  const preferenceUpdateResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/preferences/ui.density") &&
+      response.request().method() === "PUT",
+  );
+  await preferenceDialog.getByRole("button", { name: "Guardar preferencia" }).click();
+  const preferenceUpdateResponse = await preferenceUpdateResponsePromise;
+  expect(preferenceUpdateResponse.status()).toBe(200);
+  expect(preferenceUpdateResponse.request().postDataJSON()).toEqual({ value: "compact" });
+  await expect(page.getByRole("cell", { name: "ui.density", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Volver al workspace" }).click();
+  await expect(page).toHaveURL(/\/workspace$/);
+
   const rolesResponsePromise = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/roles") && response.request().method() === "GET",
   );

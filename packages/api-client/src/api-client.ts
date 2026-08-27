@@ -3,6 +3,7 @@ import type {
   ApiErrorEnvelope,
   AuthenticatedUser,
   CreateRoleInput,
+  EffectiveSettingResponse,
   LoginInput,
   PermissionResponse,
   ProvisionTenantInput,
@@ -10,15 +11,19 @@ import type {
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
+  SetSettingValueInput,
   SessionResponse,
+  SettingDefinitionResponse,
+  SettingValueResponse,
   TenantExecutionContext,
   TenantSummary,
+  UserPreferenceResponse,
 } from "./contracts.js";
 
 const DEFAULT_API_BASE_URL = "/api/v1";
 
 interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   body?: unknown;
   accessToken?: string;
   tenantSlug?: string;
@@ -176,6 +181,68 @@ export class ApiClient {
         body: input,
       },
     );
+  }
+
+  async listSettingDefinitions(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<SettingDefinitionResponse[]> {
+    return this.request<SettingDefinitionResponse[]>("/settings/definitions", {
+      accessToken,
+      tenantSlug,
+      signal,
+    });
+  }
+
+  async listEffectiveSettings(
+    accessToken: string,
+    tenantSlug: string,
+    companyId?: string,
+    signal?: AbortSignal,
+  ): Promise<EffectiveSettingResponse[]> {
+    return this.request<EffectiveSettingResponse[]>("/settings", {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async setSettingValue(
+    accessToken: string,
+    tenantSlug: string,
+    key: string,
+    input: SetSettingValueInput,
+  ): Promise<SettingValueResponse> {
+    return this.request<SettingValueResponse>(`/settings/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      body: input,
+    });
+  }
+
+  async listUserPreferences(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<UserPreferenceResponse[]> {
+    return this.request<UserPreferenceResponse[]>("/preferences", {
+      accessToken,
+      signal,
+    });
+  }
+
+  async setUserPreference(
+    accessToken: string,
+    key: string,
+    value: unknown,
+  ): Promise<UserPreferenceResponse> {
+    return this.request<UserPreferenceResponse>(`/preferences/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      accessToken,
+      body: { value },
+    });
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

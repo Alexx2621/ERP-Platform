@@ -8,6 +8,7 @@ import { OnboardingPage } from "../features/tenants/onboarding-page";
 import { TenantListPage } from "../features/tenants/tenant-list-page";
 import { WorkspacePage } from "../features/workspace/workspace-page";
 import { RolesPermissionsPage } from "../features/access-control/roles-permissions-page";
+import { SettingsPage } from "../features/configuration/settings-page";
 
 interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -28,7 +29,11 @@ export function App() {
       navigate("/tenants", true);
       return;
     }
-    if (session && (path === "/workspace" || path === "/roles") && !selection) {
+    if (
+      session &&
+      (path === "/workspace" || path === "/roles" || path === "/settings") &&
+      !selection
+    ) {
       navigate("/tenants", true);
     }
   }, [isAuthPath, navigate, path, selection, session]);
@@ -51,6 +56,10 @@ export function App() {
 
   if (path === "/roles" && selection) {
     return <RolesPermissionsPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/settings" && selection) {
+    return <SettingsPage selection={selection} navigate={navigate} />;
   }
 
   return <TenantListPage navigate={navigate} onSelect={setSelection} />;

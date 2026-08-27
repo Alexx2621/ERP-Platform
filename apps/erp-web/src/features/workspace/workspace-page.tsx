@@ -4,6 +4,7 @@ import {
   CheckCircle,
   Factory,
   LockKey,
+  SlidersHorizontal,
   ShieldCheck,
   SquaresFour,
 } from "@phosphor-icons/react";
@@ -40,6 +41,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" onClick={() => navigate("/roles")}>
             <ShieldCheck size={17} weight="bold" aria-hidden="true" />
             Roles y permisos
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/settings")}>
+            <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
+            Ajustes
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />
