@@ -14,6 +14,7 @@ import {
   RoleResponseDto,
   handleAccessControlError,
 } from "../../access-control";
+import { RecordAuditEntryUseCase } from "../../audit";
 import { TenantContextGuard } from "./tenant-context.guard";
 import { CurrentTenantContext } from "./current-tenant-context.decorator";
 import type { TenantExecutionContext } from "../application/tenant-execution-context";
@@ -36,6 +37,7 @@ export class RolesController {
     private readonly assignRole: AssignRoleUseCase,
     private readonly listRoles: ListRolesUseCase,
     private readonly listPermissions: ListPermissionsUseCase,
+    private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
 
   @Get("roles")
@@ -68,6 +70,15 @@ export class RolesController {
         name: dto.name,
         permissionKeys: dto.permissionKeys,
       });
+      await this.recordAuditEntry.execute({
+        userId: ctx.actor.userId,
+        tenantId: ctx.tenantId,
+        action: "access_control.role.created",
+        resource: "Role",
+        resourceId: role.id,
+        newValues: { name: role.name, permissionKeys: role.permissionKeys },
+        correlationId: ctx.correlationId,
+      });
       return RoleResponseDto.fromDomain(role);
     } catch (error) {
       handleAccessControlError(error);
@@ -90,6 +101,21 @@ export class RolesController {
         roleId,
         scopeType: dto.scopeType,
         scopeId: dto.scopeId,
+      });
+      await this.recordAuditEntry.execute({
+        userId: ctx.actor.userId,
+        tenantId: ctx.tenantId,
+        companyId: assignment.scopeType === "COMPANY" ? assignment.scopeId : null,
+        action: "access_control.role_assignment.created",
+        resource: "RoleAssignment",
+        resourceId: assignment.id,
+        newValues: {
+          membershipId: assignment.membershipId,
+          roleId: assignment.roleId,
+          scopeType: assignment.scopeType,
+          scopeId: assignment.scopeId,
+        },
+        correlationId: ctx.correlationId,
       });
       return RoleAssignmentResponseDto.fromDomain(assignment);
     } catch (error) {

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth";
 import { TenantsModule } from "../tenants";
 import { AccessControlModule } from "../access-control";
+import { AuditModule } from "../audit";
 import { SETTING_DEFINITION_REPOSITORY } from "./domain/setting-definition.repository";
 import { SETTING_VALUE_REPOSITORY } from "./domain/setting-value.repository";
 import { USER_PREFERENCE_REPOSITORY } from "./domain/user-preference.repository";
@@ -27,7 +28,7 @@ import { PreferencesController } from "./presentation/preferences.controller";
  * physically in this module's own presentation/ folder.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
   controllers: [SettingsController, PreferencesController],
   providers: [
     { provide: SETTING_DEFINITION_REPOSITORY, useClass: PrismaSettingDefinitionRepository },

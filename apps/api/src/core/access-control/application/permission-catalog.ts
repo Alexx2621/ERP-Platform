@@ -26,4 +26,8 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "configuration.settings.manage",
     description: "Set TENANT- or COMPANY-scoped setting values.",
   },
+  {
+    key: "audit.entries.read",
+    description: "View the tenant's audit trail (provisioning, RBAC and configuration changes).",
+  },
 ];

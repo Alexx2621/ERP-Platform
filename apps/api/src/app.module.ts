@@ -11,6 +11,7 @@ import { OrganizationsModule } from "./core/organizations";
 import { CompaniesModule } from "./core/companies";
 import { AccessControlModule } from "./core/access-control";
 import { ConfigurationModule } from "./core/configuration";
+import { AuditModule } from "./core/audit";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ConfigurationModule } from "./core/configuration";
     OrganizationsModule,
     CompaniesModule,
     AccessControlModule,
+    AuditModule,
     TenantsModule,
     ConfigurationModule,
   ],

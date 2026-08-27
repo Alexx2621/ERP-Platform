@@ -2,7 +2,7 @@
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
-(sesión 8, integración de la UI de Configuración/SDK/E2E de `ai/codex`).
+(sesión 9, implementación completa de Audit append-only).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 `develop` y `ai/claude` sincronizados (mismo commit en origin, ambas ramas)
@@ -14,34 +14,110 @@ tras esta sesión.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
-   cambios de status de usuario, provisioning de tenant, registro, creación
-   de roles/asignaciones, y ahora también cambios de configuración — ver
-   huecos anotados en `docs/SECURITY.md` §"Access Control / RBAC" y
-   §"Typed Configuration"). No bloqueado.
-2. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
+1. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
    completo YA EXISTE en `docs/EVENTS.md` (envelope, taxonomía domain vs.
    integration event, outbox/inbox, retries/DLQ, nomenclatura) — este ítem
    es implementarlo, no diseñarlo desde cero. Ver nota de corrección más
    abajo: este archivo estuvo mal descrito como vacío en versiones previas
    de esta cola.
-3. **Files** — metadata de archivos + URLs firmadas contra MinIO.
-4. **Notifications** — solicitud + adapter in-app/email vía worker.
-5. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
-6. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+2. **Files** — metadata de archivos + URLs firmadas contra MinIO.
+3. **Notifications** — solicitud + adapter in-app/email vía worker.
+4. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
+5. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-7. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+6. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-8. **System-administration plane** — necesario antes de exponer escritura de
+7. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
+8. **"Mi actividad" / vista de administración de plataforma para eventos no
+   tenant-scoped** — login/logout/cambios de status de usuario se auditan
+   (`tenantId: null`) pero no son consultables por ningún endpoint todavía
+   (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
+   bloqueado, deliberadamente no construido junto con Audit para no mezclar
+   una superficie de lectura nueva con la matriz de grabación
+   (`docs/SECURITY.md` §"Audit").
+9. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+   auditoría (`user.status_changed`) existen y están probados, pero no hay
+   ningún controller que lo invoque todavía. No bloqueado.
+
+### Hecho — sesión 9 (Audit append-only)
+
+- **`apps/api/src/core/audit/`** (nuevo módulo, leaf sin dependencias como
+  `access-control`): `AuditEntry` (append-only, sin update/delete en ningún
+  nivel — dominio, aplicación, ni interfaz de repositorio),
+  `RecordAuditEntryUseCase` (el único punto de escritura, **nunca lanza** —
+  atrapa cualquier fallo del repositorio y lo loguea, para que un problema
+  de auditoría nunca convierta una acción exitosa del usuario en un 500),
+  `ListAuditEntriesUseCase` (solo entradas tenant-scoped, límite máximo 200).
+- **Matriz de auditoría cubierta** (los cinco bloques pedidos):
+  autenticación (`user.registered`, `auth.login.succeeded`/`.failed`,
+  `auth.logout`, `auth.sessions.revoked_all` — todas en `AuthController`),
+  cambios de estado (`user.status_changed`, dentro de
+  `SetUserStatusUseCase` mismo, ya que no existe controller que lo invoque
+  todavía), provisioning (`tenant.provisioned` +
+  `access_control.owner_role.seeded`, en `TenantsController.provision()`,
+  compartiendo `correlationId` por ser la misma operación lógica),
+  asignaciones RBAC (`access_control.role.created`,
+  `access_control.role_assignment.created`, en `RolesController`), cambios
+  de configuración (`configuration.setting.changed`, en
+  `SettingsController.set()`, capturando el valor efectivo *previo* — con
+  su scope de origen — antes de escribir el nuevo).
+- **Decisión de diseño explícita**: grabado a nivel de controller (no
+  inyectado dentro de `LoginUseCase`/`ProvisionTenantUseCase`/etc.) para no
+  tocar las firmas públicas de esos use cases ni su cobertura de tests
+  existente — el costo es que la escritura de auditoría no comparte
+  transacción de base de datos con la acción que describe (mismo tipo de
+  compromiso ya aceptado para el auto-seed del rol Owner). Documentado en
+  detalle en `docs/SECURITY.md` §"Audit".
+- **`GET /api/v1/audit-entries`** — nuevo endpoint, requiere el nuevo
+  permiso `audit.entries.read`. Vive físicamente en `tenants/presentation/`
+  (no en `audit/`) por la misma razón que `RolesController`: necesita
+  `TenantContextGuard`/`CurrentTenantContext`, y `AuditModule` debe
+  mantenerse sin dependencia de Tenants para que Auth/Users/Tenants/Access
+  Control/Configuration puedan depender de él sin ciclo.
+- Tabla nueva (migración `20260827194023_audit_foundation`, generada y
+  **aplicada contra Postgres real** vía `prisma migrate dev`, no solo
+  diffeada): `audit_entries`, con FK real a `users`/`tenants` y el mismo
+  patrón de FK compuesto `(tenant_id, company_id) → companies` ya usado por
+  `setting_values`. Detalle completo en `docs/DATABASE.md` §"Audit table".
+- Nuevo permiso `audit.entries.read` agregado a `FOUNDATION_PERMISSIONS`.
+- Tests: 11 nuevos tests unitarios (dominio, ambos use cases —incluyendo
+  el contrato "nunca lanza" contra un repositorio que falla—, wiring de
+  módulo) — 120 tests unitarios totales en `apps/api` (antes 109), más el
+  test existente de `SetUserStatusUseCase` reescrito para su nueva firma de
+  entrada. Suite de integración contra Postgres real ampliada con un
+  escenario completo: aislamiento cross-tenant con dos tenants reales, y
+  **el mismo contrato "nunca lanza" verificado contra una violación de FK
+  real de Postgres**, no solo un mock.
+- Smoke test manual contra la infraestructura Docker real (no
+  Testcontainers): registro → login fallido → provisioning con compañía →
+  creación de rol → cambio de setting → `GET /api/v1/audit-entries`
+  devuelve exactamente las 4 entradas tenant-scoped esperadas (provisioning
+  y auto-seed del Owner comparten `correlationId`), con `previousValues`
+  del cambio de setting mostrando correctamente el valor efectivo anterior
+  (`{"value":"USD","source":"DEFAULT"}`) — confirmado que login/registro
+  (tenantId null) NO aparecen en la vista tenant-scoped, y que un segundo
+  tenant real solo ve sus propias 2 entradas. Datos de prueba limpiados
+  después.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección Audit
+  table), `docs/SECURITY.md` (nueva sección Audit con modelo de amenazas y
+  huecos conocidos; cerrados los tres huecos de auditoría ya documentados
+  en las secciones de Authentication/RBAC/Configuration, marcados con
+  tachado en vez de borrados para conservar el historial de la decisión).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test` (120/120),
+  `pnpm build` (5 paquetes), `pnpm --filter @erp/api test:integration`
+  (5/5 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (2/2 Playwright con Chromium real, sin
+  regresiones pese a instrumentar seis rutas distintas con llamadas de
+  auditoría) — todo verde.
 
 ### Hecho — sesión 8 (integración de UI de Configuración + SDK + E2E de `ai/codex`)
 
@@ -352,16 +428,16 @@ hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
 "Roles y permisos" ya integrada lista/crea roles y asigna roles a una
 membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
 no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 7 de la cola Claude). Esto sigue siendo un hueco
+agregue ese endpoint (ítem 6 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
 ### Disponible ahora
 
-- Sin tarea nueva asignada a Codex en este momento. Lo próximo de cara al
-  usuario depende de que Claude entregue Audit (sin superficie HTTP propia
-  esperable) o, más adelante, Files/Notifications (sí tendrán superficie de
-  UI).
+- Sin tarea nueva asignada a Codex en este momento — Audit (sesión 9) no
+  tiene superficie de UI propia. Lo próximo de cara al usuario depende de
+  que Claude entregue Event Bus, Files o Notifications (estos dos últimos
+  sí tendrán superficie de UI).
 - **Documentación**: no quedan huecos obvios — `docs/EVENTS.md` y
   `docs/PLUGINS.md` ya estaban completos (ver corrección en sesiones
   anteriores).
@@ -369,7 +445,7 @@ inventarse mientras tanto.
 ### Bloqueado
 
 - El flujo completo "invitar usuario → asignar rol" en la UI de RBAC sigue
-  bloqueado por el endpoint de invitación de membership (ítem 7 de la cola
+  bloqueado por el endpoint de invitación de membership (ítem 6 de la cola
   Claude) — no por nada del lado de Codex.
 
 ---
@@ -388,9 +464,9 @@ Playwright).
 - Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 7 de la cola Claude).
+  endpoint de invitación de membership (ítem 6 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 8 de la cola Claude) —
+  administración de plataforma separado (ítem 7 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Event Bus depende únicamente de implementar el diseño ya existente en
   `docs/EVENTS.md` — no hay diseño pendiente.
@@ -398,7 +474,7 @@ Playwright).
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 6).
+  todavía. Sigue en la cola Claude (ítem 5).
 
 ## Architecture decisions needed
 

@@ -264,3 +264,43 @@ generated and applied via `prisma migrate dev --name typed_configuration`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+---
+
+## Audit table (2026-08-27)
+
+Scope: MASTER_SPEC §10 — `AuditEntry`. Applied to the real running
+PostgreSQL instance via `prisma migrate dev` (not just diffed).
+
+### `audit_entries`
+
+Append-only. No application role has `UPDATE`/`DELETE` on this table
+(`docs/ARCHITECTURE.md` §8.3) — the only write path is
+`RecordAuditEntryUseCase`, which never exposes an update or delete
+operation at any layer (domain, application, or repository interface).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `user_id` | `uuid?` | The **actor**, not necessarily the subject of the action — e.g. for a status change, the subject's id is in `resource_id`/`new_values`. `NULL` for unauthenticated events (a failed login attempt with no resolvable account) or system-initiated ones (the Owner-role auto-seed at provisioning). FK → `users.id` `ON DELETE RESTRICT` — a user can never be hard-deleted out from under their own audit history (moot in practice: `users` already never hard-deletes, see its own section above). |
+| `tenant_id` | `uuid?` | `NULL` for actions that are not tenant-scoped at all — Authentication and User-status events (`docs/MULTITENANCY.md` §4.8) — not merely "unknown". FK → `tenants.id` `ON DELETE RESTRICT`. |
+| `company_id` | `uuid?` | Same composite-FK pattern as `setting_values`: `(tenant_id, company_id) → companies(tenant_id, id)`, which Postgres only checks when both columns are non-null, so this never interferes with tenant-only or untenanted rows. |
+| `action` | `varchar(150)` | `<context>.<resource-or-aggregate>.<past-tense-verb>`, e.g. `configuration.setting.changed`, `access_control.role_assignment.created`. Code-defined per call site, not a catalog. |
+| `resource` | `varchar(100)` | The aggregate type affected, e.g. `"Session"`, `"Tenant"`, `"Role"`, `"SettingValue"`. |
+| `resource_id` | `uuid?` | The specific instance affected, when there is a single one (omitted for actions like "revoked all sessions" that affect many). |
+| `previous_values`, `new_values` | `jsonb?` | Free-form snapshots — deliberately not typed per action; each call site decides what is meaningful to capture (e.g. a setting change also fetches and records which scope the previous *effective* value came from, not just its raw value). |
+| `ip_address`, `user_agent` | `varchar?` | Populated only where the caller had them (HTTP request context) — `NULL` for actions triggered from a use case with no request in scope, e.g. the RBAC/configuration application-layer writes recorded from a controller that only had `TenantExecutionContext`. |
+| `correlation_id` | `varchar(100)` | Always present — every request carries one via `CorrelationIdMiddleware`, which runs on every route. Two entries recorded from the same request (e.g. `tenant.provisioned` and the immediately following `access_control.owner_role.seeded`) share the same value, letting them be reconstructed as one logical operation later. |
+| `created_at` | `timestamptz(6)` | |
+
+`@@index([tenantId, createdAt])` supports the primary read pattern (a
+tenant's audit trail, newest first). `@@index([correlationId])` supports
+reconstructing everything that happened within one request/operation.
+
+### Migration
+
+`packages/database/prisma/migrations/20260827194023_audit_foundation/` —
+generated and applied via `prisma migrate dev --name audit_foundation`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.

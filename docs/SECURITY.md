@@ -53,11 +53,13 @@ covers *why* each control looks the way it does.
 - **No account lockout after N failed attempts** beyond the rate limiter.
   A persistent lockout policy is a product decision (support/unlock flow
   implications) out of scope for this task.
-- **No audit log entries yet** for login/logout/revocation — `docs/MASTER_SPEC.md`
-  §10 asks for audit trails on security-sensitive actions, but the Audit
-  module (Roadmap 1F) doesn't exist yet. This module's use cases are the
-  natural place to add audit calls once that port exists; it should not
-  require changing the use cases' external behavior.
+- ~~No audit log entries yet for login/logout/revocation~~ — closed
+  2026-08-27: `AuthController` now records `user.registered`,
+  `auth.login.succeeded`/`auth.login.failed`, `auth.logout` and
+  `auth.sessions.revoked_all`. Recorded at the controller layer (not inside
+  `LoginUseCase`/`LogoutUseCase`/`RevokeAllSessionsUseCase` themselves) to
+  avoid changing those use cases' already-tested signatures — see "Audit"
+  below for the full design and its trade-offs.
 - **No password strength/breach-list policy enforced** beyond an 8-character
   minimum on `RegisterDto` (`core/auth/presentation/dto/register.dto.ts`,
   added 2026-08-26 with the `/auth/register` endpoint). `SetPasswordUseCase`
@@ -158,11 +160,11 @@ is user X*, not *user X may act on tenant Y*." Design in
   something this use case does implicitly on every boot (which would make
   role contents silently drift underneath whatever a tenant admin
   configured).
-- **No audit log entries yet** for role creation or assignment — same gap
-  `docs/SECURITY.md`'s Authentication section already flags for login/logout;
-  the Audit module (`docs/WORK_QUEUE.md`) doesn't exist yet. `CreateRoleUseCase`
-  and `AssignRoleUseCase` are the natural place to add audit calls once that
-  port exists.
+- ~~No audit log entries yet for role creation or assignment~~ — closed
+  2026-08-27: `RolesController` now records `access_control.role.created`
+  and `access_control.role_assignment.created`; the Owner-role auto-seed at
+  provisioning is also recorded (`access_control.owner_role.seeded`, actor
+  `null` since it is system-initiated). See "Audit" below.
 - **Owner-role seeding is not transactional with tenant provisioning.**
   Documented already in `TenantsController.provision`'s own comment and
   repeated here because it is a security-relevant gap, not just a technical
@@ -217,13 +219,91 @@ Scope: `SettingDefinition`, `SettingValue`, `UserPreference`, `SettingsControlle
   permission set its Owner role was seeded with and will not automatically
   gain these two. Not a concern in Foundation/dev with no real tenants yet,
   but a real migration/backfill concern before this platform has customers.
-- **No audit log entries yet** for setting changes — same gap already
-  flagged for Authentication and RBAC; `SetSettingValueUseCase` is the
-  natural place to add an audit call once the Audit module
-  (`docs/WORK_QUEUE.md`) exists. A configuration change (e.g. a tenant's
-  default currency) is exactly the kind of action MASTER_SPEC §10 asks to
-  be traceable.
+- ~~No audit log entries yet for setting changes~~ — closed 2026-08-27:
+  `SettingsController.set()` now records a `configuration.setting.changed`
+  entry (with the previously-effective value and its source scope as
+  `previousValues`) after every successful write. See "Audit" below.
 - **No `CHECK` constraint enforcing `value` against `data_type` at the
   database level** — see the corresponding row in the threats table above;
   this is an accepted application-layer-only control, consistent with how
   `allowed_scopes` is also validated only in code (`docs/DATABASE.md`).
+
+## Audit (2026-08-27)
+
+Scope: `AuditEntry`, `RecordAuditEntryUseCase`, `ListAuditEntriesUseCase`,
+`AuditEntriesController` (`apps/api/src/core/audit`) — implements
+MASTER_SPEC §10 for the actions already flagged as gaps elsewhere in this
+file: authentication, user status changes, tenant provisioning, RBAC
+changes, configuration changes.
+
+### Design decision: where entries are recorded, and why
+
+Every existing use case this change instruments (`LoginUseCase`,
+`LogoutUseCase`, `RevokeAllSessionsUseCase`, `ProvisionTenantUseCase`,
+`CreateRoleUseCase`/`AssignRoleUseCase`, `SetSettingValueUseCase`) already
+had callers and existing unit test suites. Recording entries at the
+**controller layer**, right after each use case's own write already
+succeeded — rather than injecting `RecordAuditEntryUseCase` into those use
+cases and threading actor/correlation-id/ip/user-agent through their public
+input contracts — kept every one of those contracts and their existing
+tests unchanged, at the cost of the audit write not sharing a database
+transaction with the state change it describes. The one exception is
+`SetUserStatusUseCase`, which has no HTTP caller yet (see below) — there,
+`RecordAuditEntryUseCase` is injected directly since there is no controller
+to do it from, and the use case had no other caller/test to disturb.
+
+### Assets
+
+- The audit trail itself (`audit_entries`) — the record of who did what,
+  when, and from where, for every tenant-scoped action this change covers.
+- `previousValues`/`newValues` snapshots, which can contain business data
+  (e.g. a tenant's currency setting) — not secrets, but not meant to be
+  public either; access is gated the same as everything else.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A user reads another tenant's audit trail | `AuditEntriesController` derives `tenantId` exclusively from `TenantExecutionContext` (never from a query parameter), and `ListAuditEntriesUseCase`/`PrismaAuditEntryRepository.findByTenant` filter by that value at the database level. Verified against two real tenants in `apps/api/test/integration`. |
+| Reading the audit trail without authorization | Gated by the new `audit.entries.read` permission through the same deny-by-default `PermissionGuard` as every other protected route — no new authorization mechanism introduced. |
+| An audit-write failure breaks the user-facing action it was recording | `RecordAuditEntryUseCase.execute()` catches any repository error internally, logs it server-side, and never rejects — verified with both a mocked repository failure and (in the integration suite) a **real** Postgres foreign-key violation, confirming the guarantee holds against actual database errors, not just simulated ones. |
+| A failed-login audit entry leaks whether an email is registered | The failure-path entry never resolves or stores a `userId` for an unknown email — only the attempted email itself, in `newValues`, which does not by itself change the login endpoint's external behavior (still returns the same `401 INVALID_CREDENTIALS` either way, per the existing anti-enumeration design in the Authentication section above). |
+| Tampering with existing audit rows | No application code path exposes update or delete for `AuditEntry` at any layer — domain, application, or repository interface (`docs/ARCHITECTURE.md` §8.3). This is an application-level control, not a database-level one (no `REVOKE UPDATE/DELETE` or trigger) — see "Known limitations". |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Audit write is not atomic with the action it records.** Recorded
+  immediately after the primary write succeeds, in the same
+  request/use-case flow, but as a separate statement — not inside a shared
+  database transaction with it (see "Design decision" above). If the
+  process crashes in the narrow window between the two, the primary action
+  persists without a corresponding audit entry. Building a real
+  cross-repository transaction for this would require restructuring how
+  repositories receive their Prisma client across every touched module — a
+  disproportionate change for what Foundation actually needs right now, and
+  the same class of trade-off already accepted for Owner-role seeding not
+  being transactional with provisioning (see above).
+- **No database-level append-only enforcement** (no `REVOKE UPDATE, DELETE`
+  on the table, no trigger) — immutability is enforced only by never
+  exposing an update/delete code path, not by the database refusing one. A
+  future hardening step for when this matters operationally, not a gap
+  introduced by oversight.
+- **`SetUserStatusUseCase` has no HTTP caller yet**, so `user.status_changed`
+  entries can only be produced by whatever future admin endpoint calls it
+  (which must pass an `actorUserId`) or by a script/seed that omits one
+  (recorded with `userId: null`). The use case itself and its audit call are
+  real and tested; there is simply nothing wired to reach it yet.
+- **Login/logout/user-status entries are not reachable through any read
+  endpoint.** They are recorded with `tenantId: null` (Authentication and
+  User status are not tenant-scoped — `docs/MULTITENANCY.md` §4.8), and
+  `AuditEntriesController` only ever returns tenant-scoped entries. A "my
+  activity" view for a user's own auth history, or a platform-admin view
+  across all untenanted entries, would need a new, deliberately separate
+  endpoint — not built here to avoid scope creep beyond the five action
+  categories this change set out to cover.
+- **No pagination beyond a `limit` query parameter** (default 50, capped at
+  200) — matches `docs/ARCHITECTURE.md` §9's pagination guidance in spirit
+  (never load unbounded rows) without building full cursor-based pagination
+  for a table with, at Foundation scale, very little data yet. Revisit once
+  real usage shows entries accumulating fast enough for `limit` alone to be
+  insufficient.

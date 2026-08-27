@@ -9,7 +9,9 @@ import {
   ResolveTenantContextUseCase,
   TenantContextGuard,
   RolesController,
+  AuditEntriesController,
 } from "./core/tenants";
+import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "./core/audit";
 import { TenantsController } from "./core/tenants/presentation/tenants.controller";
 import { CreateOrganizationUseCase } from "./core/organizations";
 import { CreateCompanyUseCase } from "./core/companies";
@@ -57,6 +59,9 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(SetSettingValueUseCase)).toBeInstanceOf(SetSettingValueUseCase);
     expect(moduleRef.get(SettingsController)).toBeInstanceOf(SettingsController);
     expect(moduleRef.get(PreferencesController)).toBeInstanceOf(PreferencesController);
+    expect(moduleRef.get(RecordAuditEntryUseCase)).toBeInstanceOf(RecordAuditEntryUseCase);
+    expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
+    expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
 
     await moduleRef.close();
   });

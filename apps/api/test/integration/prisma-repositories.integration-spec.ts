@@ -29,6 +29,9 @@ import { SetSettingValueUseCase } from "../../src/core/configuration/application
 import { GetEffectiveSettingUseCase } from "../../src/core/configuration/application/use-cases/get-effective-setting.use-case";
 import { SetUserPreferenceUseCase } from "../../src/core/configuration/application/use-cases/set-user-preference.use-case";
 import { CompanyNotFoundInTenantError } from "../../src/core/configuration/application/errors";
+import { PrismaAuditEntryRepository } from "../../src/core/audit/infrastructure/prisma-audit-entry.repository";
+import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-cases/record-audit-entry.use-case";
+import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -417,5 +420,76 @@ describe("Prisma repositories against PostgreSQL", () => {
     await setPreference.execute({ userId: user.id, key: "theme", value: "dark" });
     const storedPreference = await preferences.findByUserAndKey(user.id, "theme");
     expect(storedPreference?.value).toBe("dark");
+  });
+
+  it("records and lists audit entries scoped by tenant with real FK-backed actor/tenant/company references", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const auditEntries = new PrismaAuditEntryRepository(prisma);
+    const recordAuditEntry = new RecordAuditEntryUseCase(auditEntries);
+    const listAuditEntries = new ListAuditEntriesUseCase(auditEntries);
+    const now = new Date("2026-08-27T20:00:00.000Z");
+
+    const actor = createUser(now, "audit-actor@example.com");
+    await users.save(actor);
+    const tenantA = createTenant(now, "audit-tenant-a");
+    const tenantB = createTenant(now, "audit-tenant-b");
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    await recordAuditEntry.execute({
+      userId: actor.id,
+      tenantId: tenantA.id,
+      action: "tenant.provisioned",
+      resource: "Tenant",
+      resourceId: tenantA.id,
+      newValues: { slug: tenantA.slug },
+      correlationId: "integration-correlation-1",
+    });
+    await recordAuditEntry.execute({
+      userId: actor.id,
+      tenantId: tenantB.id,
+      action: "tenant.provisioned",
+      resource: "Tenant",
+      resourceId: tenantB.id,
+      newValues: { slug: tenantB.slug },
+      correlationId: "integration-correlation-2",
+    });
+    // Authentication events are recorded with tenantId: null against the
+    // real (nullable) FK — never leaked into any tenant's audit view.
+    await recordAuditEntry.execute({
+      userId: actor.id,
+      tenantId: null,
+      action: "auth.login.succeeded",
+      resource: "Session",
+      correlationId: "integration-correlation-3",
+    });
+
+    const entriesForA = await listAuditEntries.execute({ tenantId: tenantA.id });
+    expect(entriesForA).toHaveLength(1);
+    expect(entriesForA[0]).toMatchObject({
+      userId: actor.id,
+      tenantId: tenantA.id,
+      action: "tenant.provisioned",
+      resourceId: tenantA.id,
+    });
+
+    const entriesForB = await listAuditEntries.execute({ tenantId: tenantB.id });
+    expect(entriesForB).toHaveLength(1);
+    expect(entriesForB[0].tenantId).toBe(tenantB.id);
+
+    // Writing an entry against a userId that does not exist is rejected by
+    // the real FK, not silently accepted — audit integrity is DB-enforced.
+    await expect(
+      recordAuditEntry.execute({
+        userId: newId(),
+        tenantId: tenantA.id,
+        action: "tenant.provisioned",
+        resource: "Tenant",
+        correlationId: "integration-correlation-4",
+      }),
+    ).resolves.toBeUndefined(); // RecordAuditEntryUseCase never throws — verify it stayed at 1 entry instead.
+    await expect(listAuditEntries.execute({ tenantId: tenantA.id })).resolves.toHaveLength(1);
   });
 });

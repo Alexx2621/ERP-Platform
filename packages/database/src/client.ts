@@ -17,6 +17,7 @@ export type {
   SettingDefinition,
   SettingValue,
   UserPreference,
+  AuditEntry,
 } from "../generated/prisma/client";
 export {
   UserStatus,

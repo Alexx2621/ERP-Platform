@@ -3,7 +3,9 @@ import { SessionAuthGuard } from "../../auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../tenants";
 import type { TenantExecutionContext } from "../../tenants";
 import { PermissionGuard, RequirePermission } from "../../access-control";
+import { RecordAuditEntryUseCase } from "../../audit";
 import { ListSettingDefinitionsUseCase } from "../application/use-cases/list-setting-definitions.use-case";
+import { GetEffectiveSettingUseCase } from "../application/use-cases/get-effective-setting.use-case";
 import { ListEffectiveSettingsUseCase } from "../application/use-cases/list-effective-settings.use-case";
 import { SetSettingValueUseCase } from "../application/use-cases/set-setting-value.use-case";
 import { SetSettingValueDto } from "./dto/set-setting-value.dto";
@@ -30,6 +32,8 @@ export class SettingsController {
     private readonly listDefinitions: ListSettingDefinitionsUseCase,
     private readonly listEffectiveSettings: ListEffectiveSettingsUseCase,
     private readonly setSettingValue: SetSettingValueUseCase,
+    private readonly getEffectiveSetting: GetEffectiveSettingUseCase,
+    private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
 
   @Get("definitions")
@@ -62,12 +66,29 @@ export class SettingsController {
     @CurrentTenantContext() ctx: TenantExecutionContext,
   ): Promise<SettingValueResponseDto> {
     try {
+      const companyId = dto.scopeType === "COMPANY" ? (dto.companyId ?? null) : null;
+      const before = await this.getEffectiveSetting.execute({
+        key,
+        tenantId: ctx.tenantId,
+        companyId: companyId ?? undefined,
+      });
       const value = await this.setSettingValue.execute({
         key,
         scopeType: dto.scopeType,
         tenantId: ctx.tenantId,
-        companyId: dto.scopeType === "COMPANY" ? (dto.companyId ?? null) : null,
+        companyId,
         value: dto.value,
+      });
+      await this.recordAuditEntry.execute({
+        userId: ctx.actor.userId,
+        tenantId: ctx.tenantId,
+        companyId,
+        action: "configuration.setting.changed",
+        resource: "SettingValue",
+        resourceId: value.id,
+        previousValues: { value: before.value, source: before.source },
+        newValues: { value: value.value, scopeType: value.scopeType, companyId: value.companyId },
+        correlationId: ctx.correlationId,
       });
       return SettingValueResponseDto.fromDomain(key, value);
     } catch (error) {

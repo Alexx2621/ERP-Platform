@@ -15,6 +15,8 @@ import { RefreshSessionUseCase } from "../application/use-cases/refresh-session.
 import { LogoutUseCase } from "../application/use-cases/logout.use-case";
 import { RevokeAllSessionsUseCase } from "../application/use-cases/revoke-all-sessions.use-case";
 import { RegisterUseCase } from "../application/use-cases/register.use-case";
+import { AccountDisabledError, InvalidCredentialsError } from "../application/errors";
+import { RecordAuditEntryUseCase } from "../../audit";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { RefreshDto } from "./dto/refresh.dto";
@@ -34,6 +36,7 @@ export class AuthController {
     private readonly logoutUseCase: LogoutUseCase,
     private readonly revokeAllSessionsUseCase: RevokeAllSessionsUseCase,
     private readonly registerUseCase: RegisterUseCase,
+    private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
 
   /** MASTER_SPEC §68 "crear cuenta" step — logs the new account in immediately. */
@@ -47,6 +50,17 @@ export class AuthController {
         displayName: dto.displayName,
         ipAddress: request.ip,
         userAgent: request.header("user-agent"),
+      });
+      await this.recordAuditEntry.execute({
+        userId: result.user.id,
+        tenantId: null,
+        action: "user.registered",
+        resource: "User",
+        resourceId: result.user.id,
+        newValues: { email: result.user.email, displayName: result.user.displayName },
+        ipAddress: request.ip,
+        userAgent: request.header("user-agent"),
+        correlationId: request.correlationId,
       });
       return SessionResponseDto.fromResult(result);
     } catch (error) {
@@ -64,8 +78,29 @@ export class AuthController {
         ipAddress: request.ip,
         userAgent: request.header("user-agent"),
       });
+      await this.recordAuditEntry.execute({
+        userId: result.user.id,
+        tenantId: null,
+        action: "auth.login.succeeded",
+        resource: "Session",
+        ipAddress: request.ip,
+        userAgent: request.header("user-agent"),
+        correlationId: request.correlationId,
+      });
       return SessionResponseDto.fromResult(result);
     } catch (error) {
+      if (error instanceof InvalidCredentialsError || error instanceof AccountDisabledError) {
+        await this.recordAuditEntry.execute({
+          userId: null,
+          tenantId: null,
+          action: "auth.login.failed",
+          resource: "Session",
+          newValues: { email: dto.email },
+          ipAddress: request.ip,
+          userAgent: request.header("user-agent"),
+          correlationId: request.correlationId,
+        });
+      }
       handleAuthError(error);
     }
   }
@@ -84,11 +119,20 @@ export class AuthController {
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(SessionAuthGuard)
-  async logout(@Req() request: Request): Promise<void> {
+  async logout(@Req() request: Request, @CurrentAuth() auth: AuthContext): Promise<void> {
     const token = extractBearerToken(request.header("authorization"));
     try {
       // Guard already validated this token, so it is present and well-formed.
       await this.logoutUseCase.execute(token as string);
+      await this.recordAuditEntry.execute({
+        userId: auth.user.id,
+        tenantId: null,
+        action: "auth.logout",
+        resource: "Session",
+        ipAddress: request.ip,
+        userAgent: request.header("user-agent"),
+        correlationId: request.correlationId,
+      });
     } catch (error) {
       handleAuthError(error);
     }
@@ -97,8 +141,17 @@ export class AuthController {
   @Post("logout-all")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(SessionAuthGuard)
-  async logoutAll(@CurrentAuth() auth: AuthContext): Promise<void> {
+  async logoutAll(@CurrentAuth() auth: AuthContext, @Req() request: Request): Promise<void> {
     await this.revokeAllSessionsUseCase.execute(auth.user.id);
+    await this.recordAuditEntry.execute({
+      userId: auth.user.id,
+      tenantId: null,
+      action: "auth.sessions.revoked_all",
+      resource: "Session",
+      ipAddress: request.ip,
+      userAgent: request.header("user-agent"),
+      correlationId: request.correlationId,
+    });
   }
 
   @Get("me")

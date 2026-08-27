@@ -9,8 +9,10 @@ import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
 import { TenantsController } from "./presentation/tenants.controller";
 import { RolesController } from "./presentation/roles.controller";
+import { AuditEntriesController } from "./presentation/audit-entries.controller";
 import { TenantsModule } from "./tenants.module";
 import { SeedOwnerRoleUseCase } from "../access-control";
+import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "../audit";
 
 // TenantsModule now imports AuthModule (for SessionAuthGuard on TenantsController),
 // which in turn needs Redis for its throttler storage — see auth.module.spec.ts
@@ -53,6 +55,9 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(TenantsController)).toBeInstanceOf(TenantsController);
     expect(moduleRef.get(SeedOwnerRoleUseCase)).toBeInstanceOf(SeedOwnerRoleUseCase);
     expect(moduleRef.get(RolesController)).toBeInstanceOf(RolesController);
+    expect(moduleRef.get(RecordAuditEntryUseCase)).toBeInstanceOf(RecordAuditEntryUseCase);
+    expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
+    expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
 
     await moduleRef.close();
   });

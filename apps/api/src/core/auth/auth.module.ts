@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis";
 import { UsersModule } from "../users";
+import { AuditModule } from "../audit";
 import { RedisService } from "../../shared/redis/redis.service";
 import type { EnvironmentVariables } from "../../shared/config/environment-variables";
 import { CREDENTIAL_REPOSITORY } from "./domain/credential.repository";
@@ -29,6 +30,7 @@ import { SessionAuthGuard } from "./presentation/session-auth.guard";
 @Module({
   imports: [
     UsersModule,
+    AuditModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService, RedisService],

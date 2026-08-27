@@ -1,9 +1,10 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 8), tras integrar de `ai/codex` la
-UI de Configuración ("Ajustes"), el SDK tipado y la cobertura E2E real de
-Typed Configuration y preferencias, verificadas end-to-end contra
-infraestructura real.
+Última actualización: 2026-08-27 (sesión 9), tras implementar Audit
+append-only completo (login/logout/revocación, cambios de status de
+usuario, provisioning de tenant, asignaciones RBAC, cambios de
+configuración) y verificarlo contra Postgres real y con un smoke test HTTP
+completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -12,7 +13,7 @@ Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
 infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration).
+Typed Configuration + Audit).
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -148,14 +149,39 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   Claude en un commit de seguimiento: su lista de "próximos hitos" seguía
   nombrando "Configuración tipada" como pendiente pese a estar ya
   integrada.
-- 132 tests unitarios pasando (api 109, api-client 7, erp-web 16) + 4 tests
+- **Audit** (`apps/api/src/core/audit`, Claude, sesión 9): `AuditEntry`
+  append-only (sin update/delete en ningún nivel), `RecordAuditEntryUseCase`
+  (único punto de escritura, **nunca lanza** — un fallo de auditoría jamás
+  convierte una acción exitosa del usuario en un 500), `ListAuditEntriesUseCase`
+  (solo entradas tenant-scoped). Cubre las cinco categorías pedidas:
+  autenticación (registro, login éxito/fallo, logout, revocación total),
+  cambios de status de usuario, provisioning de tenant (+ auto-seed del rol
+  Owner, mismo `correlationId`), asignaciones RBAC (creación de rol y de
+  asignación), cambios de configuración (con el valor efectivo previo y su
+  scope de origen como `previousValues`). Grabado a nivel de controller
+  (no dentro de los use cases existentes) para no tocar sus firmas ni su
+  cobertura de tests ya validada. Tabla nueva (migración
+  `20260827194023_audit_foundation`, **generada y aplicada directamente
+  contra Postgres real**). Nuevo endpoint `GET /api/v1/audit-entries`
+  (permiso `audit.entries.read`). Suite de integración ampliada con
+  aislamiento cross-tenant real y **el contrato "nunca lanza" verificado
+  contra una violación de FK real de Postgres**, no solo un mock. **Smoke
+  test manual verificado contra la infraestructura Docker real**: registro
+  → login fallido → provisioning → creación de rol → cambio de setting →
+  el endpoint devuelve exactamente las 4 entradas tenant-scoped esperadas,
+  confirmando que login/registro (sin tenant) no aparecen ahí y que un
+  segundo tenant real solo ve sus propias entradas. Cierra los tres huecos
+  de auditoría ya documentados en las secciones de Authentication, RBAC y
+  Typed Configuration. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
+  sesión 9").
+- 143 tests unitarios pasando (api 120, api-client 7, erp-web 16) + 5 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
   contra infraestructura real completa** (Chromium real, Postgres+Redis
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
-  `access-control.module.spec.ts`, `configuration.module.spec.ts`) y
-  pruebas negativas de aislamiento cross-tenant.
+  `access-control.module.spec.ts`, `configuration.module.spec.ts`,
+  `audit.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -197,23 +223,40 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   otro módulo, no solo estar "registrado" allí — ver docstrings actualizados
   en ambos módulos.
 
+### Nota operativa (sesión 9, no un bug de código)
+
+Dos corridas de `pnpm --filter @erp/e2e test:e2e` fallaron por procesos
+`node`/`vite` huérfanos ocupando los puertos 3000/5173 desde sesiones
+anteriores. En un caso, `Get-NetTCPConnection` reportó momentáneamente un
+proceso de otro proyecto del usuario ("nexo", no relacionado) escuchando
+en 5173 — se verificó con `curl` que el puerto en realidad estaba libre
+(estado transitorio, no un conflicto real) antes de reintentar. Ese
+proceso ajeno nunca se tocó. Lección: antes de dar una corrida de E2E por
+fallida por `EADDRINUSE`/`already in use`, confirmar con una petición HTTP
+directa si el puerto está realmente ocupado, no solo confiar en el estado
+reportado por el sistema operativo en ese instante.
+
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Audit).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Event Bus).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Audit → Event Bus (diseño ya existe en `docs/EVENTS.md`, falta
+Resumen: Event Bus (diseño ya existe en `docs/EVENTS.md`, falta
 implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
 endpoint de invitación de membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
-PLATFORM). También pendiente: ratificar ADR-001 a ADR-005 formalmente.
-Para Codex: sin tarea nueva asignada en este momento — UI de RBAC, E2E de
-sesión y UI de Configuración ya están hechas e integradas (ver Completed).
-El flujo "invitar usuario → asignar rol" en la UI de RBAC **sigue
-bloqueado** hasta que exista el endpoint de invitación de membership — no
-se debe simular ni inventar mientras tanto.
+PLATFORM) → vista de "mi actividad"/administración para eventos no
+tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
+endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
+case y su auditoría existen, pero nada lo invoca todavía). También
+pendiente: ratificar ADR-001 a ADR-005 formalmente. Para Codex: sin tarea
+nueva asignada en este momento — UI de RBAC, E2E de sesión y UI de
+Configuración ya están hechas e integradas (ver Completed); Audit no tiene
+superficie de UI propia. El flujo "invitar usuario → asignar rol" en la UI
+de RBAC **sigue bloqueado** hasta que exista el endpoint de invitación de
+membership — no se debe simular ni inventar mientras tanto.
 
 ## Production Status
 
@@ -258,3 +301,20 @@ valor de tipo incorrecto rechazado con `400 INVALID_SETTING_VALUE`, clave
 desconocida rechazada con `404 SETTING_NOT_FOUND`, y una preferencia de
 usuario creada/leída sin necesitar ningún contexto de tenant. Toda la data
 de prueba fue limpiada al terminar.
+
+**Sesión 9 (2026-08-27, Audit)**: quinta migración
+(`20260827194023_audit_foundation`) generada directamente contra esta misma
+base real vía `prisma migrate dev` — `prisma migrate status` confirma las 5
+migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`): registro, login fallido,
+provisioning con compañía, creación de rol, cambio de setting, y
+confirmación de que `GET /api/v1/audit-entries` devuelve exactamente las 4
+entradas tenant-scoped esperadas (provisioning y auto-seed del Owner
+comparten `correlationId`, confirmando que pertenecen a la misma
+operación), con `previousValues` del cambio de setting mostrando
+correctamente `{"value":"USD","source":"DEFAULT"}` como valor efectivo
+previo. Verificado que las entradas de login/registro (`tenantId: null`)
+no aparecen en la vista tenant-scoped, y que un segundo tenant real
+provisionado en la misma sesión solo ve sus propias 2 entradas — aislamiento
+cross-tenant confirmado en runtime, no solo en el test de integración.
+Toda la data de prueba fue limpiada al terminar.

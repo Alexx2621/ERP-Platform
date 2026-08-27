@@ -33,10 +33,11 @@ model User {
   createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  credential  UserCredential?
-  sessions    Session[]
-  memberships Membership[]
-  preferences UserPreference[]
+  credential   UserCredential?
+  sessions     Session[]
+  memberships  Membership[]
+  preferences  UserPreference[]
+  auditEntries AuditEntry[]
 
   @@map("users")
 }
@@ -106,6 +107,7 @@ model Tenant {
   roles           Role[]
   roleAssignments RoleAssignment[]
   settingValues   SettingValue[]
+  auditEntries    AuditEntry[]
 
   @@map("tenants")
 }
@@ -185,6 +187,7 @@ model Company {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   organization  Organization   @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
   settingValues SettingValue[]
+  auditEntries  AuditEntry[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -348,4 +351,35 @@ model UserPreference {
 
   @@unique([userId, key])
   @@map("user_preferences")
+}
+
+/// Append-only audit record (MASTER_SPEC §10). No application role has
+/// UPDATE/DELETE on this table (docs/ARCHITECTURE.md §8.3) — the only
+/// supported write is an insert via RecordAuditEntryUseCase. `userId` is
+/// the actor, nullable for unauthenticated events (e.g. a failed login
+/// attempt with no resolvable account). `tenantId`/`companyId` are null for
+/// actions that are not tenant-scoped at all (Authentication, User status —
+/// docs/MULTITENANCY.md §4.8), not merely "unknown".
+model AuditEntry {
+  id             String   @id @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  tenantId       String?  @map("tenant_id") @db.Uuid
+  companyId      String?  @map("company_id") @db.Uuid
+  action         String   @db.VarChar(150)
+  resource       String   @db.VarChar(100)
+  resourceId     String?  @map("resource_id") @db.Uuid
+  previousValues Json?    @map("previous_values")
+  newValues      Json?    @map("new_values")
+  ipAddress      String?  @map("ip_address") @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  correlationId  String   @map("correlation_id") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant  Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company? @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([correlationId])
+  @@map("audit_entries")
 }
