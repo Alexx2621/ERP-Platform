@@ -4,6 +4,7 @@ import {
   CheckCircle,
   Factory,
   LockKey,
+  ShieldCheck,
   SquaresFour,
 } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
@@ -34,10 +35,16 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
       title={selection.name}
       description="El contexto empresarial está listo. Los módulos operativos aparecerán cuando sus permisos y contratos HTTP estén disponibles."
       action={
-        <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
-          <ArrowLeft size={17} weight="bold" aria-hidden="true" />
-          Cambiar espacio
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => navigate("/roles")}>
+            <ShieldCheck size={17} weight="bold" aria-hidden="true" />
+            Roles y permisos
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
+            <ArrowLeft size={17} weight="bold" aria-hidden="true" />
+            Cambiar espacio
+          </Button>
+        </div>
       }
     >
       <section className="grid gap-6 pt-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
@@ -55,7 +62,8 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
               </h2>
               <p className="mt-3 max-w-[56ch] text-[13px] font-medium leading-6 text-[var(--muted-strong)]">
                 Esta pantalla confirma el flujo completo de identidad, selección de tenant y entrada
-                segura al contexto de trabajo, sin anticipar funcionalidades dependientes de RBAC.
+                segura al contexto de trabajo. La administración de acceso ya está disponible con
+                los contratos RBAC vigentes.
               </p>
             </div>
           </div>

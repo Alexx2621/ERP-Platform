@@ -23,6 +23,10 @@ function wrapper({ children }: PropsWithChildren) {
 }
 
 describe("AuthProvider", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("rotates an access token before an authenticated operation", async () => {
     vi.spyOn(apiClient, "login").mockResolvedValue(expiredSession);
     const refreshMock = vi.spyOn(apiClient, "refresh").mockResolvedValue(refreshedSession);
@@ -54,6 +58,43 @@ describe("AuthProvider", () => {
       await result.current.logout();
     });
 
+    expect(result.current.session).toBeNull();
+  });
+
+  it("coalesces concurrent token requests into one refresh rotation", async () => {
+    vi.spyOn(apiClient, "login").mockResolvedValue(expiredSession);
+    const refreshMock = vi.spyOn(apiClient, "refresh").mockResolvedValue(refreshedSession);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.login({ email: "ana@example.com", password: "Password1" });
+    });
+
+    let tokens: string[] = [];
+    await act(async () => {
+      tokens = await Promise.all([
+        result.current.getAccessToken(),
+        result.current.getAccessToken(),
+        result.current.getAccessToken(),
+      ]);
+    });
+
+    expect(refreshMock).toHaveBeenCalledOnce();
+    expect(tokens).toEqual(["fresh-access", "fresh-access", "fresh-access"]);
+  });
+
+  it("clears the local session when refresh rotation fails", async () => {
+    vi.spyOn(apiClient, "login").mockResolvedValue(expiredSession);
+    vi.spyOn(apiClient, "refresh").mockRejectedValue(new Error("refresh rejected"));
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.login({ email: "ana@example.com", password: "Password1" });
+    });
+
+    await act(async () => {
+      await expect(result.current.getAccessToken()).rejects.toThrow("refresh rejected");
+    });
     expect(result.current.session).toBeNull();
   });
 });
