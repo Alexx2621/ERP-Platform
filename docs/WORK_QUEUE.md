@@ -2,10 +2,13 @@
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
-(sesión 5, implementación completa de Access Control/RBAC).
+(sesión 6, integración de la UI de RBAC y la cobertura E2E del ciclo de
+sesión de `ai/codex`).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
-`develop` y `ai/claude` sincronizados en `aae6c5c` (origin, ambas ramas).
+`develop` y `ai/claude` sincronizados (mismo commit en origin, ambas ramas)
+tras integrar `9561cf7`/`8814a5e` de `ai/codex` y esta actualización de
+documentación.
 
 ---
 
@@ -37,6 +40,51 @@ Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
+
+### Hecho — sesión 6 (integración de UI de RBAC + E2E de ciclo de sesión de `ai/codex`)
+
+Revisado como Tech Lead e integrado sin cambios — los 2 commits eran
+correctos tal cual, ambos consistentes con el contrato HTTP real publicado
+en la sección Codex de este mismo archivo:
+
+- **`9561cf7` (feat(erp-web): add roles and permissions management)** —
+  pantalla "Roles y permisos" en `apps/erp-web` (`features/access-control/
+  roles-permissions-page.tsx`) con pestañas Roles/Permisos (`Tabs`), tabla
+  de roles con acción "Asignar" (`Table`), modales de creación de rol y
+  asignación (`Modal`/`Select`), y los 4 métodos nuevos en
+  `@erp/api-client` (`listRoles`, `listPermissions`, `createRole`,
+  `assignRole`) con sus tipos en `contracts.ts` — verificados campo por
+  campo contra los DTOs reales del backend (`RoleResponseDto`,
+  `PermissionResponseDto`, `RoleAssignmentResponseDto`). Correctamente
+  **no** inventa un flujo de invitación de membership: el formulario de
+  asignación pide un `membershipId` ya existente y lo dice explícitamente
+  en la propia pantalla ("La API todavía no ofrece invitaciones, listado de
+  miembros ni consulta de asignaciones") — respeta el hueco real documentado
+  en `docs/SECURITY.md`/ítem 8 de esta cola en vez de simularlo.
+- **`8814a5e` (test(e2e): cover authentication session lifecycle)** —
+  extiende `apps/e2e/tests/onboarding.spec.ts` para cubrir, dentro del mismo
+  flujo real contra infraestructura real (Testcontainers + API compilada +
+  Vite): rotación de tokens en refresh (`accessToken`/`refreshToken`
+  distintos al reemitidos), replay de un refresh token ya rotado (`401
+  UNAUTHENTICATED`, código real del backend, no inventado), navegación real
+  a "Roles y permisos" y creación/asignación de un rol vía la UI nueva de
+  Codex, logout (`204`) y confirmación de revocación (`GET /auth/me` con el
+  token ya revocado responde `401 SESSION_REVOKED`, también un código real
+  existente), y bloqueo de rutas protegidas tras logout. Nuevo
+  `apps/e2e/tests/authentication.spec.ts` cubre login con credenciales
+  inválidas para cuenta existente vs. inexistente, verificando el mismo
+  mensaje de error en ambos casos (resistencia a enumeración de cuentas,
+  ADR-006). Nuevas pruebas unitarias en `auth-context.spec.tsx` para
+  coalescencia de refresh concurrente y limpieza de sesión ante fallo de
+  refresh.
+- Validación completa ejecutada por mí tras el merge: `pnpm lint`,
+  `pnpm typecheck`, `pnpm test` (98 tests: api 80, api-client 6, erp-web 12),
+  `pnpm build` (5 paquetes), `pnpm --filter @erp/api test:integration`
+  (3/3 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (**2/2 Playwright con Chromium real**,
+  contra Postgres+Redis efímeros, API compilada real y Vite real) — todo
+  verde. Merge sin conflictos (`ai/codex` era ancestro lineal directo de mi
+  commit de RBAC).
 
 ### Hecho — sesión 5 (Access Control / RBAC)
 
@@ -146,17 +194,24 @@ en tsc dejaba `dist/` incompleto sin fallar el build.
 
 ## Codex — frontend / testing / tooling / backend aislado
 
-### Completado esta sesión (retirado de la cola)
+### Completado (retirado de la cola)
 
-- ~~E2E tests (Playwright)~~ — hecho, integrado.
-- ~~Expandir el Design System (Table/Modal/Select/Tabs)~~ — hecho, integrado.
+- ~~E2E tests (Playwright)~~ — hecho, integrado (sesión 4).
+- ~~Expandir el Design System (Table/Modal/Select/Tabs)~~ — hecho, integrado
+  (sesión 4).
+- ~~UI de RBAC ("Roles y permisos")~~ — hecho, integrado (sesión 6,
+  `9561cf7`). Ver "Hecho — sesión 6" arriba para el detalle completo.
+- ~~E2E del ciclo completo de sesión (rotación, replay, revocación,
+  logout)~~ — hecho, integrado (sesión 6, `8814a5e`). Ver "Hecho — sesión 6"
+  arriba.
 
-### Próxima tarea definida: UI de RBAC (desbloqueada — el backend ya existe y está verificado)
+### Contrato HTTP de referencia para RBAC (ya consumido por la UI integrada)
 
 El backend de Access Control/RBAC está implementado, probado (unit +
 integración con Postgres real) y verificado con un smoke test manual contra
-la infraestructura Docker real (ver "Hecho — sesión 5" arriba). El contrato
-HTTP real, no proyectado, es:
+la infraestructura Docker real (ver "Hecho — sesión 5" arriba), y ahora
+también consumido de punta a punta por la UI de `apps/erp-web` y por el E2E
+de Playwright (ver "Hecho — sesión 6"). El contrato HTTP real es:
 
 - `GET /api/v1/roles` — catálogo de roles del tenant activo. Requiere
   `SessionAuthGuard` + `TenantContextGuard` + `PermissionGuard` con
@@ -181,34 +236,30 @@ HTTP real, no proyectado, es:
   responde `403 PERMISSION_DENIED`.
 - Envelope de error igual al ya usado (`statusCode/code/message/details/correlationId`).
 
-**Hueco a tener en cuenta al diseñar la UI**: hoy no existe ningún endpoint
-para agregar un segundo usuario a un tenant (`POST
-/api/v1/tenants/:id/memberships` o similar no existe). Una pantalla
-"Roles y permisos" puede listar/crear roles y ver asignaciones existentes,
-pero el flujo "invitar usuario → asignarle un rol" no se puede completar de
-punta a punta hasta que Organization/Tenancy agregue ese endpoint (ítem 8 de
-la cola Claude). No es una limitación de la UI ni del contrato de RBAC.
+**Hueco que sigue vigente, ya reflejado correctamente en la UI integrada**:
+hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
+(`POST /api/v1/tenants/:id/memberships` o similar no existe). La pantalla
+"Roles y permisos" ya integrada lista/crea roles y asigna roles a una
+membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
+no se puede completar de punta a punta hasta que Organization/Tenancy
+agregue ese endpoint (ítem 8 de la cola Claude). Esto sigue siendo un hueco
+del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
+inventarse mientras tanto.
 
-Con eso disponible, la UI natural es una pantalla "Roles y permisos" en
-`apps/erp-web` usando exactamente los primitivos que Codex ya construyó
-esta sesión: `Table` (listado de roles/permisos), `Modal` (crear/editar
-rol), `Select` (elegir scope de la asignación), `Tabs` (separar "Roles" de
-"Asignaciones" o similar). No hay trabajo de Design System pendiente para
-esto — ya existe todo lo necesario.
+### Disponible ahora
 
-### Disponible ahora, sin depender de RBAC
-
-- **Extender el E2E existente**: hoy solo hay un flujo (registro →
-  onboarding → workspace). Casos negativos con valor real: login con
-  credenciales incorrectas, refresh/rotación visible en la UI, logout y
-  redirección a `/login`.
 - **Documentación**: no quedan huecos obvios — `docs/EVENTS.md` y
-  `docs/PLUGINS.md` ya estaban completos (ver corrección arriba).
+  `docs/PLUGINS.md` ya estaban completos (ver corrección en sesiones
+  anteriores).
+- Sin tarea nueva asignada a Codex en este momento; el próximo trabajo de
+  frontend depende de que Claude entregue Typed Configuration o el endpoint
+  de invitación de membership (ambos en la cola Claude, ninguno bloqueado).
 
 ### Bloqueado
 
-- Nada. La UI de gestión de roles/permisos ya no está bloqueada — el
-  contrato de arriba es real y está verificado end-to-end.
+- El flujo completo "invitar usuario → asignar rol" en la UI de RBAC sigue
+  bloqueado por el endpoint de invitación de membership (ítem 8 de la cola
+  Claude) — no por nada del lado de Codex.
 
 ---
 
@@ -224,18 +275,16 @@ Playwright).
 - Files depende de que el código de MinIO se escriba y se pruebe contra el
   contenedor ya disponible (no bloqueado, solo pendiente de implementar).
 - Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
-- UI de RBAC de Codex depende del contrato HTTP de la sección de arriba —
-  contrato ya entregado y verificado, ítem desbloqueado.
-- Un flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
-  en su forma completa "invitar → asignar rol") depende del endpoint de
-  invitación de membership (ítem 8 de la cola Claude).
+- El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
+  ya integrada, en su forma completa "invitar → asignar rol") depende del
+  endpoint de invitación de membership (ítem 8 de la cola Claude).
 - Event Bus depende únicamente de implementar el diseño ya existente en
   `docs/EVENTS.md` — no hay diseño pendiente.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Próximo en la cola Claude, junto con RBAC.
+  todavía. Sigue en la cola Claude (ítem 7).
 
 ## Architecture decisions needed
 

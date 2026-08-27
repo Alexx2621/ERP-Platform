@@ -1,8 +1,10 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 5), tras implementar Access
-Control/RBAC completo (Permission, Role, RoleAssignment, PermissionGuard)
-y verificarlo contra Postgres real y con un smoke test HTTP completo.
+Última actualización: 2026-08-27 (sesión 6), tras integrar de `ai/codex` la
+UI de RBAC ("Roles y permisos") y la cobertura E2E del ciclo completo de
+sesión (rotación, replay, revocación, logout), verificadas end-to-end
+contra infraestructura real (Postgres+Redis vía Testcontainers, API
+compilada real, Vite real, Chromium real).
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -77,12 +79,7 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   final de la UI. Job `e2e` nuevo en CI.
 - **Primitivos de UI** (`apps/erp-web/src/shared/ui`, Codex): `Table`,
   `Modal` (elemento nativo `<dialog>`), `Select`, `Tabs` (patrón WAI-ARIA
-  completo) — listos para la futura UI de RBAC.
-- 66 tests unitarios pasando (api 54, api-client 4, erp-web 8) + 2 tests
-  de integración con Postgres real + **1 test E2E de Playwright pasando
-  contra infraestructura real completa**, incluyendo pruebas de wiring
-  real de NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
-  `tenants.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
+  completo) — usados por la UI de RBAC (ver abajo).
 - **Access Control / RBAC** (`apps/api/src/core/access-control`, Claude,
   sesión 5): `Permission` (catálogo global code-owned, 3 permisos
   fundacionales), `Role` (tenant-scoped), `RoleAssignment` (scope
@@ -91,14 +88,39 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   "Owner" con todos los permisos vigentes al aprovisionar un tenant.
   4 tablas nuevas (migración `20260827021429_rbac_foundation`, **generada y
   aplicada directamente contra Postgres real** vía `prisma migrate dev`, no
-  solo diffeada). 80 tests unitarios totales en `apps/api` (antes 54, +26),
-  suite de integración contra Postgres real ampliada con un escenario RBAC
-  completo (scoping, aislamiento cross-tenant vía FK compuesta, FK de
-  membership). **Smoke test manual verificado contra la infraestructura
-  Docker real**: registro → provisioning → Owner auto-sembrado con sus 3
-  permisos → `GET /api/v1/roles`/`permissions` en 200 → una segunda
-  membership real sin asignaciones recibe `403 PERMISSION_DENIED`. Detalle
-  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 5").
+  solo diffeada). Suite de integración contra Postgres real ampliada con un
+  escenario RBAC completo (scoping, aislamiento cross-tenant vía FK
+  compuesta, FK de membership). **Smoke test manual verificado contra la
+  infraestructura Docker real**: registro → provisioning → Owner
+  auto-sembrado con sus 3 permisos → `GET /api/v1/roles`/`permissions` en
+  200 → una segunda membership real sin asignaciones recibe `403
+  PERMISSION_DENIED`. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
+  sesión 5").
+- **UI de RBAC — "Roles y permisos"** (`apps/erp-web/src/features/
+  access-control`, Codex, sesión 6): pantalla con pestañas Roles/Permisos,
+  creación de rol y asignación de rol a una membership existente, usando
+  los 4 métodos nuevos de `@erp/api-client` (`listRoles`, `listPermissions`,
+  `createRole`, `assignRole`). No simula invitación de membership: pide un
+  `membershipId` ya existente y lo señala explícitamente en la propia
+  pantalla, ya que ese endpoint todavía no existe. Revisado e integrado
+  por Claude (Tech Lead) sin cambios.
+- **E2E del ciclo completo de sesión** (`apps/e2e/tests/*.spec.ts`, Codex,
+  sesión 6): cobertura real de rotación de tokens en refresh, rechazo de
+  replay de un refresh ya rotado (`401 UNAUTHENTICATED`), navegación y uso
+  real de la UI de RBAC dentro del mismo flujo, logout y confirmación de
+  revocación (`401 SESSION_REVOKED` tras logout), bloqueo de rutas
+  protegidas post-logout, y resistencia a enumeración de cuentas en login
+  (mismo mensaje de error para cuenta existente vs. inexistente). Todos los
+  códigos de error verificados (`UNAUTHENTICATED`, `SESSION_REVOKED`) son
+  reales, no inventados. Revisado e integrado por Claude sin cambios.
+- 98 tests unitarios pasando (api 80, api-client 6, erp-web 12) + 3 tests
+  de integración con Postgres real + **2 tests E2E de Playwright pasando
+  contra infraestructura real completa** (Chromium real, Postgres+Redis
+  efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
+  pruebas de wiring real de NestJS (`auth.module.spec.ts`,
+  `app.module.spec.ts`, `tenants.module.spec.ts`,
+  `access-control.module.spec.ts`) y pruebas negativas de aislamiento
+  cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -151,8 +173,11 @@ Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
 Resumen: Configuración tipada → Audit → Event Bus (diseño ya existe en
 `docs/EVENTS.md`, falta implementar) → Files → Notifications → Workers →
 OpenAPI/Swagger → endpoint de invitación de membership. También pendiente:
-ratificar ADR-001 a ADR-005 formalmente. Para Codex: UI de RBAC — **ya
-desbloqueada**, contrato HTTP real y verificado en `docs/WORK_QUEUE.md`.
+ratificar ADR-001 a ADR-005 formalmente. Para Codex: sin tarea asignada en
+este momento — la UI de RBAC y la cobertura E2E del ciclo de sesión ya
+están hechas e integradas (ver Completed). El flujo "invitar usuario →
+asignar rol" en esa UI **sigue bloqueado** hasta que exista el endpoint de
+invitación de membership — no se debe simular ni inventar mientras tanto.
 
 ## Production Status
 
