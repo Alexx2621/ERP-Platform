@@ -10,6 +10,7 @@ import { TenantsModule } from "./core/tenants";
 import { OrganizationsModule } from "./core/organizations";
 import { CompaniesModule } from "./core/companies";
 import { AccessControlModule } from "./core/access-control";
+import { ConfigurationModule } from "./core/configuration";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AccessControlModule } from "./core/access-control";
     CompaniesModule,
     AccessControlModule,
     TenantsModule,
+    ConfigurationModule,
   ],
 })
 export class AppModule implements NestModule {

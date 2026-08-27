@@ -1,8 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 5), tras implementar Access
-Control/RBAC completo (Permission, Role, RoleAssignment, PermissionGuard)
-y verificarlo contra Postgres real y con un smoke test HTTP completo.
+Última actualización: 2026-08-27 (sesión 7), tras implementar Typed
+Configuration completo (SettingDefinition, SettingValue, UserPreference,
+resolución PLATFORM→TENANT→COMPANY→default) y verificarlo contra Postgres
+real y con un smoke test HTTP completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -10,7 +11,8 @@ Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
-infraestructura real (Identity + Tenancy + onboarding + Access Control).
+infraestructura real (Identity + Tenancy + onboarding + Access Control +
+Typed Configuration).
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -77,12 +79,7 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   final de la UI. Job `e2e` nuevo en CI.
 - **Primitivos de UI** (`apps/erp-web/src/shared/ui`, Codex): `Table`,
   `Modal` (elemento nativo `<dialog>`), `Select`, `Tabs` (patrón WAI-ARIA
-  completo) — listos para la futura UI de RBAC.
-- 66 tests unitarios pasando (api 54, api-client 4, erp-web 8) + 2 tests
-  de integración con Postgres real + **1 test E2E de Playwright pasando
-  contra infraestructura real completa**, incluyendo pruebas de wiring
-  real de NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
-  `tenants.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
+  completo) — usados por la UI de RBAC (ver abajo).
 - **Access Control / RBAC** (`apps/api/src/core/access-control`, Claude,
   sesión 5): `Permission` (catálogo global code-owned, 3 permisos
   fundacionales), `Role` (tenant-scoped), `RoleAssignment` (scope
@@ -91,14 +88,59 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   "Owner" con todos los permisos vigentes al aprovisionar un tenant.
   4 tablas nuevas (migración `20260827021429_rbac_foundation`, **generada y
   aplicada directamente contra Postgres real** vía `prisma migrate dev`, no
-  solo diffeada). 80 tests unitarios totales en `apps/api` (antes 54, +26),
-  suite de integración contra Postgres real ampliada con un escenario RBAC
-  completo (scoping, aislamiento cross-tenant vía FK compuesta, FK de
-  membership). **Smoke test manual verificado contra la infraestructura
-  Docker real**: registro → provisioning → Owner auto-sembrado con sus 3
-  permisos → `GET /api/v1/roles`/`permissions` en 200 → una segunda
-  membership real sin asignaciones recibe `403 PERMISSION_DENIED`. Detalle
-  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 5").
+  solo diffeada). Suite de integración contra Postgres real ampliada con un
+  escenario RBAC completo (scoping, aislamiento cross-tenant vía FK
+  compuesta, FK de membership). **Smoke test manual verificado contra la
+  infraestructura Docker real**: registro → provisioning → Owner
+  auto-sembrado con sus 3 permisos → `GET /api/v1/roles`/`permissions` en
+  200 → una segunda membership real sin asignaciones recibe `403
+  PERMISSION_DENIED`. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
+  sesión 5").
+- **UI de RBAC — "Roles y permisos"** (`apps/erp-web/src/features/
+  access-control`, Codex, sesión 6): pantalla con pestañas Roles/Permisos,
+  creación de rol y asignación de rol a una membership existente, usando
+  los 4 métodos nuevos de `@erp/api-client` (`listRoles`, `listPermissions`,
+  `createRole`, `assignRole`). No simula invitación de membership: pide un
+  `membershipId` ya existente y lo señala explícitamente en la propia
+  pantalla, ya que ese endpoint todavía no existe. Revisado e integrado
+  por Claude (Tech Lead) sin cambios.
+- **E2E del ciclo completo de sesión** (`apps/e2e/tests/*.spec.ts`, Codex,
+  sesión 6): cobertura real de rotación de tokens en refresh, rechazo de
+  replay de un refresh ya rotado (`401 UNAUTHENTICATED`), navegación y uso
+  real de la UI de RBAC dentro del mismo flujo, logout y confirmación de
+  revocación (`401 SESSION_REVOKED` tras logout), bloqueo de rutas
+  protegidas post-logout, y resistencia a enumeración de cuentas en login
+  (mismo mensaje de error para cuenta existente vs. inexistente). Todos los
+  códigos de error verificados (`UNAUTHENTICATED`, `SESSION_REVOKED`) son
+  reales, no inventados. Revisado e integrado por Claude sin cambios.
+- **Typed Configuration** (`apps/api/src/core/configuration`, Claude,
+  sesión 7): `SettingDefinition` (catálogo global code-owned, 3 claves
+  fundacionales de localización — moneda, zona horaria, idioma),
+  `SettingValue` (resolución con fallback real COMPANY → TENANT → PLATFORM
+  → default de la definición), `UserPreference` (global al usuario, sin
+  catálogo). 3 tablas nuevas (migración `20260827183903_typed_configuration`,
+  **generada y aplicada directamente contra Postgres real** vía
+  `prisma migrate dev`). Decisión de seguridad explícita: escritura a nivel
+  `PLATFORM` modelada en dominio pero **no expuesta por HTTP** — expondría
+  a cualquier admin de tenant a sobreescribir el default global de todos
+  los tenants sin que exista todavía un plano de administración de
+  plataforma separado (`docs/ARCHITECTURE.md` §10). Suite de integración
+  contra Postgres real ampliada con la cadena de resolución completa y el
+  FK compuesto `setting_values(tenant_id, company_id)`. **Smoke test manual
+  verificado contra la infraestructura Docker real**: catálogo → efectivos
+  en default → override TENANT → override COMPANY (gana sobre TENANT) →
+  `companyId` de otro tenant rechazado (`404 COMPANY_NOT_FOUND`) → tipo de
+  valor incorrecto rechazado (`400 INVALID_SETTING_VALUE`) → preferencia de
+  usuario sin necesitar contexto de tenant. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 7").
+- 127 tests unitarios pasando (api 109, api-client 6, erp-web 12) + 4 tests
+  de integración con Postgres real + **2 tests E2E de Playwright pasando
+  contra infraestructura real completa** (Chromium real, Postgres+Redis
+  efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
+  pruebas de wiring real de NestJS (`auth.module.spec.ts`,
+  `app.module.spec.ts`, `tenants.module.spec.ts`,
+  `access-control.module.spec.ts`, `configuration.module.spec.ts`) y
+  pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -142,17 +184,21 @@ decisión explícita del usuario, no por reinterpretación del proceso.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem
-(Configuración tipada).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Audit).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Configuración tipada → Audit → Event Bus (diseño ya existe en
-`docs/EVENTS.md`, falta implementar) → Files → Notifications → Workers →
-OpenAPI/Swagger → endpoint de invitación de membership. También pendiente:
-ratificar ADR-001 a ADR-005 formalmente. Para Codex: UI de RBAC — **ya
-desbloqueada**, contrato HTTP real y verificado en `docs/WORK_QUEUE.md`.
+Resumen: Audit → Event Bus (diseño ya existe en `docs/EVENTS.md`, falta
+implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
+endpoint de invitación de membership → plano de administración de
+plataforma (necesario antes de exponer escritura de settings a nivel
+PLATFORM). También pendiente: ratificar ADR-001 a ADR-005 formalmente.
+Para Codex: UI de Configuración ("Ajustes") — **nueva tarea disponible**,
+contrato HTTP real y verificado en `docs/WORK_QUEUE.md`, sin bloqueos. El
+flujo "invitar usuario → asignar rol" en la UI de RBAC **sigue bloqueado**
+hasta que exista el endpoint de invitación de membership — no se debe
+simular ni inventar mientras tanto.
 
 ## Production Status
 
@@ -183,3 +229,17 @@ confirmación de `403 PERMISSION_DENIED` real para una membership sin rol
 (insertada directamente por script para no depender de un endpoint de
 invitación que todavía no existe). Toda la data de prueba fue limpiada al
 terminar.
+
+**Sesión 7 (2026-08-27, Typed Configuration)**: cuarta migración
+(`20260827183903_typed_configuration`) generada directamente contra esta
+misma base real vía `prisma migrate dev` — `prisma migrate status` confirma
+las 4 migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`): registro + provisioning con
+compañía, catálogo de 3 definiciones, efectivos en default, override
+TENANT, override COMPANY (confirmado que gana sobre TENANT vía
+`X-Company-Id`), `companyId` de otro tenant rechazado con
+`404 COMPANY_NOT_FOUND` (FK compuesto real, no solo filtro de aplicación),
+valor de tipo incorrecto rechazado con `400 INVALID_SETTING_VALUE`, clave
+desconocida rechazada con `404 SETTING_NOT_FOUND`, y una preferencia de
+usuario creada/leída sin necesitar ningún contexto de tenant. Toda la data
+de prueba fue limpiada al terminar.

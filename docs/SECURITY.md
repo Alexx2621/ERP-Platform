@@ -171,3 +171,59 @@ is user X*, not *user X may act on tenant Y*." Design in
   authenticate but cannot yet manage anything (including granting itself a
   role), since no role is assigned. No saga/outbox exists yet to make this
   atomic or auto-retry it.
+
+## Typed Configuration (2026-08-27)
+
+Scope: `SettingDefinition`, `SettingValue`, `UserPreference`, `SettingsController`,
+`PreferencesController` (`apps/api/src/core/configuration`) — implements
+`docs/ARCHITECTURE.md` §8.2 / MASTER_SPEC §28-29.
+
+### Assets
+
+- Tenant/company setting overrides (`setting_values`) — currently only
+  localization values (currency/timezone/locale), but the mechanism will
+  carry higher-stakes configuration (tax behavior, document series, default
+  warehouse, ...) once those modules exist.
+- The setting catalog itself (`setting_definitions`) — code-owned, not
+  user-writable; there is no `POST /api/v1/settings/definitions`.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A tenant admin overwrites the platform-wide default for every tenant | `SetSettingValueDto.scopeType` only accepts `"TENANT"`/`"COMPANY"` (`@IsIn`) — `PLATFORM` is a real, domain-modeled scope (`SetSettingValueUseCase`/`SettingValue` both support it) but **no HTTP endpoint accepts it**, because no system-administration plane exists yet (`docs/ARCHITECTURE.md` §10). This is a deliberate gap, not an oversight — see "Known limitations" below. |
+| Setting a value at a scope the definition doesn't declare (e.g. a key meant to be TENANT-only set at COMPANY) | `SetSettingValueUseCase` checks `definition.allowsScope(scopeType)` before writing and rejects with `400 SETTING_SCOPE_NOT_ALLOWED` otherwise. |
+| A value that doesn't match its declared data type (e.g. a string where a number is expected) reaches storage | `SettingDefinition.assertValidValue` runs before every write; a mismatch is `400 INVALID_SETTING_VALUE`. Because `value` is stored as `jsonb`, this is the only type enforcement that exists — Postgres itself accepts any valid JSON in that column, so the application-layer check is load-bearing, not a redundant belt-and-suspenders check. |
+| A `companyId` from a different tenant is used to set a COMPANY-scoped value | Same DB-enforced pattern as RBAC's `role_assignments`: the composite FK `setting_values(tenant_id, company_id) → companies(tenant_id, id)` rejects it at the database level; `PrismaSettingValueRepository` catches the `P2003` and rethrows as `CompanyNotFoundInTenantError` (`404 COMPANY_NOT_FOUND`). Verified against real Postgres in `apps/api/test/integration/prisma-repositories.integration-spec.ts`. |
+| Cross-tenant leakage of a TENANT/COMPANY-scoped value | `GetEffectiveSettingUseCase` only ever queries `setting_values` with the caller's own `tenantId`/`companyId` (from `TenantExecutionContext`, never trusted from the request body) — a value set for tenant A is structurally unreachable when resolving for tenant B, exercised in the integration suite with two real tenants. |
+| Reading/writing settings or the catalog without authorization | `SettingsController` requires `SessionAuthGuard` + `TenantContextGuard` + `PermissionGuard`, gated by the new `configuration.settings.read`/`configuration.settings.manage` permissions (same deny-by-default `PermissionGuard` as RBAC — no new authorization mechanism was introduced). |
+| One user reading or overwriting another user's preferences | `PreferencesController` derives `userId` exclusively from `CurrentAuth()` (the authenticated session), never from a request parameter — there is no way to address another user's preference through this API at all, by construction, not by a permission check that could be misconfigured. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No PLATFORM-scope write endpoint.** The domain and application layers
+  fully support it (`SetSettingValueUseCase` accepts `scopeType: "PLATFORM"`,
+  the schema has no obstacle to it), but exposing it today — before a
+  separate system-administration plane with its own authorization exists —
+  would mean *any* tenant's admin could change the default for every tenant
+  on the platform through the same tenant-scoped API. This is a genuine gap
+  to close when `docs/ARCHITECTURE.md` §10's "system administration usa un
+  plano y credenciales separados" is actually built, not before.
+- **No new permissions retroactively granted to existing tenants' Owner
+  roles.** `configuration.settings.read`/`configuration.settings.manage`
+  were added to `FOUNDATION_PERMISSIONS` in this change; per the
+  already-documented RBAC limitation above ("No retroactive permission
+  backfill"), any tenant provisioned *before* this change keeps whatever
+  permission set its Owner role was seeded with and will not automatically
+  gain these two. Not a concern in Foundation/dev with no real tenants yet,
+  but a real migration/backfill concern before this platform has customers.
+- **No audit log entries yet** for setting changes — same gap already
+  flagged for Authentication and RBAC; `SetSettingValueUseCase` is the
+  natural place to add an audit call once the Audit module
+  (`docs/WORK_QUEUE.md`) exists. A configuration change (e.g. a tenant's
+  default currency) is exactly the kind of action MASTER_SPEC §10 asks to
+  be traceable.
+- **No `CHECK` constraint enforcing `value` against `data_type` at the
+  database level** — see the corresponding row in the threats table above;
+  this is an accepted application-layer-only control, consistent with how
+  `allowed_scopes` is also validated only in code (`docs/DATABASE.md`).

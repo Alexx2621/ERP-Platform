@@ -178,3 +178,89 @@ against the real `erp_platform` Postgres container (`docker compose up -d`),
 not diffed against an empty schema like the auth migration above. Confirmed
 applying cleanly both there and against the ephemeral Testcontainers
 instance used by `apps/api/test/integration`.
+
+---
+
+## Configuration tables (Typed Configuration, 2026-08-27)
+
+Scope: `docs/ARCHITECTURE.md` §8.2, MASTER_SPEC §28/§29 — `SettingDefinition`,
+`SettingValue`, `UserPreference`. Applied to the real running PostgreSQL
+instance via `prisma migrate dev` (not just diffed).
+
+### `setting_definitions`
+
+Global, code-owned catalog — same pattern as `permissions`: not tenant-scoped,
+never created from the UI. Seeded on every boot by `SettingCatalogSeeder`
+from the code-owned `FOUNDATION_SETTINGS` list
+(`apps/api/src/core/configuration/application/setting-catalog.ts`), currently
+exactly three keys: `localization.currency`, `localization.timezone`,
+`localization.locale` (MASTER_SPEC §29's moneda/zona horaria/idioma).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `key` | `varchar(150)` | `UNIQUE`. `<namespace>.<name>`, e.g. `localization.currency`. |
+| `data_type` | enum `STRING`/`NUMBER`/`BOOLEAN`/`JSON` | Declares what shape a value at any scope for this key must have; enforced in application code (`SettingDefinition.assertValidValue`), not a DB `CHECK` — the value column is `jsonb` and Postgres has no built-in way to constrain its shape per-row against a sibling table's declared type. |
+| `description` | `varchar(300)` | |
+| `default_value` | `jsonb` | Used when no `setting_values` row exists at any scope — the last link in the resolution chain (see below). |
+| `allowed_scopes` | `"ConfigScopeType"[]` (Postgres array of the enum) | Which of `PLATFORM`/`TENANT`/`COMPANY` this key may be set at. Prisma has no partial-unique-index support used here; this is a plain array column, validated in `SetSettingValueUseCase`, not a DB constraint. |
+| `created_at` | `timestamptz(6)` | |
+
+### `setting_values`
+
+A concrete value for one `SettingDefinition` at exactly one scope instance —
+the table `GetEffectiveSettingUseCase` actually reads.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `definition_id` | `uuid` | FK → `setting_definitions.id` `ON DELETE RESTRICT`. |
+| `scope_type` | enum `PLATFORM`/`TENANT`/`COMPANY` | |
+| `tenant_id` | `uuid?` | `NULL` for `PLATFORM` scope; FK → `tenants.id` `ON DELETE RESTRICT` otherwise. |
+| `company_id` | `uuid?` | `NULL` unless `scope_type` is `COMPANY`. |
+| `scope_key` | `varchar(80)` | Denormalized, non-null discriminator computed in application code (`SettingValue.scopeKey`): `"platform"` / the tenant id / `"tenantId:companyId"`. Exists purely so the unique index below can work — Postgres treats `NULL` as distinct from `NULL` in a unique constraint, so `tenant_id`/`company_id` alone (both `NULL` for every `PLATFORM` row) would allow duplicate `PLATFORM` values for the same key. |
+| `value` | `jsonb` | |
+| `created_at`, `updated_at` | `timestamptz(6)` | |
+
+`(tenant_id, company_id) → companies(tenant_id, id)` is a **composite FK**,
+the same tenant-safety pattern as `role_assignments` →
+`memberships(tenant_id, id)`: Postgres skips a composite FK check entirely
+when any column in it is `NULL`, so this constraint only ever fires for
+`COMPANY`-scope rows, and a `company_id` that does not belong to `tenant_id`
+is rejected by the database, not just filtered out by a query. A
+mismatch surfaces as Prisma's `P2003`, caught by
+`PrismaSettingValueRepository` and rethrown as `CompanyNotFoundInTenantError`
+(`404 COMPANY_NOT_FOUND`) — see `docs/SECURITY.md`.
+
+`@@unique([definitionId, scopeType, scopeKey])` is what makes "set" an
+upsert instead of an ever-growing history table — one row per definition per
+concrete scope instance. An index on `tenant_id` supports "every value this
+tenant has ever set."
+
+### `user_preferences`
+
+Per-user, per-key preference. **Not** tenant-scoped — global to the `User`
+identity, the same reasoning as `users` itself (`docs/MULTITENANCY.md` §4.8):
+a preference like "UI theme" or "table page size" belongs to the person, not
+to whichever tenant they happen to be working in at the moment. Deliberately
+has no code-owned catalog like `setting_definitions` — preferences are
+personal/UI concerns any feature can read/write directly without a central
+registry or an `allowed_scopes` concept (there is only one scope: the user).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `user_id` | `uuid` | FK → `users.id` `ON DELETE CASCADE`. |
+| `key` | `varchar(150)` | Free-form, not validated against a catalog. |
+| `value` | `jsonb` | |
+| `created_at`, `updated_at` | `timestamptz(6)` | |
+
+`@@unique([userId, key])` makes "set" an upsert per user per key.
+
+### Migration
+
+`packages/database/prisma/migrations/20260827183903_typed_configuration/` —
+generated and applied via `prisma migrate dev --name typed_configuration`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.
