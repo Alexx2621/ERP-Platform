@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from "@nestjs/common";
 import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
+import { SeedOwnerRoleUseCase } from "../../access-control";
 import { ProvisionTenantUseCase } from "../application/provision-tenant.use-case";
 import { ListMyTenantsUseCase, type MyTenantSummary } from "../application/list-my-tenants.use-case";
 import { ProvisionTenantDto } from "./dto/provision-tenant.dto";
@@ -15,9 +16,18 @@ export class TenantsController {
   constructor(
     private readonly provisionTenant: ProvisionTenantUseCase,
     private readonly listMyTenants: ListMyTenantsUseCase,
+    private readonly seedOwnerRole: SeedOwnerRoleUseCase,
   ) {}
 
-  /** Onboarding: "create tenant" step of MASTER_SPEC §68's "crear cuenta → crear empresa" flow. */
+  /**
+   * Onboarding: "create tenant" step of MASTER_SPEC §68's "crear cuenta →
+   * crear empresa" flow. Seeding the Owner role is a second step after
+   * provisioning commits, not part of the same DB transaction (no saga/
+   * outbox exists yet, docs/WORK_QUEUE.md) — if it throws, the tenant is
+   * left provisioned but ownerless-of-permissions, a known gap documented
+   * in docs/SECURITY.md rather than something worth a compensating
+   * transaction for at Foundation scale.
+   */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async provision(
@@ -32,6 +42,7 @@ export class TenantsController {
         organization: dto.organization,
         company: dto.company,
       });
+      await this.seedOwnerRole.execute(result.tenant.id, result.ownerMembership.id);
       return ProvisionedTenantResponseDto.fromResult(result);
     } catch (error) {
       handleTenantError(error);

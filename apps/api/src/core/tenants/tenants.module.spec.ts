@@ -8,7 +8,9 @@ import { ResolveTenantContextUseCase } from "./application/resolve-tenant-contex
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
 import { TenantsController } from "./presentation/tenants.controller";
+import { RolesController } from "./presentation/roles.controller";
 import { TenantsModule } from "./tenants.module";
+import { SeedOwnerRoleUseCase } from "../access-control";
 
 // TenantsModule now imports AuthModule (for SessionAuthGuard on TenantsController),
 // which in turn needs Redis for its throttler storage — see auth.module.spec.ts
@@ -49,6 +51,8 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(ListMyTenantsUseCase)).toBeInstanceOf(ListMyTenantsUseCase);
     expect(moduleRef.get(TenantContextGuard)).toBeInstanceOf(TenantContextGuard);
     expect(moduleRef.get(TenantsController)).toBeInstanceOf(TenantsController);
+    expect(moduleRef.get(SeedOwnerRoleUseCase)).toBeInstanceOf(SeedOwnerRoleUseCase);
+    expect(moduleRef.get(RolesController)).toBeInstanceOf(RolesController);
 
     await moduleRef.close();
   });

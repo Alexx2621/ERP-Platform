@@ -13,6 +13,14 @@ import { Organization } from "../../src/core/organizations/domain/organization.e
 import { PrismaOrganizationRepository } from "../../src/core/organizations/infrastructure/prisma-organization.repository";
 import { User } from "../../src/core/users/domain/user.entity";
 import { PrismaUserRepository } from "../../src/core/users/infrastructure/prisma-user.repository";
+import { Permission } from "../../src/core/access-control/domain/permission.entity";
+import { Role } from "../../src/core/access-control/domain/role.entity";
+import { RoleAssignment } from "../../src/core/access-control/domain/role-assignment.entity";
+import { PrismaPermissionRepository } from "../../src/core/access-control/infrastructure/prisma-permission.repository";
+import { PrismaRoleRepository } from "../../src/core/access-control/infrastructure/prisma-role.repository";
+import { PrismaRoleAssignmentRepository } from "../../src/core/access-control/infrastructure/prisma-role-assignment.repository";
+import { HasPermissionUseCase } from "../../src/core/access-control/application/use-cases/has-permission.use-case";
+import { MembershipNotFoundInTenantError } from "../../src/core/access-control/application/errors";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -189,5 +197,107 @@ describe("Prisma repositories against PostgreSQL", () => {
 
     await expect(companies.save(crossTenantCompany)).rejects.toThrow();
     await expect(companies.findById(tenantB.id, crossTenantCompany.id)).resolves.toBeNull();
+  });
+
+  it("enforces RBAC scoping, the membership FK, and cross-tenant isolation with real constraints", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const memberships = new PrismaMembershipRepository(prisma);
+    const permissions = new PrismaPermissionRepository(prisma);
+    const roles = new PrismaRoleRepository(prisma);
+    const assignments = new PrismaRoleAssignmentRepository(prisma);
+    const hasPermission = new HasPermissionUseCase(assignments, roles);
+    const now = new Date("2026-08-27T10:00:00.000Z");
+
+    const user = createUser(now, "rbac-owner@example.com");
+    const tenantA = createTenant(now, "rbac-tenant-a");
+    const tenantB = createTenant(now, "rbac-tenant-b");
+    await users.save(user);
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    const membership = Membership.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      userId: user.id,
+      status: "ACTIVE",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await memberships.save(membership);
+
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "access.roles.read", description: "Read roles", createdAt: now }),
+    );
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "access.roles.manage", description: "Manage roles", createdAt: now }),
+    );
+
+    const role = Role.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      name: "Auditor",
+      isSystem: false,
+      permissionKeys: ["access.roles.read"],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await roles.save(role);
+
+    const persistedRole = await roles.findByName(tenantA.id, "Auditor");
+    expect(persistedRole?.hasPermission("access.roles.read")).toBe(true);
+    expect(persistedRole?.hasPermission("access.roles.manage")).toBe(false);
+
+    const assignment = RoleAssignment.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      membershipId: membership.id,
+      roleId: role.id,
+      scopeType: "TENANT",
+      scopeId: null,
+      createdAt: now,
+    });
+    await assignments.save(assignment);
+
+    await expect(
+      hasPermission.execute({
+        tenantId: tenantA.id,
+        membershipId: membership.id,
+        permissionKey: "access.roles.read",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      hasPermission.execute({
+        tenantId: tenantA.id,
+        membershipId: membership.id,
+        permissionKey: "access.roles.manage",
+      }),
+    ).resolves.toBe(false);
+
+    // Same membership, but looked up under tenant B: the (tenantId, roleId)
+    // composite FK on role_assignments must make this structurally
+    // impossible, not merely application-filtered.
+    await expect(
+      hasPermission.execute({
+        tenantId: tenantB.id,
+        membershipId: membership.id,
+        permissionKey: "access.roles.read",
+      }),
+    ).resolves.toBe(false);
+    await expect(assignments.findByMembership(tenantB.id, membership.id)).resolves.toEqual([]);
+
+    const assignmentForUnknownMembership = RoleAssignment.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      membershipId: newId(),
+      roleId: role.id,
+      scopeType: "TENANT",
+      scopeId: null,
+      createdAt: now,
+    });
+    await expect(assignments.save(assignmentForUnknownMembership)).rejects.toThrow(
+      MembershipNotFoundInTenantError,
+    );
   });
 });

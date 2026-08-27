@@ -1,8 +1,8 @@
 # Project State
 
-Última actualización: 2026-08-26 (sesión 4), tras integrar la suite E2E de
-Playwright y los primitivos de Design System (`Table`/`Modal`/`Select`/
-`Tabs`) de Codex a `develop`.
+Última actualización: 2026-08-27 (sesión 5), tras implementar Access
+Control/RBAC completo (Permission, Role, RoleAssignment, PermissionGuard)
+y verificarlo contra Postgres real y con un smoke test HTTP completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -10,7 +10,8 @@ Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
-infraestructura real (Identity + Tenancy + onboarding). Fase 0 no está
+infraestructura real (Identity + Tenancy + onboarding + Access Control).
+Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
 para aprobación" en sus propios encabezados. **Corrección respecto a
@@ -82,6 +83,22 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   contra infraestructura real completa**, incluyendo pruebas de wiring
   real de NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
   `tenants.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
+- **Access Control / RBAC** (`apps/api/src/core/access-control`, Claude,
+  sesión 5): `Permission` (catálogo global code-owned, 3 permisos
+  fundacionales), `Role` (tenant-scoped), `RoleAssignment` (scope
+  `TENANT`/`COMPANY`), `PermissionGuard` + `@RequirePermission()`
+  deny-by-default. `SeedOwnerRoleUseCase` otorga automáticamente un rol
+  "Owner" con todos los permisos vigentes al aprovisionar un tenant.
+  4 tablas nuevas (migración `20260827021429_rbac_foundation`, **generada y
+  aplicada directamente contra Postgres real** vía `prisma migrate dev`, no
+  solo diffeada). 80 tests unitarios totales en `apps/api` (antes 54, +26),
+  suite de integración contra Postgres real ampliada con un escenario RBAC
+  completo (scoping, aislamiento cross-tenant vía FK compuesta, FK de
+  membership). **Smoke test manual verificado contra la infraestructura
+  Docker real**: registro → provisioning → Owner auto-sembrado con sus 3
+  permisos → `GET /api/v1/roles`/`permissions` en 200 → una segunda
+  membership real sin asignaciones recibe `403 PERMISSION_DENIED`. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 5").
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -106,19 +123,36 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   wc -l` contra el conteo de archivos fuente, o simplemente seguir sin
   `incremental`.
 
+### Corregido durante la implementación de RBAC (sesión 5, 2026-08-27)
+
+- **Bug arquitectónico real de ciclo de módulos**: `RolesController` se
+  escribió inicialmente físicamente dentro de `access-control/presentation/`
+  pero necesitaba `TenantContextGuard`/`CurrentTenantContext` de `tenants/`.
+  Eso creaba un ciclo de carga de módulos a nivel de `import`/`require`
+  (tenants → access-control → tenants) que no era un ciclo de DI de NestJS
+  (por eso `tsc`/`eslint` no lo detectaron) pero sí rompía en runtime
+  (`CurrentTenantContext is not a function`) — solo se manifestó al correr
+  la suite completa de tests (`app.module.spec.ts`/`tenants.module.spec.ts`
+  fallaron). Corregido moviendo `RolesController` a
+  `tenants/presentation/roles.controller.ts`; `AccessControlModule` sigue
+  con cero dependencia de Tenants. Lección: un módulo cuyo controller
+  necesita guards/decoradores de otro módulo debe vivir físicamente en ese
+  otro módulo, no solo estar "registrado" allí — ver docstrings actualizados
+  en ambos módulos.
+
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Access
-Control / RBAC).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem
+(Configuración tipada).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Access Control/RBAC → Configuración tipada → Audit → Event Bus
-(diseño ya existe en `docs/EVENTS.md`, falta implementar) → Files →
-Notifications → Workers → OpenAPI/Swagger. También pendiente: ratificar
-ADR-001 a ADR-005 formalmente. Para Codex: UI de RBAC (contrato ya definido
-en `docs/WORK_QUEUE.md`, bloqueada hasta que el backend exista).
+Resumen: Configuración tipada → Audit → Event Bus (diseño ya existe en
+`docs/EVENTS.md`, falta implementar) → Files → Notifications → Workers →
+OpenAPI/Swagger → endpoint de invitación de membership. También pendiente:
+ratificar ADR-001 a ADR-005 formalmente. Para Codex: UI de RBAC — **ya
+desbloqueada**, contrato HTTP real y verificado en `docs/WORK_QUEUE.md`.
 
 ## Production Status
 
@@ -137,3 +171,15 @@ El flujo HTTP completo (registro, login, refresh, logout, revocación,
 provisioning de tenant, resolución de contexto) se probó end-to-end contra
 el servidor real (`node dist/main.js`) y esta misma base. Toda la data de
 prueba fue limpiada al terminar.
+
+**Sesión 5 (2026-08-27, RBAC)**: tercera migración
+(`20260827021429_rbac_foundation`) generada directamente contra esta misma
+base real vía `prisma migrate dev` (no diffeada desde cero como las dos
+anteriores) — `prisma migrate status` confirma las 3 migraciones aplicadas
+sin drift. Flujo HTTP completo repetido con el servidor real compilado
+(`node dist/main.js`): registro de 2 usuarios, provisioning, verificación
+del rol Owner auto-sembrado, `GET /api/v1/roles`/`permissions` exitosos, y
+confirmación de `403 PERMISSION_DENIED` real para una membership sin rol
+(insertada directamente por script para no depender de un endpoint de
+invitación que todavía no existe). Toda la data de prueba fue limpiada al
+terminar.

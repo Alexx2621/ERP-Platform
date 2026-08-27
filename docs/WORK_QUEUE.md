@@ -1,8 +1,8 @@
 # Work Queue
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
-Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-26
-(sesión 4, integración de la suite E2E + primitivos de UI de `ai/codex`).
+Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
+(sesión 5, implementación completa de Access Control/RBAC).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 `develop` y `ai/claude` sincronizados en `aae6c5c` (origin, ambas ramas).
@@ -13,28 +13,79 @@ Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Access Control / RBAC** — Role, Permission, RoleAssignment, catálogo de
-   permisos, guards deny-by-default (`docs/MULTITENANCY.md` §9). No
-   bloqueado: `TenantContextGuard` existe y está verificado end-to-end
-   (unit, integration con Postgres real, y ahora E2E de navegador real),
-   así que una policy de permisos ya tiene `TenantExecutionContext`
-   disponible en cada request.
-2. **Configuración tipada** (`SettingDefinition`/`SettingValue` por scope —
+1. **Configuración tipada** (`SettingDefinition`/`SettingValue` por scope —
    platform/tenant/company — per `docs/ARCHITECTURE.md` §8.2, MASTER_SPEC §28).
-3. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
-   cambios de status de usuario, provisioning de tenant, registro).
-4. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
+   No bloqueado.
+2. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
+   cambios de status de usuario, provisioning de tenant, registro, y ahora
+   también creación de roles/asignaciones — ver hueco anotado en
+   `docs/SECURITY.md` §"Access Control / RBAC").
+3. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
    completo YA EXISTE en `docs/EVENTS.md` (envelope, taxonomía domain vs.
    integration event, outbox/inbox, retries/DLQ, nomenclatura) — este ítem
    es implementarlo, no diseñarlo desde cero. Ver nota de corrección más
    abajo: este archivo estuvo mal descrito como vacío en versiones previas
    de esta cola.
-5. **Files** — metadata de archivos + URLs firmadas contra MinIO.
-6. **Notifications** — solicitud + adapter in-app/email vía worker.
-7. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
-8. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+4. **Files** — metadata de archivos + URLs firmadas contra MinIO.
+5. **Notifications** — solicitud + adapter in-app/email vía worker.
+6. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
+7. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
+8. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+   forma de agregar un segundo usuario a un tenant vía API; anotado como
+   hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
+   bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
+   punta.
+
+### Hecho — sesión 5 (Access Control / RBAC)
+
+- **`apps/api/src/core/access-control/`** (nuevo módulo): `Permission`
+  (catálogo global code-owned, `FOUNDATION_PERMISSIONS` = `access.roles.read`,
+  `access.roles.manage`, `access.permissions.read`), `Role` (tenant-scoped,
+  agrupa permisos), `RoleAssignment` (otorga un Role a un Membership en scope
+  `TENANT`/`COMPANY` — `BRANCH`/`WAREHOUSE` diferidos porque esas entidades
+  no existen aún), `PermissionGuard` + `@RequirePermission()` deny-by-default
+  (`docs/MULTITENANCY.md` §9.3). `SeedOwnerRoleUseCase` crea automáticamente
+  un rol "Owner" con todos los permisos vigentes al aprovisionar un tenant.
+- Tablas nuevas (migración `20260827021429_rbac_foundation`, generada y
+  **aplicada contra Postgres real** vía `prisma migrate dev`, no solo
+  diffeada): `permissions`, `roles`, `role_permissions`, `role_assignments`.
+  Detalle completo en `docs/DATABASE.md` §"Access Control tables".
+- Bug arquitectónico real encontrado y corregido durante la implementación:
+  `RolesController` vivía físicamente en `access-control/` pero necesitaba
+  `TenantContextGuard`/`CurrentTenantContext` de `tenants/` — eso creaba un
+  ciclo de carga de módulos a nivel de `require`/`import` (tenants →
+  access-control → tenants) que no aparecía como ciclo de DI de NestJS pero
+  sí rompía en runtime (`CurrentTenantContext is not a function`),
+  descubierto recién al correr la suite de tests completa. Solución: mover
+  `RolesController` a `tenants/presentation/roles.controller.ts` (donde
+  físicamente pertenece por sus dependencias de guard/contexto), e importar
+  todo lo de dominio de RBAC (use cases, DTOs, `PermissionGuard`,
+  `handleAccessControlError`) desde el contrato público de `access-control`.
+  `AccessControlModule` mantiene cero dependencia de Tenants.
+- Tests: 12 nuevos archivos de test (dominio, use cases, guard, wiring de
+  módulo) — 80 tests unitarios totales en `apps/api` (antes 45), todos
+  pasando. Suite de integración contra Postgres real (Testcontainers)
+  ampliada con un escenario de RBAC completo: scoping TENANT vs. COMPANY,
+  aislamiento cross-tenant vía el FK compuesto, y el catch de
+  `P2003`→`MembershipNotFoundInTenantError` para un `membershipId`
+  inexistente — verificado con datos reales, no solo con fakes en memoria.
+- Smoke test manual contra la infraestructura Docker real (no
+  Testcontainers): registro → aprovisionamiento de tenant → verificado que
+  el rol "Owner" se auto-sembró con los 3 permisos vigentes → `GET
+  /api/v1/roles` y `GET /api/v1/permissions` responden 200 con el owner →
+  un segundo membership real sin asignaciones de rol recibe `403
+  PERMISSION_DENIED` en el mismo endpoint. Datos de prueba limpiados después.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección Access
+  Control tables), `docs/SECURITY.md` (nueva sección Access Control / RBAC
+  con modelo de amenazas y huecos conocidos, incluyendo el hueco real de
+  "no hay endpoint de invitación de membership" descubierto durante el
+  smoke test).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test` (80/80),
+  `pnpm build` — los 5 paquetes del monorepo, no solo `@erp/api` — y
+  `pnpm --filter @erp/api test:integration` (3/3 contra Postgres real vía
+  Testcontainers), todo verde.
 
 ### Corrección de esta sesión (no es trabajo nuevo, es un error de esta cola)
 
@@ -100,19 +151,43 @@ en tsc dejaba `dist/` incompleto sin fallar el build.
 - ~~E2E tests (Playwright)~~ — hecho, integrado.
 - ~~Expandir el Design System (Table/Modal/Select/Tabs)~~ — hecho, integrado.
 
-### Próxima tarea definida: UI de RBAC (bloqueada hasta que Claude entregue el contrato)
+### Próxima tarea definida: UI de RBAC (desbloqueada — el backend ya existe y está verificado)
 
-Cuando el ítem 1 de la cola Claude (Access Control/RBAC) esté listo, el
-contrato esperado para que Codex empiece sin ambigüedad es:
+El backend de Access Control/RBAC está implementado, probado (unit +
+integración con Postgres real) y verificado con un smoke test manual contra
+la infraestructura Docker real (ver "Hecho — sesión 5" arriba). El contrato
+HTTP real, no proyectado, es:
 
-- `GET /api/v1/roles` — catálogo de roles del tenant activo (requiere
-  `SessionAuthGuard` + `TenantContextGuard`, igual que `/tenants/current`).
-- `GET /api/v1/permissions` — catálogo global de permisos disponibles
-  (`<context>.<resource>.<action>`, docs/MULTITENANCY.md §9.1).
-- `POST /api/v1/roles` — crear rol con conjunto de permisos.
-- `POST /api/v1/roles/:id/assignments` — asignar rol a un membership con
-  scope (`TENANT`/`COMPANY`/`BRANCH`/`WAREHOUSE`).
+- `GET /api/v1/roles` — catálogo de roles del tenant activo. Requiere
+  `SessionAuthGuard` + `TenantContextGuard` + `PermissionGuard` con
+  `access.roles.read`. Responde `RoleResponseDto[]`: `{ id, name, isSystem,
+  permissionKeys: string[] }`.
+- `GET /api/v1/permissions` — catálogo global de permisos disponibles.
+  Requiere `access.permissions.read`. Responde `PermissionResponseDto[]`:
+  `{ key, description }`. Hoy solo 3 permisos existen:
+  `access.roles.read`, `access.roles.manage`, `access.permissions.read`.
+- `POST /api/v1/roles` — crear rol. Requiere `access.roles.manage`. Body:
+  `{ name: string, permissionKeys: string[] }`. `201` con `RoleResponseDto`.
+  Errores: `409 ROLE_NAME_IN_USE`, `400 UNKNOWN_PERMISSION_KEYS` (con
+  `details.keys`).
+- `POST /api/v1/roles/:id/assignments` — asignar rol a un membership.
+  Requiere `access.roles.manage`. Body: `{ membershipId: string, scopeType:
+  "TENANT" | "COMPANY", scopeId?: string }` (`scopeId` requerido solo si
+  `scopeType` es `COMPANY`; **no** existe todavía `BRANCH`/`WAREHOUSE`, ver
+  hueco en `docs/SECURITY.md`). `201` con `RoleAssignmentResponseDto`.
+  Errores: `404 ROLE_NOT_FOUND`, `404 MEMBERSHIP_NOT_FOUND`, `409
+  ROLE_ASSIGNMENT_DUPLICATE`.
+- Cualquier ruta protegida por `PermissionGuard` sin el permiso requerido
+  responde `403 PERMISSION_DENIED`.
 - Envelope de error igual al ya usado (`statusCode/code/message/details/correlationId`).
+
+**Hueco a tener en cuenta al diseñar la UI**: hoy no existe ningún endpoint
+para agregar un segundo usuario a un tenant (`POST
+/api/v1/tenants/:id/memberships` o similar no existe). Una pantalla
+"Roles y permisos" puede listar/crear roles y ver asignaciones existentes,
+pero el flujo "invitar usuario → asignarle un rol" no se puede completar de
+punta a punta hasta que Organization/Tenancy agregue ese endpoint (ítem 8 de
+la cola Claude). No es una limitación de la UI ni del contrato de RBAC.
 
 Con eso disponible, la UI natural es una pantalla "Roles y permisos" en
 `apps/erp-web` usando exactamente los primitivos que Codex ya construyó
@@ -132,8 +207,8 @@ esto — ya existe todo lo necesario.
 
 ### Bloqueado
 
-- UI de gestión de roles/permisos — depende del contrato de arriba
-  (cola Claude, ítem 1).
+- Nada. La UI de gestión de roles/permisos ya no está bloqueada — el
+  contrato de arriba es real y está verificado end-to-end.
 
 ---
 
@@ -149,7 +224,11 @@ Playwright).
 - Files depende de que el código de MinIO se escriba y se pruebe contra el
   contenedor ya disponible (no bloqueado, solo pendiente de implementar).
 - Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
-- UI de RBAC de Codex depende del contrato HTTP de la sección de arriba.
+- UI de RBAC de Codex depende del contrato HTTP de la sección de arriba —
+  contrato ya entregado y verificado, ítem desbloqueado.
+- Un flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
+  en su forma completa "invitar → asignar rol") depende del endpoint de
+  invitación de membership (ítem 8 de la cola Claude).
 - Event Bus depende únicamente de implementar el diseño ya existente en
   `docs/EVENTS.md` — no hay diseño pendiente.
 

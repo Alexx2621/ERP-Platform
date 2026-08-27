@@ -45,3 +45,4 @@ export {
   COMPANY_ID_HEADER,
 } from "./presentation/tenant-context.guard";
 export { CurrentTenantContext } from "./presentation/current-tenant-context.decorator";
+export { RolesController } from "./presentation/roles.controller";

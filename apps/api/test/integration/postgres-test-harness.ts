@@ -55,7 +55,7 @@ export async function startPostgresTestHarness(): Promise<PostgresTestHarness> {
       connectionString,
       reset: async () => {
         await prisma?.$executeRawUnsafe(
-          'TRUNCATE TABLE "sessions", "user_credentials", "companies", "organizations", "memberships", "tenants", "users" CASCADE',
+          'TRUNCATE TABLE "sessions", "user_credentials", "role_assignments", "role_permissions", "roles", "permissions", "companies", "organizations", "memberships", "tenants", "users" CASCADE',
         );
       },
       stop: async () => {

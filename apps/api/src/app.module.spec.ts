@@ -8,10 +8,17 @@ import {
   ProvisionTenantUseCase,
   ResolveTenantContextUseCase,
   TenantContextGuard,
+  RolesController,
 } from "./core/tenants";
 import { TenantsController } from "./core/tenants/presentation/tenants.controller";
 import { CreateOrganizationUseCase } from "./core/organizations";
 import { CreateCompanyUseCase } from "./core/companies";
+import {
+  CreateRoleUseCase,
+  AssignRoleUseCase,
+  HasPermissionUseCase,
+  PermissionGuard,
+} from "./core/access-control";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -38,6 +45,11 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(TenantContextGuard)).toBeInstanceOf(TenantContextGuard);
     expect(moduleRef.get(CreateOrganizationUseCase)).toBeInstanceOf(CreateOrganizationUseCase);
     expect(moduleRef.get(CreateCompanyUseCase)).toBeInstanceOf(CreateCompanyUseCase);
+    expect(moduleRef.get(RolesController)).toBeInstanceOf(RolesController);
+    expect(moduleRef.get(CreateRoleUseCase)).toBeInstanceOf(CreateRoleUseCase);
+    expect(moduleRef.get(AssignRoleUseCase)).toBeInstanceOf(AssignRoleUseCase);
+    expect(moduleRef.get(HasPermissionUseCase)).toBeInstanceOf(HasPermissionUseCase);
+    expect(moduleRef.get(PermissionGuard)).toBeInstanceOf(PermissionGuard);
 
     await moduleRef.close();
   });

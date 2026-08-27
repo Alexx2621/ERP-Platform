@@ -1,8 +1,21 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 
-export type { Prisma, User, UserCredential, Session } from "../generated/prisma/client";
-export { UserStatus, SessionStatus } from "../generated/prisma/enums";
+// `Prisma` is a real runtime value in the generated client (it carries
+// `Prisma.PrismaClientKnownRequestError` etc., not just types) — re-exporting
+// it `export type`-only would silently make `instanceof` checks against it
+// impossible for anything importing from `@erp/database`.
+export { Prisma } from "../generated/prisma/client";
+export type {
+  User,
+  UserCredential,
+  Session,
+  Permission,
+  Role,
+  RolePermission,
+  RoleAssignment,
+} from "../generated/prisma/client";
+export { UserStatus, SessionStatus, RoleAssignmentScope } from "../generated/prisma/enums";
 export { PrismaClient };
 
 export interface CreatePrismaClientOptions {

@@ -90,3 +90,91 @@ environment this was built in). This has **not** been applied to a real
 PostgreSQL instance yet; treat it as reviewed-but-unverified until someone
 runs `prisma migrate deploy` against an actual database and confirms it
 applies cleanly.
+
+---
+
+## Access Control tables (RBAC, 2026-08-27)
+
+Scope: `docs/MULTITENANCY.md` §9 — Role, Permission, RoleAssignment. Applied
+to a real running PostgreSQL instance via `prisma migrate dev` (not just
+diffed) — see migration note below.
+
+### `permissions`
+
+Global, code-owned catalog — **not** tenant-scoped, and never created from
+the UI. The set of valid keys is `FOUNDATION_PERMISSIONS`
+(`apps/api/src/core/access-control/application/permission-catalog.ts`),
+upserted into this table on every boot by `PermissionCatalogSeeder`. Adding a
+new permission is a code change (extend the catalog), not a data-entry task.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `key` | `varchar(150)` | `UNIQUE`. `<context>.<resource>.<action>`, e.g. `access.roles.manage` (MASTER_SPEC §9). |
+| `description` | `varchar(300)` | Human-readable, shown in `GET /api/v1/permissions`. |
+| `created_at` | `timestamptz(6)` | |
+
+### `roles`
+
+Tenant-owned, named group of permissions. `is_system` marks roles the
+platform creates itself (currently only the auto-seeded "Owner" role at
+tenant provisioning) rather than something a tenant admin created — reserved
+so a future UI can block editing/deleting system roles without a separate
+flag proliferation.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `tenant_id` | `uuid` | FK → `tenants.id` `ON DELETE RESTRICT` (a tenant with roles cannot be hard-deleted out from under them — matches the platform's general no-cascading-delete-of-financial/security-relevant-data posture). |
+| `name` | `varchar(100)` | Unique per tenant (`@@unique([tenantId, name])`) — the same name is free to reuse in a different tenant. |
+| `is_system` | `boolean` | Default `false`. |
+| `created_at`, `updated_at` | `timestamptz(6)` | |
+
+Also declares `@@unique([tenantId, id])` — this is what lets every other
+table reference a Role via the composite `(tenantId, roleId)` FK pattern
+instead of trusting a bare `roleId`, the same tenant-safety pattern used by
+`companies`/`organizations` (`docs/MULTITENANCY.md` §8).
+
+### `role_permissions`
+
+Join table, Role ↔ Permission (many-to-many). Carries `tenant_id` too (even
+though it's derivable from the role) so the FK to `roles` can be the safe
+composite `(tenant_id, role_id) → roles(tenant_id, id)` rather than a bare
+`role_id → roles.id`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `tenant_id`, `role_id` | `uuid` | Composite FK → `roles(tenant_id, id)` `ON DELETE CASCADE` — deleting a role clears its grants. |
+| `permission_id` | `uuid` | FK → `permissions.id` `ON DELETE RESTRICT` — a permission in active use cannot be silently deleted out from under a role. |
+
+PK is `(role_id, permission_id)`; a separate index on `permission_id` alone
+supports "which roles grant this permission" lookups.
+
+### `role_assignments`
+
+Grants a Role to a Membership within a scope. This is the table
+`HasPermissionUseCase` actually reads to answer "can membership X do Y."
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `tenant_id`, `membership_id` | `uuid` | Composite FK → `memberships(tenant_id, id)` `ON DELETE CASCADE`. This FK is the actual enforcement that a `membership_id` belongs to `tenant_id` — the application layer never queries Tenancy to pre-validate it (`PrismaRoleAssignmentRepository` catches the `P2003` violation and rethrows as `MembershipNotFoundInTenantError`, see `docs/SECURITY.md`). |
+| `tenant_id`, `role_id` | `uuid` | Composite FK → `roles(tenant_id, id)` `ON DELETE RESTRICT` — a role with live assignments cannot be deleted. |
+| `scope_type` | enum `TENANT`/`COMPANY` | `BRANCH`/`WAREHOUSE` are deferred — those entities don't exist yet, and accepting a `scope_id` with nothing to validate it against would be an unenforced access claim, not a real control (see the domain entity's own docstring). |
+| `scope_id` | `uuid?` | `NULL` for `TENANT` scope (covers everything in the tenant); required for `COMPANY` scope. The domain entity (`RoleAssignment.create`) rejects the two invalid combinations before a row is ever built — this is a domain invariant enforced in code, not (yet) a DB `CHECK` constraint. |
+| `created_at` | `timestamptz(6)` | |
+
+`@@unique([membershipId, roleId, scopeType, scopeId])` prevents granting the
+exact same role at the exact same scope to the same membership twice
+(`DuplicateRoleAssignmentError`). An index on `(tenant_id, membership_id)`
+supports the primary read pattern: "every assignment for this membership in
+this tenant," which `HasPermissionUseCase` and `GET /api/v1/roles` both use.
+
+### Migration
+
+`packages/database/prisma/migrations/20260827021429_rbac_foundation/` —
+generated and applied via `prisma migrate dev --name rbac_foundation`
+against the real `erp_platform` Postgres container (`docker compose up -d`),
+not diffed against an empty schema like the auth migration above. Confirmed
+applying cleanly both there and against the ephemeral Testcontainers
+instance used by `apps/api/test/integration`.

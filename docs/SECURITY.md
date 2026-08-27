@@ -105,3 +105,69 @@ expired session (`validate-session.use-case.spec.ts`,
 `refresh-session.use-case.spec.ts`); revoked session
 (`validate-session.use-case.spec.ts`, `refresh-session.use-case.spec.ts`,
 `logout.use-case.spec.ts`).
+
+## Access Control / RBAC (2026-08-27)
+
+Scope: `Permission`, `Role`, `RoleAssignment`, `PermissionGuard`,
+`@RequirePermission()` (`apps/api/src/core/access-control`) — this is what
+closes the gap the previous section flagged: "a valid session proves *this
+is user X*, not *user X may act on tenant Y*." Design in
+`docs/MULTITENANCY.md` §9; schema in `docs/DATABASE.md`.
+
+### Assets
+
+- Role → permission mappings (`role_permissions`) and role → membership
+  grants (`role_assignments`) — these are the actual authorization boundary
+  for every future business endpoint, not just this module's own routes.
+- The permission catalog itself (`permissions`) — code-owned, not
+  user-writable, so it cannot be used as a privilege-escalation vector via
+  the API (there is no `POST /api/v1/permissions`).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A membership with no role acts anyway (fail-open) | Deny-by-default: `HasPermissionUseCase` returns `false` unless an active `RoleAssignment` whose role includes the key and whose scope covers the request context is found. Exercised directly (`has-permission.use-case.spec.ts`: "denies by default when the membership has no role assignments") and end-to-end against real Postgres+HTTP in a live smoke test (fresh membership with zero assignments → `GET /api/v1/roles` → `403 PERMISSION_DENIED`). |
+| `PermissionGuard` applied without a permission requirement, or run before tenant context is resolved | Both fail closed with a `500` (`PERMISSION_METADATA_MISSING` / `PERMISSION_GUARD_REQUIRES_TENANT_CONTEXT`) rather than silently allowing the request through — a misconfigured route is loud in development, not a silent authorization bypass in production. `permission.guard.spec.ts` covers both. |
+| A `COMPANY`-scoped grant is used to act on a different company | `RoleAssignment.covers({ companyId })` only returns `true` when `scopeId === companyId`; a `TENANT`-scoped grant always covers, by design (`role-assignment.entity.spec.ts`, plus the integration test's cross-tenant assertions). |
+| Cross-tenant role/assignment access via a guessed id | Every table in this module is tenant-scoped and referenced through the composite `(tenantId, id)` FK pattern (`docs/MULTITENANCY.md` §8): `roles`, `role_permissions`, and `role_assignments` all carry `tenant_id`, so a role or assignment belonging to tenant B is structurally invisible to a query scoped to tenant A, not just filtered out by a `WHERE` clause that could be forgotten. Verified against real Postgres in `apps/api/test/integration/prisma-repositories.integration-spec.ts`. |
+| Assigning a role to a `membershipId` that does not belong to the tenant | This module never imports Tenancy to pre-validate the membership (that would create a module dependency cycle, see `access-control.module.ts`). Instead, the composite FK `role_assignments(tenant_id, membership_id) → memberships(tenant_id, id)` is the actual control: `PrismaRoleAssignmentRepository` catches the resulting `P2003` violation and rethrows it as the domain-level `MembershipNotFoundInTenantError` (mapped to `404 MEMBERSHIP_NOT_FOUND`), so a bad membership id is rejected by the database, not merely by application logic that could have a gap. Verified against real Postgres (not the in-memory fake, which deliberately does not simulate this FK — see its own comment). |
+| A brand-new tenant's owner has an active membership but zero permissions | `SeedOwnerRoleUseCase` runs immediately after `ProvisionTenantUseCase` succeeds (`TenantsController.provision`), creating a system "Owner" role with every permission that exists at that moment and assigning it at `TENANT` scope. Confirmed against real infra in a live smoke test: `POST /api/v1/tenants` → `GET /api/v1/roles` returns the seeded Owner role with all three current permission keys. |
+| Privilege escalation via the role-management endpoints themselves | `POST /api/v1/roles` and `POST /api/v1/roles/:id/assignments` are gated by `access.roles.manage` through the same `PermissionGuard` as every other protected route — there is no separate, less-guarded path to grant roles. A membership cannot grant itself a permission it does not already effectively have unless it already holds `access.roles.manage`. |
+| Unknown/typo'd permission key accepted when creating a role | `CreateRoleUseCase` validates every requested key against the `permissions` table and rejects the whole request (`UnknownPermissionKeysError` → `400`) if any key is unrecognized — a role can never reference a permission that doesn't exist in the catalog. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No `BRANCH`/`WAREHOUSE` scope.** `RoleAssignmentScope` is only `TENANT`/
+  `COMPANY` because those are the only organizational entities that exist
+  yet (`docs/ARCHITECTURE.md`'s Organization Structure context). Accepting a
+  `scope_id` for an entity type with nothing to validate it against would be
+  an unenforced access claim, not a real control — deferred until those
+  entities are built, not forgotten.
+- **No membership-invitation endpoint yet.** There is currently no
+  `POST /api/v1/tenants/:id/memberships` (or similar) to add a second user to
+  an existing tenant through the API — the live smoke test for this module
+  had to insert a `Membership` row directly via Prisma to exercise the
+  deny-by-default path with a second, real user. This is a real gap in
+  Organization/Tenancy, not in RBAC itself, and should be closed before
+  multi-user tenants are usable end-to-end.
+- **No retroactive permission backfill.** `SeedOwnerRoleUseCase` grants
+  "every permission that exists at provisioning time." If a new permission
+  is added to the catalog later, existing tenants' Owner roles are **not**
+  automatically updated to include it — a future migration/backfill job, not
+  something this use case does implicitly on every boot (which would make
+  role contents silently drift underneath whatever a tenant admin
+  configured).
+- **No audit log entries yet** for role creation or assignment — same gap
+  `docs/SECURITY.md`'s Authentication section already flags for login/logout;
+  the Audit module (`docs/WORK_QUEUE.md`) doesn't exist yet. `CreateRoleUseCase`
+  and `AssignRoleUseCase` are the natural place to add audit calls once that
+  port exists.
+- **Owner-role seeding is not transactional with tenant provisioning.**
+  Documented already in `TenantsController.provision`'s own comment and
+  repeated here because it is a security-relevant gap, not just a technical
+  one: if `SeedOwnerRoleUseCase` throws after `ProvisionTenantUseCase`
+  commits, the tenant exists with an active owner membership that can
+  authenticate but cannot yet manage anything (including granting itself a
+  role), since no role is assigned. No saga/outbox exists yet to make this
+  atomic or auto-retry it.

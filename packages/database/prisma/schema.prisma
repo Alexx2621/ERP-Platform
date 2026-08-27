@@ -99,9 +99,11 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  memberships   Membership[]
-  organizations Organization[]
-  companies     Company[]
+  memberships     Membership[]
+  organizations   Organization[]
+  companies       Company[]
+  roles           Role[]
+  roleAssignments RoleAssignment[]
 
   @@map("tenants")
 }
@@ -123,8 +125,9 @@ model Membership {
   createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments RoleAssignment[]
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id])
@@ -189,4 +192,77 @@ model Company {
 enum CompanyStatus {
   ACTIVE
   INACTIVE
+}
+
+/// Global, code-owned permission catalog (docs/MULTITENANCY.md §9.1).
+/// Never created from the UI; seeded idempotently by PermissionCatalogSeeder.
+model Permission {
+  id          String   @id @db.Uuid
+  key         String   @unique @db.VarChar(150)
+  description String   @db.VarChar(300)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// A tenant-owned, named group of permissions. Roles are custom per tenant;
+/// `isSystem` marks the "Owner" role seeded at provisioning (docs/MULTITENANCY.md §9).
+model Role {
+  id        String   @id @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(100)
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  rolePermissions RolePermission[]
+  assignments     RoleAssignment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+/// Join table. Carries `tenantId` solely so the FK to Role can be the
+/// composite (tenantId, id) pattern — Permission itself is global (docs/ARCHITECTURE.md §8.1).
+model RolePermission {
+  tenantId     String @map("tenant_id") @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+enum RoleAssignmentScope {
+  TENANT
+  COMPANY
+}
+
+/// Grants a Role to a Membership within a scope (docs/MULTITENANCY.md §9.2).
+/// BRANCH/WAREHOUSE scopes are deferred until those entities exist — accepting
+/// a scopeId with nothing to validate it against would be an unenforced claim.
+model RoleAssignment {
+  id           String              @id @db.Uuid
+  tenantId     String              @map("tenant_id") @db.Uuid
+  membershipId String              @map("membership_id") @db.Uuid
+  roleId       String              @map("role_id") @db.Uuid
+  scopeType    RoleAssignmentScope @map("scope_type")
+  scopeId      String?             @map("scope_id") @db.Uuid
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  membership Membership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+  role       Role       @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([membershipId, roleId, scopeType, scopeId])
+  @@index([tenantId, membershipId])
+  @@map("role_assignments")
 }

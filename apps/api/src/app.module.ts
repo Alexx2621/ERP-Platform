@@ -9,6 +9,7 @@ import { AuthModule } from "./core/auth";
 import { TenantsModule } from "./core/tenants";
 import { OrganizationsModule } from "./core/organizations";
 import { CompaniesModule } from "./core/companies";
+import { AccessControlModule } from "./core/access-control";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CompaniesModule } from "./core/companies";
     AuthModule,
     OrganizationsModule,
     CompaniesModule,
+    AccessControlModule,
     TenantsModule,
   ],
 })
