@@ -1,53 +1,39 @@
-# Active Tasks
+# Historical Task Registry
 
-## Claude
+This file is retained to preserve the history of the original Foundation task
+split. It is no longer an active assignment board and must not be used to
+select work or claim file ownership.
 
-Task: FOUNDATION-001
-Branch: feature/foundation-auth
-Status: DONE — pending review and merge
+The active source of truth is:
 
-Owned files:
+- `docs/WORK_QUEUE.md` for ordered work;
+- `docs/PROJECT_STATE.md` for the implemented state;
+- `CLAUDE.md` and `AGENTS.md` for the current operating model.
 
-apps/api/src/core/auth/**
-apps/api/src/core/users/**
+## Current ownership
 
-Note for whoever merges/reviews next (see "Shared bootstrap" below): this
-branch also contains the monorepo bootstrap (root package.json, pnpm-workspace.yaml,
-turbo.json, tsconfig.base.json, eslint.config.mjs, packages/database) because
-neither FOUNDATION-001 nor FOUNDATION-002 could exist without it and no task
-owned it. Merge/rebase FOUNDATION-002 onto this branch (or merge this branch
-first) rather than having Codex recreate the same scaffolding independently —
-two independent bootstraps would conflict on every shared file below.
+Claude is the sole development owner of the ERP across architecture, backend,
+frontend, database, testing, infrastructure, documentation and integration.
+Codex has no standing assignment. It may participate only in an explicitly
+assigned, bounded and isolated task.
 
----
+## Retired Foundation split
 
-## Codex
+The repository originally used the following parallel assignments:
 
-Task: FOUNDATION-002
-Branch: feature/foundation-tenancy
-Status: IN_PROGRESS
+- `FOUNDATION-001`: Identity and Authentication, assigned to Claude on
+  `feature/foundation-auth`.
+- `FOUNDATION-002`: Tenancy, Organizations and Companies, assigned to Codex
+  on `feature/foundation-tenancy`.
 
-Owned files:
+Those tasks and their shared bootstrap work were completed, reviewed and
+integrated long ago. Their former file locks, branch coordination notes and
+pending-merge instructions are obsolete. The resulting technical history is
+recorded in Git, `docs/PROJECT_STATE.md` and the completed sections of
+`docs/WORK_QUEUE.md`.
 
-apps/api/src/core/tenants/**
-apps/api/src/core/organizations/**
-apps/api/src/core/companies/**
+## Active task
 
----
-
-## Shared File Locks
-
-package.json: CREATED by Claude (feature/foundation-auth, unmerged) — monorepo root manifest
-pnpm-lock.yaml: CREATED by Claude (feature/foundation-auth, unmerged)
-prisma/schema.prisma: CREATED by Claude, at packages/database/prisma/schema.prisma
-  (not repo-root `prisma/`, per docs/ARCHITECTURE.md §13 monorepo layout) —
-  contains User/UserCredential/Session only (FOUNDATION-001 scope). Codex:
-  append Tenant/Organization/Company/Membership models to this same file,
-  do not create a second schema file.
-docker-compose.yml: NONE — still not created (out of scope of what was
-  authorized for FOUNDATION-001's bootstrap; needed for Fase 1A/1B, no owner yet)
-turbo.json: CREATED by Claude (feature/foundation-auth, unmerged)
-tsconfig.json: CREATED by Claude as tsconfig.base.json at repo root, plus
-  apps/api/tsconfig.json and packages/database/tsconfig.json (each extends
-  the base). A new package should add its own tsconfig.json extending
-  ../../tsconfig.base.json rather than editing an existing package's config.
+No separate task document is active. Claude should take the highest-priority
+non-blocked item from `docs/WORK_QUEUE.md`; at the time of this registry update,
+that item is Event Bus implementation.

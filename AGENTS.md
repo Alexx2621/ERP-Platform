@@ -6,12 +6,84 @@ This repository contains a modular enterprise SaaS platform.
 
 Before implementing any task, read:
 
-- docs/MASTER_SPEC.md
-- docs/ARCHITECTURE.md
-- docs/PROJECT_STATE.md
-- docs/DECISIONS.md
-- docs/tasks/CURRENT.md
-- The task document assigned to you
+- `docs/MASTER_SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/PROJECT_STATE.md`
+- `docs/WORK_QUEUE.md`
+- `docs/DECISIONS.md`
+- `docs/tasks/CURRENT.md`
+- the relevant domain documentation and task specification, when one exists
+
+Repository documentation is the source of truth. If documents disagree,
+preserve product and architecture decisions and correct the operational
+documentation before continuing.
+
+## Development ownership
+
+Claude is the sole development owner of the ERP. This ownership covers the
+complete delivery lifecycle:
+
+- architecture and domain modeling;
+- backend, frontend, UI/UX and Design System;
+- database schema, Prisma and migrations;
+- security, authentication, authorization and tenant isolation;
+- events, workers, integrations and infrastructure;
+- API contracts, SDKs and clients;
+- unit, integration, E2E and security testing;
+- CI/CD, documentation, Git integration and roadmap maintenance.
+
+There is no permanent split of responsibilities between Claude and Codex, no
+parallel agent queue and no routine handoff protocol. Claude selects and
+completes the highest-priority non-blocked ERP item in `docs/WORK_QUEUE.md`,
+including every layer required to make that item production-ready.
+
+## Optional isolated assistance
+
+Codex may work in this repository only when the user or Claude explicitly
+assigns a bounded, isolated task. An assignment must state:
+
+- the objective and acceptance criteria;
+- the allowed files or area;
+- the base branch and delivery branch;
+- required validation;
+- whether Claude must review or integrate the result.
+
+Codex must not select ERP work autonomously, claim an ongoing area, maintain a
+separate backlog, or continue with another task after the assigned scope is
+complete. If the task overlaps active Claude work or requires an architectural
+decision, Codex stops and reports the dependency. The historical `ai/codex`
+branch may be retained for traceability, but it is not part of the normal ERP
+workflow.
+
+## Git workflow
+
+- `develop` is the integrated source of truth.
+- `ai/claude` is Claude's persistent ERP working branch.
+- `main` is the stable/release branch.
+- Prefer short-lived `feat/*`, `fix/*`, `docs/*` or `chore/*` branches when a
+  change benefits from separate review.
+- Do not force-push shared branches.
+- Integrate only validated, relevant commits into `develop`.
+- Keep `ai/claude` synchronized with `develop` before starting the next block.
+
+The former permanent two-agent flow (`ai/claude` + `ai/codex` with recurring
+handoffs) is retired. Existing commits and historical references remain valid
+technical history; they do not define current ownership.
+
+## Work selection and execution
+
+Before starting or continuing:
+
+1. Confirm the working tree and current branch.
+2. Read `docs/WORK_QUEUE.md` and `docs/PROJECT_STATE.md`.
+3. Select the highest-priority non-blocked item.
+4. Read the relevant architecture, security, database, event or plugin docs.
+5. Define the complete vertical scope: domain, persistence, API, UI/client,
+   tests, security and documentation as applicable.
+6. Check current code and schema before modifying them.
+
+Do not ask the user about routine implementation, testing, documentation or
+safe Git operations. Escalate only decisions listed under User escalation.
 
 ## Architecture
 
@@ -22,7 +94,8 @@ The platform follows:
 - PostgreSQL
 - Prisma
 - React
-- Next.js
+- Vite for the ERP web application
+- Next.js for future storefronts
 - Redis
 - BullMQ
 - Docker
@@ -31,201 +104,63 @@ The platform follows:
 - Event-Driven Architecture
 - API-First design
 
-## Collaboration
+Never introduce a major architectural change silently. Changes involving
+databases, queues, frameworks, authentication, tenancy, plugins, deployment or
+module boundaries require an ADR or explicit approval when the existing source
+of truth does not already authorize them.
 
-Claude Code and Codex may work on this repository simultaneously.
+## Shared and high-risk files
 
-Before changing code:
+No file is permanently owned by a separate agent. However, changes to shared or
+high-risk files require deliberate review, including:
 
-1. Read docs/tasks/CURRENT.md.
-2. Identify your assigned task.
-3. Check file ownership.
-4. Modify only files inside your assigned scope.
+- `package.json` and `pnpm-lock.yaml`;
+- `packages/database/prisma/schema.prisma` and migrations;
+- `docker-compose.yml`;
+- `turbo.json` and TypeScript configuration;
+- CI workflows and shared contracts.
 
-Never modify files assigned to another active task.
+Inspect the full diff, keep migrations versioned, and do not include unrelated
+changes.
 
-If your task requires modifying a file owned by another agent, stop and report the dependency.
+## Quality and completion
 
-## Shared files
+Before declaring a stable block complete, run when available and relevant:
 
-Files marked as LOCKED or owned by another task must not be modified.
+- `pnpm install --frozen-lockfile` when dependencies changed;
+- `pnpm lint`;
+- `pnpm typecheck`;
+- `pnpm test`;
+- `pnpm build`;
+- integration and E2E tests proportional to the change;
+- `git diff --check`;
+- `git status` and `git diff` review.
 
-Examples:
-
-- package.json
-- pnpm-lock.yaml
-- prisma/schema.prisma
-- docker-compose.yml
-- turbo.json
-- tsconfig files
-
-Ownership is defined in docs/tasks/CURRENT.md.
-
-## Architecture changes
-
-Never introduce major architectural changes silently.
-
-Changes involving:
-
-- databases
-- queues
-- frameworks
-- authentication architecture
-- tenancy strategy
-- plugin architecture
-- deployment architecture
-
-require an ADR or explicit approval.
-
-## Quality
-
-Before declaring a task complete, run when available:
-
-pnpm lint
-pnpm typecheck
-pnpm test
-
-Always inspect:
-
-git status
-git diff
-
-Do not include unrelated changes.
+Update `docs/PROJECT_STATE.md` and `docs/WORK_QUEUE.md` in the same block when
+the implementation changes project state or priorities. Report actual command
+results and any validation not run.
 
 ## Critical rules
 
 Never:
 
-- bypass tenant isolation
-- put business logic inside controllers
-- use floating point for money
-- modify inventory without ledger traceability
-- store secrets in source control
-- expose credentials
-- store payment-card data
-- skip backend validation
+- bypass tenant isolation;
+- put business logic inside controllers;
+- use floating point for money;
+- modify inventory without ledger traceability;
+- store secrets or credentials in source control;
+- store payment-card data;
+- skip backend validation;
+- expose internal errors or sensitive data;
+- simulate a successful integration that is not connected.
 
-## Autonomous Collaboration Protocol
+## User escalation
 
-Codex is a parallel development agent.
+Stop and ask the user only for:
 
-Claude is the Tech Lead and primary integration owner.
-
-The source of truth is the repository documentation, especially:
-
-- docs/MASTER_SPEC.md
-- docs/ARCHITECTURE.md
-- docs/PROJECT_STATE.md
-- docs/WORK_QUEUE.md
-- docs/DECISIONS.md
-- specialized domain documentation related to the current task
-
-### Permanent Git branches
-
-- Codex works on: `ai/codex`
-- Claude works on: `ai/claude`
-- Integration branch: `develop`
-- Stable/production branch: `main`
-
-Codex must never merge directly into `develop` unless explicitly instructed by Claude as Tech Lead.
-
-### Work selection
-
-Before starting work:
-
-1. Read `docs/WORK_QUEUE.md`.
-2. Read `docs/PROJECT_STATE.md`.
-3. Select the highest-priority non-blocked item assigned to Codex.
-4. Read all relevant architecture/domain documentation.
-5. Confirm that the work does not conflict with Claude-owned active files.
-
-If the next Codex task is not blocked, continue automatically without waiting for user instructions.
-
-### Preferred responsibilities
-
-Codex should prioritize:
-
-- ERP frontend
-- UI
-- Design System
-- API clients
-- SDK
-- integration tests
-- E2E tests
-- CI/tooling
-- documentation
-- isolated backend work explicitly assigned in WORK_QUEUE
-
-### End-of-block protocol
-
-Whenever a stable block is complete:
-
-1. Run:
-   - `pnpm lint`
-   - `pnpm typecheck`
-   - relevant tests
-   - `pnpm build`
-   - integration/E2E tests when applicable
-
-2. Inspect:
-   - `git status`
-   - `git diff`
-   - `git diff --check`
-
-3. Commit only relevant changes.
-
-4. Push commits to:
-   - `origin/ai/codex`
-
-5. Do not merge directly into `develop`.
-
-6. If more non-blocked Codex work exists in `WORK_QUEUE.md`, continue automatically.
-
-7. If the next work depends on Claude or integration is required, stop and provide the handoff report below.
-
-### Required completion report
-
-Always finish a stopped block with:
-
-#### COMPLETED
-What was implemented.
-
-#### VALIDATION
-Commands/tests executed and results.
-
-#### COMMITS
-Commit SHA and message.
-
-#### GIT STATE
-- current branch
-- working tree clean or not
-- pushed to origin or not
-- relation to develop if relevant
-
-#### INTEGRATION NOTES
-Anything Claude should verify during integration.
-
-#### HANDOFF TO CLAUDE
-Provide one concise, ready-to-copy instruction telling Claude exactly what to review, integrate, validate, or unblock next.
-
-#### NEXT CODEX WORK
-State the next Codex item after synchronization/integration.
-
-#### NEEDS USER DECISION
-Use exactly:
-- `NO`
-or
-- `YES` followed by the decision required, options, and recommended option.
-
-### Synchronization
-
-When Codex needs the latest integration state:
-
-1. ensure the worktree is clean;
-2. `git fetch origin`;
-3. merge `origin/develop` into `ai/codex`;
-4. resolve only routine and safe conflicts;
-5. rerun validations;
-6. push `ai/codex`.
-
-Do not force-push unless explicitly required and approved.
+- major architectural decisions not resolved by current documentation;
+- destructive or irreversible migrations;
+- potential data loss;
+- material business-rule ambiguity;
+- irreversible security-sensitive choices;
+- conflicts that cannot be resolved safely.

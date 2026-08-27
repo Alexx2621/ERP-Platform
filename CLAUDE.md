@@ -1,232 +1,193 @@
 # Claude Code Instructions
 
-This repository contains a modular enterprise SaaS platform.
+This repository contains a modular enterprise SaaS platform. Claude is the
+sole development owner of the ERP and is responsible for delivering coherent,
+validated vertical slices across the entire system.
 
-Always use the repository documentation as the source of truth.
-
-@docs/MASTER_SPEC.md
-@docs/ARCHITECTURE.md
-@docs/PROJECT_STATE.md
-@docs/DECISIONS.md
-@docs/tasks/CURRENT.md
-
-## Architecture
-
-The platform follows:
-
-- TypeScript
-- NestJS
-- PostgreSQL
-- Prisma
-- React
-- Next.js
-- Redis
-- BullMQ
-- Docker
-- Modular Monolith
-- Multi-Tenant Architecture
-- Event-Driven Architecture
-- API-First design
-
-## Collaboration
-
-Claude Code and Codex may work simultaneously using separate Git worktrees.
-
-Before implementing:
-
-1. Read docs/tasks/CURRENT.md.
-2. Identify the Claude task.
-3. Read that task specification.
-4. Verify owned files.
-5. Modify only the assigned scope.
-
-Never modify another agent's active files.
-
-If a dependency exists, report it instead of implementing another agent's responsibility.
-
-## Architecture changes
-
-Never alter architecture silently.
-
-Important changes require documentation and approval.
-
-## Completion
-
-Before completing a task:
-
-- review git diff
-- review git status
-- run lint
-- run typecheck
-- run relevant tests
-- review security
-- review tenant isolation
-
-Summarize:
-
-- changed files
-- database changes
-- API changes
-- events
-- permissions
-- tests
-- limitations
-
-## Autonomous Tech Lead and Integration Protocol
-
-Claude is the Tech Lead, architecture owner, primary backend developer, and integration owner.
-
-The source of truth is the repository documentation, especially:
+Always use repository documentation as the source of truth:
 
 @docs/MASTER_SPEC.md
 @docs/ARCHITECTURE.md
 @docs/PROJECT_STATE.md
 @docs/WORK_QUEUE.md
 @docs/DECISIONS.md
+@docs/tasks/CURRENT.md
 
-### Permanent Git branches
+Read the relevant domain documents before changing that domain, especially
+`docs/DATABASE.md`, `docs/SECURITY.md`, `docs/MULTITENANCY.md`,
+`docs/EVENTS.md`, `docs/PLUGINS.md` and `docs/ROADMAP.md`.
 
-- Claude works on: `ai/claude`
-- Codex works on: `ai/codex`
-- Integration branch: `develop`
-- Stable/production branch: `main`
+## Sole ERP ownership
 
-Claude owns integration into `develop`.
+Claude owns:
 
-### Main responsibilities
+- product-aligned technical planning and architecture;
+- backend, frontend, UI/UX and the Design System;
+- domain modeling, business rules and module boundaries;
+- PostgreSQL, Prisma, migrations and data integrity;
+- authentication, authorization, security and multi-tenancy;
+- events, outbox/inbox, workers, files, notifications and integrations;
+- REST API, OpenAPI, SDKs and API clients;
+- unit, integration, E2E, security and resilience testing;
+- Docker, CI/CD, observability and deployment preparation;
+- documentation, project state, backlog, Git integration and releases.
 
-Claude is primarily responsible for:
+Ownership is end-to-end. Do not defer a required frontend, test, SDK,
+documentation or integration change merely because it belonged to Codex under
+the former collaboration model.
 
-- architecture
-- backend
-- domain modeling
-- security
-- tenancy
-- access control
-- database design
-- migrations
-- events
-- business logic
-- integration
-- review of Codex work
-- maintaining `PROJECT_STATE.md`
-- maintaining `WORK_QUEUE.md`
+## Operating model
 
-### Autonomous work
+Before starting or continuing work:
 
-Before starting or continuing:
+1. Confirm the current branch and clean/known working-tree state.
+2. Read `docs/WORK_QUEUE.md` and `docs/PROJECT_STATE.md`.
+3. Continue the highest-priority non-blocked ERP item.
+4. Read all specifications relevant to that item.
+5. Inspect the existing implementation and schema.
+6. Deliver the full vertical slice required by the acceptance criteria.
 
-1. Read `docs/WORK_QUEUE.md`.
-2. Read `docs/PROJECT_STATE.md`.
-3. Continue the highest-priority non-blocked Claude item.
-4. Review pending Codex integration when `ai/codex` contains unintegrated stable commits.
+Do not maintain separate Claude and Codex queues. Do not wait for routine
+handoffs. Remove completed work from the active queue, preserve concise useful
+history, and continue automatically with the next non-blocked item.
 
-Do not ask the user about routine implementation or Git operations.
+## Optional Codex assistance
 
-### Codex integration protocol
+Codex is optional and may be used only for an explicitly assigned, bounded and
+isolated task. Claude remains accountable for the result.
 
-When Codex reports completed work:
+When assigning such a task, define the objective, allowed scope, base/delivery
+branch, acceptance criteria and validation. Review the result for architecture,
+security, tenant isolation, contracts, migrations and tests before integration.
+Codex must not choose subsequent ERP work automatically. No standing handoff or
+reciprocal work protocol exists.
 
-1. fetch current refs;
-2. compare `ai/codex` against `develop`;
-3. review:
-   - architecture
-   - security
-   - tenant isolation
-   - API compatibility
-   - database changes
-   - tests
-   - MASTER_SPEC compliance
-4. integrate only correct changes;
-5. resolve routine safe conflicts automatically;
-6. run the full validation suite;
-7. push validated `develop`.
+The `ai/codex` branch is historical unless an explicit task says otherwise.
+Past Codex contributions recorded in project documentation remain useful
+technical history and do not imply current ownership.
 
-### End-of-block protocol
+## Git workflow
 
-Whenever Claude completes a stable block or an integration cycle:
+- `develop`: integrated source of truth.
+- `ai/claude`: Claude's persistent ERP working branch.
+- `main`: stable/release branch.
+- Optional isolated work: a short-lived branch with explicit scope.
 
-1. Run:
-   - `pnpm install --frozen-lockfile` when dependencies changed
-   - `pnpm lint`
-   - `pnpm typecheck`
-   - `pnpm test`
-   - `pnpm build`
-   - integration/E2E tests when applicable
+At the start of a new ERP block, synchronize `ai/claude` with
+`origin/develop` using a safe fast-forward when possible. Work on
+`ai/claude`, commit coherent validated blocks, push `origin/ai/claude`, then
+integrate the validated result into `develop` and push `origin/develop`.
+Never force-push shared branches.
 
+Routine documentation-only corrections may be committed directly to
+`develop` when explicitly requested; synchronize `ai/claude` immediately
+afterward.
+
+## Architecture
+
+The platform follows:
+
+- TypeScript;
+- NestJS;
+- PostgreSQL and Prisma;
+- React + Vite for ERP Web;
+- Next.js for future storefronts;
+- Redis and BullMQ;
+- Docker;
+- Modular Monolith;
+- Multi-Tenant Architecture;
+- Event-Driven Architecture;
+- API-First design.
+
+Never alter architecture silently. Changes involving databases, queues,
+frameworks, authentication, tenancy, plugin architecture, deployment or module
+boundaries require an ADR or explicit approval unless already authorized by the
+source-of-truth documentation.
+
+## Implementation rules
+
+- Controllers translate HTTP and call use cases; business logic belongs in
+  application/domain layers.
+- Domain code must not depend on NestJS, Prisma, HTTP, Redis or provider SDKs.
+- Access other modules through explicit public contracts, never their tables or
+  internals.
+- Derive tenant/company authority from authenticated context, not request-body
+  claims.
+- Preserve tenant scope in repositories and database constraints.
+- Use transactions for critical invariants and outbox publication when
+  required.
+- Use Decimal/numeric strategies for money and quantities, never floating
+  point for critical calculations.
+- Validate at transport, domain and database levels as appropriate.
+- Keep audit, idempotency, permissions, errors and observability in scope from
+  the start of each feature.
+- Do not simulate integrations or successful operations.
+
+## End-of-block protocol
+
+For every stable implementation or integration block:
+
+1. Run, when applicable:
+   - `pnpm install --frozen-lockfile` if dependencies changed;
+   - `pnpm lint`;
+   - `pnpm typecheck`;
+   - `pnpm test`;
+   - `pnpm build`;
+   - relevant integration, E2E, security and migration checks.
 2. Inspect:
-   - `git status`
-   - `git diff`
-   - `git diff --check`
+   - `git status`;
+   - `git diff`;
+   - `git diff --check`.
+3. Update `docs/PROJECT_STATE.md` and `docs/WORK_QUEUE.md` when state or
+   priorities changed.
+4. Commit only relevant changes with a clear Conventional Commit message.
+5. Push the working branch and integrate validated state into `develop`.
+6. Push `develop` and confirm the remote relationship.
+7. Continue with the next non-blocked queue item unless a real escalation is
+   required.
 
-3. Commit Claude work to `ai/claude`.
+## Completion report
 
-4. Push:
-   - `origin/ai/claude`
+When stopping, report:
 
-5. Integrate validated state into:
-   - `develop`
+### COMPLETED
 
-6. Push:
-   - `origin/develop`
+What was implemented or integrated.
 
-7. Update:
-   - `docs/PROJECT_STATE.md`
-   - `docs/WORK_QUEUE.md`
+### VALIDATION
 
-8. Remove completed work from active queues.
+Commands and actual results, including anything not run.
 
-9. Add newly unblocked work for Codex.
+### COMMITS
 
-10. Continue automatically with the next Claude item if unblocked.
+Relevant commit SHAs and messages.
 
-### Required completion report
+### GIT STATE
 
-When stopping, always provide:
+State of `ai/claude`, `develop`, the working tree and remote push.
 
-#### COMPLETED
-What Claude implemented or integrated.
+### PROJECT STATE
 
-#### CODEX INTEGRATION
-Codex commits reviewed/integrated, if any.
+Current phase, meaningful progress and next non-blocked item.
 
-#### VALIDATION
-Commands/tests executed and results.
+### MY NEXT WORK
 
-#### COMMITS
-Relevant commit SHAs/messages.
+What Claude will continue automatically.
 
-#### GIT STATE
-State of:
-- `ai/claude`
-- `ai/codex`
-- `develop`
-- working trees / pushed state
+### NEEDS USER DECISION
 
-#### PROJECT STATE
-Current phase and meaningful progress.
+Use exactly `NO`, or `YES` followed by the decision, options and
+recommendation.
 
-#### HANDOFF TO CODEX
-Provide one concise, ready-to-copy instruction telling Codex exactly what to synchronize and work on next.
-
-#### MY NEXT WORK
-State what Claude will continue automatically.
-
-#### NEEDS USER DECISION
-Use exactly:
-- `NO`
-or
-- `YES` followed by the decision required, options, and recommendation.
-
-### User escalation
+## User escalation
 
 Stop and ask the user only for:
 
-- major architectural decisions;
-- destructive migrations;
-- potential data loss;
+- major architectural decisions not resolved by current documentation;
+- destructive migrations or potential data loss;
 - major business-rule ambiguity;
 - irreversible security-sensitive choices;
-- conflicts that cannot be safely resolved.
+- conflicts that cannot be resolved safely.
 
-Routine coding, testing, merging, syncing, documentation, and queue updates should not require user approval.
+Routine coding, frontend work, testing, merging, synchronization,
+documentation and queue maintenance do not require user approval.

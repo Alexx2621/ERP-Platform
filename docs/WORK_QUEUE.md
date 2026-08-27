@@ -1,16 +1,23 @@
 # Work Queue
 
-Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
-Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
-(sesión 9, implementación completa de Audit append-only).
+Cola única del ERP. Reemplaza el modelo histórico
+`docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 
-Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
-`develop` y `ai/claude` sincronizados (mismo commit en origin, ambas ramas)
-tras esta sesión.
+Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
+abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
+infraestructura, documentación e integración; no existe una división
+permanente por agente. Última actualización técnica: 2026-08-27 (sesión 9,
+implementación completa de Audit append-only). Modelo operativo actualizado:
+2026-08-27.
+
+Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
+Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
+historial y no tiene cola propia. Codex solo puede intervenir en una tarea
+aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ---
 
-## Claude — backend / arquitectura
+## Backlog activo — Claude (ownership end-to-end)
 
 ### Próximo, en orden de dependencia técnica
 
@@ -372,9 +379,14 @@ en tsc dejaba `dist/` incompleto sin fallar el build.
 
 ---
 
-## Codex — frontend / testing / tooling / backend aislado
+## Historial integrado — contribuciones anteriores de Codex
 
-### Completado (retirado de la cola)
+Esta sección conserva información técnica útil de trabajos ya integrados. No
+es una cola activa, no concede ownership continuo y no autoriza a Codex a
+seleccionar tareas. Claude es responsable de mantener, extender y validar todo
+este código desde el cambio de modelo operativo.
+
+### Trabajo completado e integrado
 
 - ~~E2E tests (Playwright)~~ — hecho, integrado (sesión 4).
 - ~~Expandir el Design System (Table/Modal/Select/Tabs)~~ — hecho, integrado
@@ -432,21 +444,21 @@ agregue ese endpoint (ítem 6 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
-### Disponible ahora
+### Estado operativo actual
 
-- Sin tarea nueva asignada a Codex en este momento — Audit (sesión 9) no
-  tiene superficie de UI propia. Lo próximo de cara al usuario depende de
-  que Claude entregue Event Bus, Files o Notifications (estos dos últimos
-  sí tendrán superficie de UI).
-- **Documentación**: no quedan huecos obvios — `docs/EVENTS.md` y
-  `docs/PLUGINS.md` ya estaban completos (ver corrección en sesiones
-  anteriores).
-
-### Bloqueado
-
-- El flujo completo "invitar usuario → asignar rol" en la UI de RBAC sigue
-  bloqueado por el endpoint de invitación de membership (ítem 6 de la cola
-  Claude) — no por nada del lado de Codex.
+- No existe una asignación permanente para Codex ni una cola secundaria.
+- Claude continuará Event Bus, Files, Notifications y cualquier superficie de
+  UI, SDK, pruebas o documentación que esos bloques requieran.
+- Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
+  alcance, criterios de aceptación, rama y validación explícitos; esa asignación
+  termina al entregar el alcance indicado.
+- `docs/EVENTS.md` y `docs/PLUGINS.md` ya contienen diseños completos; deben
+  conservarse como fuente técnica para la implementación y ratificación de sus
+  ADR.
+- El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
+  endpoint de invitación de membership (ítem 6 del backlog activo). Claude es
+  responsable de resolver el backend y completar después la experiencia de
+  punta a punta; no debe simularse mientras tanto.
 
 ---
 

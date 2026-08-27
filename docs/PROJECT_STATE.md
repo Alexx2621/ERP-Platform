@@ -8,6 +8,19 @@ completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
+## Development Ownership
+
+Claude es el único responsable del desarrollo completo del ERP: arquitectura,
+backend, frontend, UI/UX, base de datos, seguridad, pruebas, infraestructura,
+documentación, integración y roadmap. `develop` es la fuente integrada,
+`ai/claude` es la rama persistente de trabajo y `main` es estable/releases.
+
+El flujo permanente Claude/Codex, la cola separada y los handoffs rutinarios
+quedaron retirados el 2026-08-27. La rama `ai/codex` y las atribuciones de
+trabajos ya integrados se conservan como historial técnico. Codex solo puede
+participar en una tarea aislada con asignación explícita, alcance cerrado y
+revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
+
 ## Current Phase
 
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
@@ -243,7 +256,8 @@ Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Event Bus).
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Event Bus (diseño ya existe en `docs/EVENTS.md`, falta
+Resumen bajo ownership único de Claude: Event Bus (diseño ya existe en
+`docs/EVENTS.md`, falta
 implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
 endpoint de invitación de membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
@@ -251,12 +265,12 @@ PLATFORM) → vista de "mi actividad"/administración para eventos no
 tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
 endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
 case y su auditoría existen, pero nada lo invoca todavía). También
-pendiente: ratificar ADR-001 a ADR-005 formalmente. Para Codex: sin tarea
-nueva asignada en este momento — UI de RBAC, E2E de sesión y UI de
-Configuración ya están hechas e integradas (ver Completed); Audit no tiene
-superficie de UI propia. El flujo "invitar usuario → asignar rol" en la UI
-de RBAC **sigue bloqueado** hasta que exista el endpoint de invitación de
-membership — no se debe simular ni inventar mientras tanto.
+pendiente: ratificar ADR-001 a ADR-005 formalmente. Claude debe completar
+cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI de
+RBAC, el E2E de sesión y la UI de Configuración ya están hechas e integradas
+(ver Completed). El flujo "invitar usuario → asignar rol" en la UI de RBAC
+**sigue bloqueado** hasta que exista el endpoint de invitación de membership;
+no se debe simular ni inventar mientras tanto.
 
 ## Production Status
 
