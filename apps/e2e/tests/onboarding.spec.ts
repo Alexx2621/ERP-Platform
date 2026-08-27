@@ -76,6 +76,12 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
   await expect(page).toHaveURL(/\/workspace$/);
   await expect(page.getByRole("heading", { name: tenantName, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Preparado para los módulos ERP" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Avance del desarrollo" })).toBeVisible();
+  await expect(page.getByText("Roadmap total del producto")).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Avance total estimado" })).toHaveAttribute(
+    "aria-valuenow",
+    "11",
+  );
   await expect(page.getByText("Contexto activo")).toBeVisible();
   await expect(page.getByText(tenantSlug, { exact: false })).toBeVisible();
 

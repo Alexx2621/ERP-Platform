@@ -10,6 +10,7 @@ import {
 import type { TenantSummary } from "@erp/api-client";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
+import { DevelopmentProgressPanel } from "./development-progress-panel";
 import { ProductShell } from "./product-shell";
 
 interface WorkspaceSelection extends TenantSummary {
@@ -116,6 +117,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           </dl>
         </aside>
       </section>
+      <DevelopmentProgressPanel />
     </ProductShell>
   );
 }

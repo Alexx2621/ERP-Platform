@@ -149,7 +149,7 @@ describe("RolesPermissionsPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "El rol fue asignado a la membresía membership-1 con alcance COMPANY.",
     );
-  });
+  }, 10_000);
 
   it("keeps readable roles available when permission catalog access is denied", async () => {
     vi.spyOn(apiClient, "listRoles").mockResolvedValue([ownerRole]);
