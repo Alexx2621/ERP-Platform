@@ -19,6 +19,9 @@ import {
   HasPermissionUseCase,
   PermissionGuard,
 } from "./core/access-control";
+import { GetEffectiveSettingUseCase, SetSettingValueUseCase } from "./core/configuration";
+import { SettingsController } from "./core/configuration/presentation/settings.controller";
+import { PreferencesController } from "./core/configuration/presentation/preferences.controller";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -50,6 +53,10 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(AssignRoleUseCase)).toBeInstanceOf(AssignRoleUseCase);
     expect(moduleRef.get(HasPermissionUseCase)).toBeInstanceOf(HasPermissionUseCase);
     expect(moduleRef.get(PermissionGuard)).toBeInstanceOf(PermissionGuard);
+    expect(moduleRef.get(GetEffectiveSettingUseCase)).toBeInstanceOf(GetEffectiveSettingUseCase);
+    expect(moduleRef.get(SetSettingValueUseCase)).toBeInstanceOf(SetSettingValueUseCase);
+    expect(moduleRef.get(SettingsController)).toBeInstanceOf(SettingsController);
+    expect(moduleRef.get(PreferencesController)).toBeInstanceOf(PreferencesController);
 
     await moduleRef.close();
   });

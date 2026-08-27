@@ -21,6 +21,14 @@ import { PrismaRoleRepository } from "../../src/core/access-control/infrastructu
 import { PrismaRoleAssignmentRepository } from "../../src/core/access-control/infrastructure/prisma-role-assignment.repository";
 import { HasPermissionUseCase } from "../../src/core/access-control/application/use-cases/has-permission.use-case";
 import { MembershipNotFoundInTenantError } from "../../src/core/access-control/application/errors";
+import { SettingDefinition } from "../../src/core/configuration/domain/setting-definition.entity";
+import { PrismaSettingDefinitionRepository } from "../../src/core/configuration/infrastructure/prisma-setting-definition.repository";
+import { PrismaSettingValueRepository } from "../../src/core/configuration/infrastructure/prisma-setting-value.repository";
+import { PrismaUserPreferenceRepository } from "../../src/core/configuration/infrastructure/prisma-user-preference.repository";
+import { SetSettingValueUseCase } from "../../src/core/configuration/application/use-cases/set-setting-value.use-case";
+import { GetEffectiveSettingUseCase } from "../../src/core/configuration/application/use-cases/get-effective-setting.use-case";
+import { SetUserPreferenceUseCase } from "../../src/core/configuration/application/use-cases/set-user-preference.use-case";
+import { CompanyNotFoundInTenantError } from "../../src/core/configuration/application/errors";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -299,5 +307,115 @@ describe("Prisma repositories against PostgreSQL", () => {
     await expect(assignments.save(assignmentForUnknownMembership)).rejects.toThrow(
       MembershipNotFoundInTenantError,
     );
+  });
+
+  it("resolves effective settings through the real PLATFORM/TENANT/COMPANY fallback chain and enforces the composite company FK", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const organizations = new PrismaOrganizationRepository(prisma);
+    const companies = new PrismaCompanyRepository(prisma);
+    const definitions = new PrismaSettingDefinitionRepository(prisma);
+    const values = new PrismaSettingValueRepository(prisma);
+    const preferences = new PrismaUserPreferenceRepository(prisma);
+    const users = new PrismaUserRepository(prisma);
+    const setSettingValue = new SetSettingValueUseCase(definitions, values);
+    const getEffectiveSetting = new GetEffectiveSettingUseCase(definitions, values);
+    const setPreference = new SetUserPreferenceUseCase(preferences);
+    const now = new Date("2026-08-27T18:00:00.000Z");
+
+    const tenantA = createTenant(now, "config-tenant-a");
+    const tenantB = createTenant(now, "config-tenant-b");
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    const organization = Organization.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      code: "HQ",
+      name: "Config Tenant A HQ",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await organizations.save(organization);
+    const company = Company.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      organizationId: organization.id,
+      code: "CO",
+      name: "Config Tenant A Company",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await companies.save(company);
+
+    await definitions.upsert(
+      SettingDefinition.create({
+        id: newId(),
+        key: "localization.currency.integration-test",
+        dataType: "STRING",
+        description: "Integration test currency setting",
+        defaultValue: "USD",
+        allowedScopes: ["PLATFORM", "TENANT", "COMPANY"],
+        createdAt: now,
+      }),
+    );
+
+    await expect(
+      getEffectiveSetting.execute({ key: "localization.currency.integration-test", tenantId: tenantA.id }),
+    ).resolves.toMatchObject({ value: "USD", source: "DEFAULT" });
+
+    await setSettingValue.execute({
+      key: "localization.currency.integration-test",
+      scopeType: "TENANT",
+      tenantId: tenantA.id,
+      companyId: null,
+      value: "EUR",
+    });
+    await expect(
+      getEffectiveSetting.execute({ key: "localization.currency.integration-test", tenantId: tenantA.id }),
+    ).resolves.toMatchObject({ value: "EUR", source: "TENANT" });
+    // Tenant isolation: tenant B never sees tenant A's value.
+    await expect(
+      getEffectiveSetting.execute({ key: "localization.currency.integration-test", tenantId: tenantB.id }),
+    ).resolves.toMatchObject({ value: "USD", source: "DEFAULT" });
+
+    await setSettingValue.execute({
+      key: "localization.currency.integration-test",
+      scopeType: "COMPANY",
+      tenantId: tenantA.id,
+      companyId: company.id,
+      value: "GBP",
+    });
+    await expect(
+      getEffectiveSetting.execute({
+        key: "localization.currency.integration-test",
+        tenantId: tenantA.id,
+        companyId: company.id,
+      }),
+    ).resolves.toMatchObject({ value: "GBP", source: "COMPANY" });
+
+    // The composite (tenantId, companyId) FK on setting_values rejects a
+    // companyId that does not belong to tenantA — a company created under a
+    // different tenant is not just filtered out, it is structurally rejected.
+    const foreignCompanyId = newId();
+    await expect(
+      setSettingValue.execute({
+        key: "localization.currency.integration-test",
+        scopeType: "COMPANY",
+        tenantId: tenantA.id,
+        companyId: foreignCompanyId,
+        value: "JPY",
+      }),
+    ).rejects.toThrow(CompanyNotFoundInTenantError);
+
+    const user = createUser(now, "config-preferences@example.com");
+    await users.save(user);
+    await setPreference.execute({ userId: user.id, key: "theme", value: "dark" });
+    const storedPreference = await preferences.findByUserAndKey(user.id, "theme");
+    expect(storedPreference?.value).toBe("dark");
   });
 });

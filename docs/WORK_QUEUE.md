@@ -2,13 +2,11 @@
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
-(sesión 6, integración de la UI de RBAC y la cobertura E2E del ciclo de
-sesión de `ai/codex`).
+(sesión 7, implementación completa de Typed Configuration).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 `develop` y `ai/claude` sincronizados (mismo commit en origin, ambas ramas)
-tras integrar `9561cf7`/`8814a5e` de `ai/codex` y esta actualización de
-documentación.
+tras esta sesión.
 
 ---
 
@@ -16,30 +14,95 @@ documentación.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Configuración tipada** (`SettingDefinition`/`SettingValue` por scope —
-   platform/tenant/company — per `docs/ARCHITECTURE.md` §8.2, MASTER_SPEC §28).
-   No bloqueado.
-2. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
-   cambios de status de usuario, provisioning de tenant, registro, y ahora
-   también creación de roles/asignaciones — ver hueco anotado en
-   `docs/SECURITY.md` §"Access Control / RBAC").
-3. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
+1. **Audit** — tabla append-only, matriz de auditoría inicial (login, logout,
+   cambios de status de usuario, provisioning de tenant, registro, creación
+   de roles/asignaciones, y ahora también cambios de configuración — ver
+   huecos anotados en `docs/SECURITY.md` §"Access Control / RBAC" y
+   §"Typed Configuration"). No bloqueado.
+2. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
    completo YA EXISTE en `docs/EVENTS.md` (envelope, taxonomía domain vs.
    integration event, outbox/inbox, retries/DLQ, nomenclatura) — este ítem
    es implementarlo, no diseñarlo desde cero. Ver nota de corrección más
    abajo: este archivo estuvo mal descrito como vacío en versiones previas
    de esta cola.
-4. **Files** — metadata de archivos + URLs firmadas contra MinIO.
-5. **Notifications** — solicitud + adapter in-app/email vía worker.
-6. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
-7. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+3. **Files** — metadata de archivos + URLs firmadas contra MinIO.
+4. **Notifications** — solicitud + adapter in-app/email vía worker.
+5. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
+6. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-8. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+7. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
+8. **System-administration plane** — necesario antes de exponer escritura de
+   settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
+   endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
+   bloqueado, pero deliberadamente no adelantado sin una decisión de
+   arquitectura explícita sobre credenciales/autorización separadas
+   (`docs/ARCHITECTURE.md` §10).
+
+### Hecho — sesión 7 (Typed Configuration)
+
+- **`apps/api/src/core/configuration/`** (nuevo módulo): `SettingDefinition`
+  (catálogo global code-owned, 3 claves fundacionales:
+  `localization.currency`, `localization.timezone`, `localization.locale`,
+  MASTER_SPEC §29), `SettingValue` (valor concreto en un scope
+  `PLATFORM`/`TENANT`/`COMPANY`), `UserPreference` (preferencia global al
+  usuario, sin catálogo — MASTER_SPEC §28). Resolución con fallback real
+  COMPANY → TENANT → PLATFORM → default de la definición
+  (`GetEffectiveSettingUseCase`).
+- **Contrato HTTP nuevo** (detalle completo en la sección Codex más abajo):
+  `GET /api/v1/settings/definitions`, `GET /api/v1/settings`,
+  `PUT /api/v1/settings/:key`, `GET /api/v1/preferences`,
+  `PUT /api/v1/preferences/:key`.
+- **Decisión de seguridad explícita**: la escritura a nivel `PLATFORM` NO
+  está expuesta por HTTP — `SetSettingValueDto.scopeType` solo acepta
+  `TENANT`/`COMPANY`. El dominio y la aplicación sí soportan `PLATFORM`
+  completo (para uso futuro por un plano de administración de plataforma
+  que todavía no existe), pero exponerlo hoy le permitiría a cualquier
+  admin de tenant sobreescribir el default global de todos los tenants —
+  una escalación de privilegios real, no una feature faltante. Documentado
+  en `docs/SECURITY.md` §"Typed Configuration" y en el docstring de
+  `SettingsController`.
+- Tablas nuevas (migración `20260827183903_typed_configuration`, generada y
+  **aplicada contra Postgres real** vía `prisma migrate dev`, no solo
+  diffeada): `setting_definitions`, `setting_values`, `user_preferences`.
+  Detalle completo en `docs/DATABASE.md` §"Configuration tables". El FK
+  compuesto `setting_values(tenant_id, company_id) → companies(tenant_id, id)`
+  reutiliza exactamente el mismo patrón de seguridad de tenant que
+  `role_assignments` de RBAC.
+- 2 permisos nuevos agregados a `FOUNDATION_PERMISSIONS`:
+  `configuration.settings.read`, `configuration.settings.manage` — nota:
+  por el hueco ya documentado de "no hay backfill retroactivo de permisos",
+  cualquier tenant aprovisionado *antes* de este cambio no los tendrá
+  automáticamente en su rol Owner (sin impacto real hoy: no hay tenants de
+  producción).
+- Tests: 29 nuevos tests unitarios (dominio, use cases, wiring de módulo) —
+  109 tests unitarios totales en `apps/api` (antes 80), todos pasando. Suite
+  de integración contra Postgres real ampliada con un escenario completo:
+  cadena de resolución PLATFORM→TENANT→COMPANY→default con datos reales,
+  aislamiento cross-tenant, y el catch de `P2003`→`CompanyNotFoundInTenantError`
+  para un `companyId` de otro tenant.
+- Smoke test manual contra la infraestructura Docker real (no
+  Testcontainers): registro → aprovisionamiento con compañía → catálogo de
+  3 definiciones → efectivos en default → `PUT` TENANT → efectivo resuelve a
+  TENANT → `PUT` COMPANY → efectivo con `X-Company-Id` resuelve a COMPANY
+  (no a TENANT) → `companyId` de otro tenant rechazado con
+  `404 COMPANY_NOT_FOUND` → valor de tipo incorrecto rechazado con
+  `400 INVALID_SETTING_VALUE` → clave desconocida rechazada con
+  `404 SETTING_NOT_FOUND` → preferencia de usuario creada y leída sin
+  necesitar contexto de tenant. Datos de prueba limpiados después.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección
+  Configuration tables), `docs/SECURITY.md` (nueva sección Typed
+  Configuration con modelo de amenazas y huecos conocidos, incluyendo la
+  decisión explícita de no exponer `PLATFORM` por HTTP todavía).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test` (109/109),
+  `pnpm build` (5 paquetes), `pnpm --filter @erp/api test:integration`
+  (4/4 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (2/2 Playwright con Chromium real, sin
+  regresiones tras registrar las nuevas rutas) — todo verde.
 
 ### Hecho — sesión 6 (integración de UI de RBAC + E2E de ciclo de sesión de `ai/codex`)
 
@@ -242,23 +305,67 @@ hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
 "Roles y permisos" ya integrada lista/crea roles y asigna roles a una
 membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
 no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 8 de la cola Claude). Esto sigue siendo un hueco
+agregue ese endpoint (ítem 7 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
+### Nueva tarea disponible: UI de Configuración ("Ajustes")
+
+El backend de Typed Configuration está implementado, probado (unit +
+integración con Postgres real) y verificado con un smoke test manual contra
+la infraestructura Docker real (ver "Hecho — sesión 7" arriba). El contrato
+HTTP real es:
+
+- `GET /api/v1/settings/definitions` — catálogo de configuración (todas las
+  claves, con su `dataType`, `description`, `defaultValue`,
+  `allowedScopes`). Requiere `configuration.settings.read`. Responde
+  `SettingDefinitionResponseDto[]`. Hoy solo 3 claves existen:
+  `localization.currency`, `localization.timezone`, `localization.locale`
+  — las tres con `allowedScopes: ["PLATFORM","TENANT","COMPANY"]`.
+- `GET /api/v1/settings` — valores efectivos para el tenant/company activo
+  (resueltos COMPANY → TENANT → PLATFORM → default, con `X-Company-Id`
+  determinando si se resuelve a nivel compañía). Requiere
+  `configuration.settings.read`. Responde `EffectiveSettingResponseDto[]`:
+  `{ key, value, source: "COMPANY"|"TENANT"|"PLATFORM"|"DEFAULT" }` — el
+  campo `source` es útil para que la UI muestre de dónde viene cada valor
+  (por ejemplo, atenuado si es "DEFAULT").
+- `PUT /api/v1/settings/:key` — fijar un valor. Requiere
+  `configuration.settings.manage`. Body: `{ scopeType: "TENANT"|"COMPANY",
+  companyId?: string, value: unknown }` (`companyId` requerido solo si
+  `scopeType` es `"COMPANY"`; **`PLATFORM` no es un scope válido en este
+  endpoint** — ver `docs/SECURITY.md`, es una decisión de seguridad
+  deliberada, no un hueco a rellenar). `200` con `SettingValueResponseDto`.
+  Errores: `404 SETTING_NOT_FOUND`, `400 SETTING_SCOPE_NOT_ALLOWED` (con
+  `details.scopeType`), `400 INVALID_SETTING_VALUE`,
+  `400 COMPANY_CONTEXT_REQUIRED`, `404 COMPANY_NOT_FOUND`.
+- `GET /api/v1/preferences` — preferencias del usuario autenticado. Solo
+  requiere sesión (`SessionAuthGuard`) — **no** requiere contexto de tenant
+  ni permiso alguno, porque una preferencia es del usuario, no del tenant
+  (ver `docs/MULTITENANCY.md` §4.8). Responde `UserPreferenceResponseDto[]`.
+- `PUT /api/v1/preferences/:key` — fijar una preferencia propia. Mismo
+  guard mínimo. Body: `{ value: unknown }` (clave libre, sin catálogo).
+  `200` con `UserPreferenceResponseDto`.
+- Envelope de error igual al ya usado (`statusCode/code/message/details/correlationId`).
+
+La UI natural es una pantalla "Ajustes" separada de "Roles y permisos",
+usando los mismos primitivos ya construidos (`Table` para listar
+efectivos/catálogo, `Modal`+`Select` para fijar un valor eligiendo scope).
+No hay trabajo de Design System pendiente. A diferencia de RBAC, esta
+pantalla **no** tiene el hueco de "membership inexistente" — todo lo que
+expone es completable de punta a punta hoy mismo.
+
 ### Disponible ahora
 
+- **UI de Configuración ("Ajustes")** — ver arriba, contrato real y
+  verificado, sin bloqueos.
 - **Documentación**: no quedan huecos obvios — `docs/EVENTS.md` y
   `docs/PLUGINS.md` ya estaban completos (ver corrección en sesiones
   anteriores).
-- Sin tarea nueva asignada a Codex en este momento; el próximo trabajo de
-  frontend depende de que Claude entregue Typed Configuration o el endpoint
-  de invitación de membership (ambos en la cola Claude, ninguno bloqueado).
 
 ### Bloqueado
 
 - El flujo completo "invitar usuario → asignar rol" en la UI de RBAC sigue
-  bloqueado por el endpoint de invitación de membership (ítem 8 de la cola
+  bloqueado por el endpoint de invitación de membership (ítem 7 de la cola
   Claude) — no por nada del lado de Codex.
 
 ---
@@ -277,14 +384,17 @@ Playwright).
 - Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 8 de la cola Claude).
+  endpoint de invitación de membership (ítem 7 de la cola Claude).
+- Escritura de settings a nivel PLATFORM depende de un plano de
+  administración de plataforma separado (ítem 8 de la cola Claude) —
+  deliberadamente no adelantado sin esa decisión de arquitectura.
 - Event Bus depende únicamente de implementar el diseño ya existente en
   `docs/EVENTS.md` — no hay diseño pendiente.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 7).
+  todavía. Sigue en la cola Claude (ítem 6).
 
 ## Architecture decisions needed
 

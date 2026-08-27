@@ -18,4 +18,12 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     description: "Create roles and assign them to memberships within a tenant.",
   },
   { key: "access.permissions.read", description: "View the global permission catalog." },
+  {
+    key: "configuration.settings.read",
+    description: "View the setting catalog and effective settings for a tenant/company.",
+  },
+  {
+    key: "configuration.settings.manage",
+    description: "Set TENANT- or COMPANY-scoped setting values.",
+  },
 ];

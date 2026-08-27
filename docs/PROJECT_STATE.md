@@ -1,10 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 6), tras integrar de `ai/codex` la
-UI de RBAC ("Roles y permisos") y la cobertura E2E del ciclo completo de
-sesión (rotación, replay, revocación, logout), verificadas end-to-end
-contra infraestructura real (Postgres+Redis vía Testcontainers, API
-compilada real, Vite real, Chromium real).
+Última actualización: 2026-08-27 (sesión 7), tras implementar Typed
+Configuration completo (SettingDefinition, SettingValue, UserPreference,
+resolución PLATFORM→TENANT→COMPANY→default) y verificarlo contra Postgres
+real y con un smoke test HTTP completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -12,7 +11,8 @@ Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
-infraestructura real (Identity + Tenancy + onboarding + Access Control).
+infraestructura real (Identity + Tenancy + onboarding + Access Control +
+Typed Configuration).
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -113,14 +113,34 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   (mismo mensaje de error para cuenta existente vs. inexistente). Todos los
   códigos de error verificados (`UNAUTHENTICATED`, `SESSION_REVOKED`) son
   reales, no inventados. Revisado e integrado por Claude sin cambios.
-- 98 tests unitarios pasando (api 80, api-client 6, erp-web 12) + 3 tests
+- **Typed Configuration** (`apps/api/src/core/configuration`, Claude,
+  sesión 7): `SettingDefinition` (catálogo global code-owned, 3 claves
+  fundacionales de localización — moneda, zona horaria, idioma),
+  `SettingValue` (resolución con fallback real COMPANY → TENANT → PLATFORM
+  → default de la definición), `UserPreference` (global al usuario, sin
+  catálogo). 3 tablas nuevas (migración `20260827183903_typed_configuration`,
+  **generada y aplicada directamente contra Postgres real** vía
+  `prisma migrate dev`). Decisión de seguridad explícita: escritura a nivel
+  `PLATFORM` modelada en dominio pero **no expuesta por HTTP** — expondría
+  a cualquier admin de tenant a sobreescribir el default global de todos
+  los tenants sin que exista todavía un plano de administración de
+  plataforma separado (`docs/ARCHITECTURE.md` §10). Suite de integración
+  contra Postgres real ampliada con la cadena de resolución completa y el
+  FK compuesto `setting_values(tenant_id, company_id)`. **Smoke test manual
+  verificado contra la infraestructura Docker real**: catálogo → efectivos
+  en default → override TENANT → override COMPANY (gana sobre TENANT) →
+  `companyId` de otro tenant rechazado (`404 COMPANY_NOT_FOUND`) → tipo de
+  valor incorrecto rechazado (`400 INVALID_SETTING_VALUE`) → preferencia de
+  usuario sin necesitar contexto de tenant. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 7").
+- 127 tests unitarios pasando (api 109, api-client 6, erp-web 12) + 4 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
   contra infraestructura real completa** (Chromium real, Postgres+Redis
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
-  `access-control.module.spec.ts`) y pruebas negativas de aislamiento
-  cross-tenant.
+  `access-control.module.spec.ts`, `configuration.module.spec.ts`) y
+  pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -164,20 +184,21 @@ decisión explícita del usuario, no por reinterpretación del proceso.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem
-(Configuración tipada).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Audit).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen: Configuración tipada → Audit → Event Bus (diseño ya existe en
-`docs/EVENTS.md`, falta implementar) → Files → Notifications → Workers →
-OpenAPI/Swagger → endpoint de invitación de membership. También pendiente:
-ratificar ADR-001 a ADR-005 formalmente. Para Codex: sin tarea asignada en
-este momento — la UI de RBAC y la cobertura E2E del ciclo de sesión ya
-están hechas e integradas (ver Completed). El flujo "invitar usuario →
-asignar rol" en esa UI **sigue bloqueado** hasta que exista el endpoint de
-invitación de membership — no se debe simular ni inventar mientras tanto.
+Resumen: Audit → Event Bus (diseño ya existe en `docs/EVENTS.md`, falta
+implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
+endpoint de invitación de membership → plano de administración de
+plataforma (necesario antes de exponer escritura de settings a nivel
+PLATFORM). También pendiente: ratificar ADR-001 a ADR-005 formalmente.
+Para Codex: UI de Configuración ("Ajustes") — **nueva tarea disponible**,
+contrato HTTP real y verificado en `docs/WORK_QUEUE.md`, sin bloqueos. El
+flujo "invitar usuario → asignar rol" en la UI de RBAC **sigue bloqueado**
+hasta que exista el endpoint de invitación de membership — no se debe
+simular ni inventar mientras tanto.
 
 ## Production Status
 
@@ -208,3 +229,17 @@ confirmación de `403 PERMISSION_DENIED` real para una membership sin rol
 (insertada directamente por script para no depender de un endpoint de
 invitación que todavía no existe). Toda la data de prueba fue limpiada al
 terminar.
+
+**Sesión 7 (2026-08-27, Typed Configuration)**: cuarta migración
+(`20260827183903_typed_configuration`) generada directamente contra esta
+misma base real vía `prisma migrate dev` — `prisma migrate status` confirma
+las 4 migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`): registro + provisioning con
+compañía, catálogo de 3 definiciones, efectivos en default, override
+TENANT, override COMPANY (confirmado que gana sobre TENANT vía
+`X-Company-Id`), `companyId` de otro tenant rechazado con
+`404 COMPANY_NOT_FOUND` (FK compuesto real, no solo filtro de aplicación),
+valor de tipo incorrecto rechazado con `400 INVALID_SETTING_VALUE`, clave
+desconocida rechazada con `404 SETTING_NOT_FOUND`, y una preferencia de
+usuario creada/leída sin necesitar ningún contexto de tenant. Toda la data
+de prueba fue limpiada al terminar.

@@ -14,8 +14,17 @@ export type {
   Role,
   RolePermission,
   RoleAssignment,
+  SettingDefinition,
+  SettingValue,
+  UserPreference,
 } from "../generated/prisma/client";
-export { UserStatus, SessionStatus, RoleAssignmentScope } from "../generated/prisma/enums";
+export {
+  UserStatus,
+  SessionStatus,
+  RoleAssignmentScope,
+  ConfigScopeType,
+  SettingDataType,
+} from "../generated/prisma/enums";
 export { PrismaClient };
 
 export interface CreatePrismaClientOptions {

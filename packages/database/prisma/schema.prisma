@@ -36,6 +36,7 @@ model User {
   credential  UserCredential?
   sessions    Session[]
   memberships Membership[]
+  preferences UserPreference[]
 
   @@map("users")
 }
@@ -104,6 +105,7 @@ model Tenant {
   companies       Company[]
   roles           Role[]
   roleAssignments RoleAssignment[]
+  settingValues   SettingValue[]
 
   @@map("tenants")
 }
@@ -180,8 +182,9 @@ model Company {
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  organization  Organization   @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
+  settingValues SettingValue[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -265,4 +268,84 @@ model RoleAssignment {
   @@unique([membershipId, roleId, scopeType, scopeId])
   @@index([tenantId, membershipId])
   @@map("role_assignments")
+}
+
+enum ConfigScopeType {
+  PLATFORM
+  TENANT
+  COMPANY
+}
+
+enum SettingDataType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+/// Global, code-owned configuration catalog (docs/ARCHITECTURE.md §8.2,
+/// MASTER_SPEC §28). Never created from the UI; seeded idempotently by
+/// SettingCatalogSeeder, same pattern as Permission.
+model SettingDefinition {
+  id            String            @id @db.Uuid
+  key           String            @unique @db.VarChar(150)
+  dataType      SettingDataType   @map("data_type")
+  description   String            @db.VarChar(300)
+  defaultValue  Json              @map("default_value")
+  allowedScopes ConfigScopeType[] @map("allowed_scopes")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  values SettingValue[]
+
+  @@map("setting_definitions")
+}
+
+/// A concrete value for a SettingDefinition at exactly one scope instance.
+/// `tenantId`/`companyId` are nullable because PLATFORM-scope rows have
+/// neither — Postgres skips a composite FK check entirely when any of its
+/// columns is NULL, so the `company` relation below only ever applies to
+/// COMPANY-scope rows. `scopeKey` is a denormalized, non-null discriminator
+/// (`"platform"` / tenantId / `"tenantId:companyId"`) computed in application
+/// code (see the domain entity) purely so the DB can enforce "one value per
+/// definition per concrete scope instance" via a plain unique index — NULLs
+/// in `tenantId`/`companyId` are distinct from each other in Postgres and
+/// would not do this on their own.
+model SettingValue {
+  id           String          @id @db.Uuid
+  definitionId String          @map("definition_id") @db.Uuid
+  scopeType    ConfigScopeType @map("scope_type")
+  tenantId     String?         @map("tenant_id") @db.Uuid
+  companyId    String?         @map("company_id") @db.Uuid
+  scopeKey     String          @map("scope_key") @db.VarChar(80)
+  value        Json
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  definition SettingDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  tenant     Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company?          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([definitionId, scopeType, scopeKey])
+  @@index([tenantId])
+  @@map("setting_values")
+}
+
+/// Per-user, per-key preference (docs/ARCHITECTURE.md §8.2). Global to the
+/// User identity, not tenant-scoped — same reasoning as User itself
+/// (docs/MULTITENANCY.md §4.8). Deliberately has no code-owned catalog like
+/// SettingDefinition: preferences are personal/UI concerns (theme, page
+/// size) that each feature can read/write directly without a central
+/// registry.
+model UserPreference {
+  id        String   @id @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  key       String   @db.VarChar(150)
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("user_preferences")
 }
