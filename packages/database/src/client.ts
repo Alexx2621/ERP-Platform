@@ -18,6 +18,7 @@ export type {
   SettingValue,
   UserPreference,
   AuditEntry,
+  OutboxMessage,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -25,6 +26,7 @@ export {
   RoleAssignmentScope,
   ConfigScopeType,
   SettingDataType,
+  OutboxMessageStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

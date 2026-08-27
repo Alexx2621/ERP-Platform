@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-27 (sesión 9,
-implementación completa de Audit append-only). Modelo operativo actualizado:
-2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-27 (sesión 10,
+implementación completa de Event Bus / transactional outbox). Modelo
+operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,39 +21,110 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Event Bus** — bus interno + transactional outbox mínimo. El diseño
-   completo YA EXISTE en `docs/EVENTS.md` (envelope, taxonomía domain vs.
-   integration event, outbox/inbox, retries/DLQ, nomenclatura) — este ítem
-   es implementarlo, no diseñarlo desde cero. Ver nota de corrección más
-   abajo: este archivo estuvo mal descrito como vacío en versiones previas
-   de esta cola.
-2. **Files** — metadata de archivos + URLs firmadas contra MinIO.
-3. **Notifications** — solicitud + adapter in-app/email vía worker.
-4. **Workers** — app `apps/worker` separada, consumidor de BullMQ/outbox.
-5. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+1. **Files** — metadata de archivos + URLs firmadas contra MinIO.
+2. **Notifications** — solicitud + adapter in-app/email vía worker. Puede
+   consumir el Event Bus ya implementado (p. ej. reaccionar a
+   `tenancy.tenant.provisioned.v1`) en vez de ser invocado directamente por
+   un controller.
+3. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
+   in-process dentro de `apps/api` (`OutboxDispatcherScheduler`, ver ADR-004)
+   deliberadamente; extraerlo a `apps/worker` es un cambio de qué proceso
+   ejecuta el poll loop, no del esquema/semántica del outbox.
+4. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-6. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+5. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-7. **System-administration plane** — necesario antes de exponer escritura de
+6. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-8. **"Mi actividad" / vista de administración de plataforma para eventos no
+7. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-9. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+8. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
+9. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+   deliberadamente no construido junto con el Event Bus porque hoy no existe
+   ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
+   Requerido antes de registrar cualquier `DomainEventBus` handler con un
+   efecto secundario no idempotente.
+
+### Hecho — sesión 10 (Event Bus / transactional outbox)
+
+- **`apps/api/src/core/events/`** (nuevo módulo, leaf sin dependencias como
+  `access-control`/`audit`): `OutboxMessage` (entidad de dominio con
+  `markProcessing`/`markPublished`/`markFailed`, backoff exponencial
+  cap 300s, dead-letter a `FAILED` tras 5 intentos),
+  `appendOutboxMessage(client, input)` (función pura que inserta usando el
+  cliente Prisma/transacción que el llamador ya tenga abierto — nunca abre
+  su propia transacción, para garantizar atomicidad real con la escritura
+  de estado del productor), `DomainEventBus` (pub/sub in-process, sin
+  persistencia propia — la durabilidad viene enteramente de la fila de
+  outbox ya comprometida antes de invocar el bus), `DispatchOutboxBatchUseCase`
+  (reclama un lote vía `FOR UPDATE SKIP LOCKED`, publica cada mensaje en el
+  bus, marca `PUBLISHED` o aplica backoff/dead-letter), `OutboxDispatcherScheduler`
+  (poll periódico con `setInterval` nativo administrado por el ciclo de vida
+  `OnModuleInit`/`OnModuleDestroy` de Nest — decisión explícita de no usar
+  `@nestjs/schedule` ni BullMQ para esto, ver ADR-004).
+- Tabla nueva (migración `20260827232432_event_bus_outbox`, generada y
+  **aplicada contra Postgres real** vía `prisma migrate dev`, no solo
+  diffeada): `outbox_messages`, con FK a `tenants`/`users` y el mismo patrón
+  de FK compuesto `(tenant_id, company_id) → companies` ya usado por
+  `setting_values`/`audit_entries`. Detalle completo en
+  `docs/DATABASE.md` §"Event Bus / transactional outbox table".
+- **Primer productor real**: `PrismaTenantProvisioningRepository.create()`
+  ahora hace `appendOutboxMessage` dentro de la misma `$transaction` que ya
+  crea tenant/membership/organization/company, publicando
+  `tenancy.tenant.provisioned.v1` (payload: ids/códigos de tenant,
+  organización, compañía, membership del owner). `correlationId` propagado
+  desde el request HTTP (`request.correlationId`) hasta el use case y el
+  repositorio.
+- **ADR-004 ratificado** (`docs/DECISIONS.md`): documenta las 7 decisiones
+  concretas de implementación V1 — atomicidad vía cliente Prisma pasado
+  explícitamente (no un servicio con conexión propia), bus in-process (no
+  BullMQ) para el fan-out, dispatcher in-process con `setInterval` (no
+  `apps/worker` todavía), `FOR UPDATE SKIP LOCKED` vía raw SQL, ausencia
+  deliberada de `inbox_messages` hasta que exista un consumidor cross-proceso
+  real, política de retry/backoff, y la convención de nomenclatura ya usada.
+- Tests: 5 nuevos archivos de test (dominio, `appendOutboxMessage`,
+  `DomainEventBus`, `DispatchOutboxBatchUseCase`, wiring de módulo) — 138
+  tests unitarios totales en `apps/api` (antes 120), todos pasando. Suite de
+  integración contra Postgres real ampliada con 3 escenarios: (1) outbox
+  insertado en la misma transacción que el provisioning real, despachado de
+  punta a punta y confirmado `PUBLISHED`; (2) reclamo concurrente real de 4
+  filas por dos claimants simultáneos vía `Promise.all`, sin solapamiento de
+  IDs (verifica `FOR UPDATE SKIP LOCKED` bajo carga real, no solo en teoría);
+  (3) recuperación de una fila `PROCESSING` cuyo lease expiró, sin que un
+  segundo worker haya "crasheado" realmente — solo pasa el tiempo de lease.
+- Smoke test manual contra la infraestructura Docker real (no
+  Testcontainers): registro → provisioning de tenant real → confirmado
+  exactamente 1 fila `PENDING` en `outbox_messages` con el payload correcto
+  → dispatcher ejecutado → fila pasa a `PUBLISHED` con `publishedAt`
+  poblado. Confirmado en el log real que hoy no hay ningún handler
+  registrado para `tenancy.tenant.provisioned.v1` (el bus lo señala como
+  DEBUG, no error) — el primer consumidor real queda para Notifications.
+  Datos de prueba limpiados después.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección Event Bus /
+  transactional outbox table), `docs/SECURITY.md` (nueva sección Event Bus
+  con modelo de amenazas y límites conocidos, incluyendo que ningún handler
+  de producción está registrado todavía), `docs/DECISIONS.md` (ADR-004
+  ratificado, header actualizado para quitarlo de la lista de pendientes).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test` (138/138),
+  `pnpm build` (5 paquetes), `pnpm --filter @erp/api test:integration`
+  (8/8 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (2/2 Playwright con Chromium real, sin
+  regresiones) — todo verde.
 
 ### Hecho — sesión 9 (Audit append-only)
 
@@ -447,7 +518,7 @@ inventarse mientras tanto.
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará Event Bus, Files, Notifications y cualquier superficie de
+- Claude continuará Files, Notifications, Workers y cualquier superficie de
   UI, SDK, pruebas o documentación que esos bloques requieran.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
@@ -473,31 +544,37 @@ Playwright).
 
 - Files depende de que el código de MinIO se escriba y se pruebe contra el
   contenedor ya disponible (no bloqueado, solo pendiente de implementar).
-- Workers depende de BullMQ contra el Redis ya disponible (mismo caso).
+- Workers (extracción de `apps/worker`) depende de BullMQ contra el Redis ya
+  disponible; el poll loop del outbox ya funciona in-process hoy (ver
+  ADR-004), así que esto es una extracción, no una funcionalidad nueva.
+- Notifications puede consumir el Event Bus ya implementado
+  (`DomainEventBus.subscribe`) en vez de requerir un mecanismo de disparo
+  propio — sería el primer handler de producción real.
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 6 de la cola Claude).
+  endpoint de invitación de membership (ítem 5 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 7 de la cola Claude) —
+  administración de plataforma separado (ítem 6 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
-- Event Bus depende únicamente de implementar el diseño ya existente en
-  `docs/EVENTS.md` — no hay diseño pendiente.
+- Un `DomainEventBus` handler con efecto secundario no idempotente depende
+  de construir primero `inbox_messages` (ítem 9 de la cola Claude, ver
+  ADR-004 punto 5).
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 5).
+  todavía. Sigue en la cola Claude (ítem 4).
 
 ## Architecture decisions needed
 
 Ninguna pendiente de aprobación en este momento. Decisiones ya registradas:
 `docs/DECISIONS.md` ADR-006 (Identity & Session Strategy) — su pregunta
 abierta sobre almacenamiento de tokens en el cliente quedó resuelta en la
-práctica por `apps/erp-web` (memoria, no persistente). Pendientes de
+práctica por `apps/erp-web` (memoria, no persistente); ADR-004 (Event
+Architecture — implementado y ratificado en sesión 10). Pendientes de
 numerar formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
 `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
-real: manual, integration test, y ahora E2E de navegador), ADR-004 (Event
-Architecture — el diseño ya existe completo en `docs/EVENTS.md`, falta
-ratificarlo), ADR-005 (Plugin Architecture — ídem, diseño completo en
-`docs/PLUGINS.md`).
+real: manual, integration test, y ahora E2E de navegador), ADR-005 (Plugin
+Architecture — el diseño ya existe completo en `docs/PLUGINS.md`, falta
+implementar y ratificar).

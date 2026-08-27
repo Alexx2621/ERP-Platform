@@ -1,10 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
+import { appendOutboxMessage } from "../../events";
 import { Company } from "../../companies";
 import { Organization } from "../../organizations";
 import {
   FindProvisionedTenantInput,
   ProvisionedTenant,
+  ProvisionTenantContext,
   TenantProvisioningRepository,
 } from "../application/ports/tenant-provisioning.repository";
 import { Membership } from "../domain/membership.entity";
@@ -60,7 +62,7 @@ export class PrismaTenantProvisioningRepository implements TenantProvisioningRep
     };
   }
 
-  async create(provisioned: ProvisionedTenant): Promise<void> {
+  async create(provisioned: ProvisionedTenant, context: ProvisionTenantContext): Promise<void> {
     const tenant = provisioned.tenant.toProps();
     const membership = provisioned.ownerMembership.toProps();
     const organization = provisioned.organization.toProps();
@@ -71,6 +73,32 @@ export class PrismaTenantProvisioningRepository implements TenantProvisioningRep
       await transaction.membership.create({ data: membership });
       await transaction.organization.create({ data: organization });
       if (company) await transaction.company.create({ data: company });
+
+      // Same transaction as the writes above — this is the one place in the
+      // schema where outbox atomicity is a hard requirement, not a
+      // documented best-effort gap (docs/EVENTS.md §5, contrast with Audit).
+      await appendOutboxMessage(transaction, {
+        tenantId: tenant.id,
+        companyId: company?.id ?? null,
+        eventType: "tenancy.tenant.provisioned.v1",
+        eventVersion: 1,
+        aggregateType: "Tenant",
+        aggregateId: tenant.id,
+        aggregateVersion: tenant.version,
+        payload: {
+          tenantId: tenant.id,
+          slug: tenant.slug,
+          name: tenant.name,
+          organizationId: organization.id,
+          organizationCode: organization.code,
+          companyId: company?.id ?? null,
+          companyCode: company?.code ?? null,
+          ownerMembershipId: membership.id,
+          ownerUserId: membership.userId,
+        },
+        correlationId: context.correlationId,
+        actor: { type: "USER", id: membership.userId },
+      });
     });
   }
 }

@@ -32,6 +32,12 @@ import { CompanyNotFoundInTenantError } from "../../src/core/configuration/appli
 import { PrismaAuditEntryRepository } from "../../src/core/audit/infrastructure/prisma-audit-entry.repository";
 import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-cases/record-audit-entry.use-case";
 import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
+import { PrismaTenantProvisioningRepository } from "../../src/core/tenants/infrastructure/prisma-tenant-provisioning.repository";
+import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provision-tenant.use-case";
+import { PrismaOutboxMessageRepository } from "../../src/core/events/infrastructure/prisma-outbox-message.repository";
+import { DomainEventBus } from "../../src/core/events/application/domain-event-bus";
+import { DispatchOutboxBatchUseCase } from "../../src/core/events/application/use-cases/dispatch-outbox-batch.use-case";
+import { appendOutboxMessage } from "../../src/core/events/application/append-outbox-message";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -491,5 +497,132 @@ describe("Prisma repositories against PostgreSQL", () => {
       }),
     ).resolves.toBeUndefined(); // RecordAuditEntryUseCase never throws — verify it stayed at 1 entry instead.
     await expect(listAuditEntries.execute({ tenantId: tenantA.id })).resolves.toHaveLength(1);
+  });
+
+  it("appends the tenant.provisioned outbox message in the same transaction as provisioning, and dispatches it end-to-end", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const provisioning = new PrismaTenantProvisioningRepository(prisma);
+    const provisionTenant = new ProvisionTenantUseCase(tenants, provisioning, users);
+    const outbox = new PrismaOutboxMessageRepository(prisma);
+    const bus = new DomainEventBus();
+    const dispatch = new DispatchOutboxBatchUseCase(outbox, bus);
+    const now = new Date("2026-08-27T21:00:00.000Z");
+
+    const owner = createUser(now, "events-owner@example.com");
+    await users.save(owner);
+
+    const received: unknown[] = [];
+    bus.subscribe("tenancy.tenant.provisioned.v1", (event) => {
+      received.push(event);
+    });
+
+    const result = await provisionTenant.execute({
+      slug: "events-tenant",
+      name: "Events Tenant",
+      ownerUserId: owner.id,
+      organization: { code: "HQ", name: "HQ Org" },
+      correlationId: "integration-events-correlation-1",
+    });
+
+    const pending = await prisma.outboxMessage.findMany({ where: { tenantId: result.tenant.id } });
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      status: "PENDING",
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: result.tenant.id,
+      correlationId: "integration-events-correlation-1",
+      actorType: "USER",
+      actorId: owner.id,
+    });
+    expect(pending[0].payload).toMatchObject({ slug: "events-tenant", ownerUserId: owner.id });
+
+    const dispatchResult = await dispatch.execute({ workerId: "integration-worker" });
+    expect(dispatchResult).toEqual({ claimed: 1, published: 1, failed: 0 });
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      eventType: "tenancy.tenant.provisioned.v1",
+      correlationId: "integration-events-correlation-1",
+    });
+
+    const publishedRow = await prisma.outboxMessage.findUniqueOrThrow({ where: { id: pending[0].id } });
+    expect(publishedRow.status).toBe("PUBLISHED");
+    expect(publishedRow.publishedAt).not.toBeNull();
+  });
+
+  it("claims each pending outbox row exactly once under real concurrent claimants (FOR UPDATE SKIP LOCKED)", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const outbox = new PrismaOutboxMessageRepository(prisma);
+
+    for (let i = 0; i < 4; i++) {
+      await appendOutboxMessage(prisma, {
+        tenantId: null,
+        eventType: "tenancy.tenant.provisioned.v1",
+        eventVersion: 1,
+        aggregateType: "Tenant",
+        aggregateId: newId(),
+        payload: { index: i },
+        correlationId: `concurrency-${i}`,
+        actor: null,
+      });
+    }
+
+    // appendOutboxMessage always stamps availableAt with the real system
+    // clock (there is no injectable Clock for OutboxMessage), so `now` here
+    // must be real too, captured after the inserts above — an arbitrary
+    // fixed timestamp could land before every row's real availableAt and
+    // make nothing claimable, which is a test bug, not a production one.
+    const now = new Date();
+    const [batchA, batchB] = await Promise.all([
+      outbox.claimBatch({ limit: 2, lockedBy: "claimant-a", now, leaseSeconds: 60 }),
+      outbox.claimBatch({ limit: 2, lockedBy: "claimant-b", now, leaseSeconds: 60 }),
+    ]);
+
+    const claimedIds = [...batchA, ...batchB].map((message) => message.id);
+    expect(claimedIds).toHaveLength(4);
+    expect(new Set(claimedIds).size).toBe(4); // no row claimed by both claimants
+  });
+
+  it("recovers a message whose PROCESSING lease expired without a separate worker crashing", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const outbox = new PrismaOutboxMessageRepository(prisma);
+    const now = new Date("2026-08-27T21:10:00.000Z");
+
+    const message = await appendOutboxMessage(prisma, {
+      tenantId: null,
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: newId(),
+      payload: {},
+      correlationId: "lease-recovery",
+      actor: null,
+    });
+
+    const staleLock = new Date(now.getTime() - 120_000); // "crashed" 2 minutes ago
+    await prisma.outboxMessage.update({
+      where: { id: message.id },
+      data: { status: "PROCESSING", lockedAt: staleLock, lockedBy: "dead-worker" },
+    });
+
+    const nothingYet = await outbox.claimBatch({
+      limit: 10,
+      lockedBy: "live-worker",
+      now,
+      leaseSeconds: 300, // lease still valid at this length — not claimable yet
+    });
+    expect(nothingYet).toHaveLength(0);
+
+    const recovered = await outbox.claimBatch({
+      limit: 10,
+      lockedBy: "live-worker",
+      now,
+      leaseSeconds: 60, // shorter than the 120s-old lock — now claimable
+    });
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0].id).toBe(message.id);
   });
 });

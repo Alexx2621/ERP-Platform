@@ -46,6 +46,7 @@ export class TenantsController {
         ownerUserId: auth.user.id,
         organization: dto.organization,
         company: dto.company,
+        correlationId: request.correlationId,
       });
       await this.recordAuditEntry.execute({
         userId: auth.user.id,

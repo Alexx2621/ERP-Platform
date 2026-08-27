@@ -307,3 +307,79 @@ to do it from, and the use case had no other caller/test to disturb.
   for a table with, at Foundation scale, very little data yet. Revisit once
   real usage shows entries accumulating fast enough for `limit` alone to be
   insufficient.
+
+## Event Bus (2026-08-27)
+
+Scope: `OutboxMessage`, `appendOutboxMessage`, `DomainEventBus`,
+`DispatchOutboxBatchUseCase`, `OutboxDispatcherScheduler`
+(`apps/api/src/core/events`) — implements `docs/EVENTS.md`'s V1 design
+(transactional outbox + in-process domain event bus). No HTTP surface: this
+is pure backend infrastructure other modules use as producers, not
+something a client calls directly.
+
+### Assets
+
+- The outbox itself (`outbox_messages`) — a durable, ordered record of every
+  integration event a producer has committed, including its full payload
+  until it is eventually purged (no retention policy exists yet — see
+  "Known limitations").
+- The atomicity guarantee between a producer's state write and its outbox
+  insert — if that guarantee were silently broken, a tenant could exist
+  without ever having emitted `tenancy.tenant.provisioned.v1`, and nothing
+  downstream would know the tenant exists.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A producer's state change commits but its event is silently lost (or vice versa: an event fires for a change that then rolls back) | `appendOutboxMessage` only ever accepts the caller's own transaction client (`PrismaClientLike`, structurally typed to whatever `$transaction` hands the callback) — its own doc comment and every real call site (`PrismaTenantProvisioningRepository.create()`) insert the outbox row inside the *same* `$transaction` as the state write. Verified against real Postgres: a full provisioning flow produces exactly one PENDING row with the correct payload, in the same commit (`apps/api/test/integration`). |
+| Two dispatcher instances (or two ticks of the same scheduler racing) process the same message twice, causing a duplicate side effect | `PrismaOutboxMessageRepository.claimBatch` uses `SELECT ... FOR UPDATE SKIP LOCKED` inside its own transaction to atomically select-and-mark-PROCESSING — a row locked by one claimant is invisible to a concurrent one until released. Verified against real Postgres with two literally-concurrent `claimBatch` calls (`Promise.all`) claiming from a shared pool of rows: every row was claimed by exactly one caller, zero overlap. |
+| A dispatcher crashes after claiming a batch (PROCESSING) but before publishing or marking the outcome — the message is stuck forever | A `PROCESSING` row whose `locked_at` is older than the configured lease becomes claimable again by the next `claimBatch` call — no separate cleanup job, no operator intervention. Verified against real Postgres: a row force-set to `PROCESSING` with a stale lock is unclaimable while the lease is still "valid" and claimable once it is treated as expired. |
+| A handler throws and the message is lost | `DispatchOutboxBatchUseCase` catches any error from `DomainEventBus.publish()` per-message and calls `OutboxMessage.markFailed`, which returns the row to `PENDING` with exponential backoff (capped at 300s) until `maxAttempts` (5) is exceeded, at which point it becomes `FAILED` (dead-letter, `docs/EVENTS.md` §11) rather than retrying forever. One message failing does not stop the rest of the batch from being processed. |
+| A tenant's event data leaks to a consumer with no business relationship to that tenant | Every producer call site passes the real `tenantId` (or explicitly `null` for a genuinely untenanted fact); nothing in `DomainEventBus`/`DispatchOutboxBatchUseCase` filters by tenant because, in V1, the only subscriber is in-process code within the same trusted backend — there is no cross-tenant boundary to cross yet. This must be revisited before any external-facing consumer (webhook, external integration) exists. |
+| Sensitive data (passwords, tokens, full entities) ends up in a payload that later gets logged or exposed | `appendOutboxMessage` does not enforce a payload schema — this is an application-layer discipline each producer must follow (`docs/EVENTS.md` §6: "no contiene passwords, tokens, secretos, PAN, CVV ni PII innecesaria"), not something the infrastructure can verify structurally. The one producer built so far (`tenancy.tenant.provisioned.v1`) only includes IDs, the slug/name and codes — no credentials. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Single producer today.** `tenancy.tenant.provisioned.v1` is the only
+  integration event actually emitted — deliberately not inventing more
+  producers speculatively (MASTER_SPEC §59/§93) before a real business
+  module needs to announce a fact to another module. The full mechanism
+  (outbox, claim/lock/retry/dead-letter, in-process bus) is built and
+  tested end-to-end regardless, so the next producer is a small, well-worn
+  addition, not new infrastructure.
+- **No cross-process consumer, and therefore no `inbox_messages` table.**
+  `DomainEventBus` is purely in-process — the dispatcher claims a row and
+  calls registered handlers synchronously, in the same Node process, before
+  marking the outcome. There is no BullMQ/worker consumer yet (`apps/worker`
+  is a separate, later backlog item), so there is no re-delivery path that
+  could hand the same message to two different processes and therefore no
+  present need for per-consumer idempotency tracking. This must be added
+  before any handler with a non-idempotent side effect is registered, or
+  before a real cross-process consumer exists — see `docs/DATABASE.md`
+  "Event Bus / transactional outbox table".
+- **The dispatcher runs inside the API process itself**, on a plain
+  `setInterval` (`OutboxDispatcherScheduler`), not a dedicated worker
+  process. This means outbox dispatch competes for the same process's
+  resources as HTTP request handling, and there is exactly one dispatcher
+  instance per running API process (fine for a single instance; if the API
+  is ever scaled horizontally, every instance runs its own dispatcher —
+  harmless given the `FOR UPDATE SKIP LOCKED` claim logic already handles
+  multiple concurrent claimants correctly, but worth knowing). Moving this
+  to `apps/worker` is explicitly a later, separate backlog item, not a
+  correctness gap in what exists today.
+- **No retention/purge policy** for `PUBLISHED`/`FAILED` rows — the table
+  grows unbounded. `docs/EVENTS.md` §8.2 calls for retention/purge as an
+  "operative job, audited, not ad-hoc deletion" — not built yet, since
+  Foundation-scale data volume does not need it today.
+- **No observability beyond application logs.** `docs/EVENTS.md` §15 asks
+  for outbox pending count/age, throughput, DLQ growth, etc. as metrics —
+  none are exported yet; only structured `Logger` calls exist
+  (`OutboxDispatcherScheduler`/`DispatchOutboxBatchUseCase`), consistent
+  with the rest of this codebase's current observability level.
+- **`causation_id` is modeled but never populated.** No producer today is
+  itself reacting to a consumed event, and no `DomainEventBus` handler is
+  registered in production yet at all (confirmed live: dispatching a real
+  `tenancy.tenant.provisioned.v1` message logs "No handlers registered" and
+  still correctly marks the row `PUBLISHED` — see `docs/WORK_QUEUE.md`), so
+  there is nothing to set `causation_id` to yet.

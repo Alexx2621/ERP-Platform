@@ -1,10 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 9), tras implementar Audit
-append-only completo (login/logout/revocación, cambios de status de
-usuario, provisioning de tenant, asignaciones RBAC, cambios de
-configuración) y verificarlo contra Postgres real y con un smoke test HTTP
-completo.
+Última actualización: 2026-08-27 (sesión 10), tras implementar el Event Bus
+(transactional outbox + bus in-process + dispatcher) completo, ratificar
+ADR-004 y verificarlo contra Postgres real (incluyendo reclamo concurrente
+real vía `FOR UPDATE SKIP LOCKED`) y con un smoke test HTTP completo.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -26,19 +25,14 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
 infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration + Audit).
+Typed Configuration + Audit + Event Bus).
 Fase 0 no está
-formalmente cerrada: `docs/DECISIONS.md` solo tiene ADR-006 numerado, y
+formalmente cerrada: `docs/DECISIONS.md` tiene ADR-004 y ADR-006 numerados;
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
-para aprobación" en sus propios encabezados. **Corrección respecto a
-versiones previas de este archivo**: ADR-004 (Event Architecture) y ADR-005
-(Plugin Architecture) NO carecen de diseño — `docs/EVENTS.md` (338 líneas)
-y `docs/PLUGINS.md` (368 líneas) tienen propuestas completas desde el
-commit inicial del repositorio; afirmar que estaban "vacíos" fue un error
-mío en sesiones anteriores, detectado por el usuario y corregido aquí y en
-`docs/WORK_QUEUE.md`. Lo pendiente es ratificarlos formalmente (numerarlos)
-y, para ADR-004, implementarlos — no diseñarlos. Se avanzó en paralelo por
-decisión explícita del usuario, no por reinterpretación del proceso.
+para aprobación" en sus propios encabezados. ADR-005 (Plugin Architecture)
+sigue sin implementar — su diseño existe completo en `docs/PLUGINS.md`
+(368 líneas) desde el commit inicial del repositorio, pero a diferencia de
+ADR-004 nada se ha construido contra él todavía.
 
 ## Completed
 
@@ -187,14 +181,39 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   de auditoría ya documentados en las secciones de Authentication, RBAC y
   Typed Configuration. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
   sesión 9").
-- 143 tests unitarios pasando (api 120, api-client 7, erp-web 16) + 5 tests
+- **Event Bus / transactional outbox** (`apps/api/src/core/events`, Claude,
+  sesión 10): `OutboxMessage` (entidad con `markProcessing`/`markPublished`/
+  `markFailed`, backoff exponencial cap 300s, dead-letter tras 5 intentos),
+  `appendOutboxMessage` (función pura que inserta usando el cliente
+  Prisma/transacción ya abierto por el llamador — atomicidad real con la
+  escritura de estado del productor, no un escritor con conexión propia),
+  `DomainEventBus` (pub/sub in-process sin persistencia propia — la
+  durabilidad viene de la fila de outbox ya comprometida), `DispatchOutboxBatchUseCase`
+  (reclamo vía `FOR UPDATE SKIP LOCKED`), `OutboxDispatcherScheduler`
+  (`setInterval` nativo con ciclo de vida de Nest, no `@nestjs/schedule` ni
+  BullMQ — ver ADR-004 con el razonamiento completo). Tabla nueva
+  (migración `20260827232432_event_bus_outbox`, **generada y aplicada
+  directamente contra Postgres real**). Primer productor real:
+  `PrismaTenantProvisioningRepository` publica `tenancy.tenant.provisioned.v1`
+  en la misma transacción que el provisioning. Suite de integración
+  ampliada con reclamo concurrente real (dos claimants simultáneos, sin
+  solapamiento de IDs) y recuperación de lease expirado. **Smoke test
+  manual verificado contra la infraestructura Docker real**: provisioning →
+  1 fila `PENDING` con payload correcto → dispatcher ejecutado → fila
+  `PUBLISHED`, confirmando en el log real que hoy ningún handler de
+  producción está registrado todavía (el primer consumidor real queda para
+  Notifications). ADR-004 ratificado en `docs/DECISIONS.md` con las 7
+  decisiones de implementación V1. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 10").
+- 161 tests unitarios pasando (api 138, api-client 7, erp-web 16) + 8 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
   contra infraestructura real completa** (Chromium real, Postgres+Redis
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
   `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`) y pruebas negativas de aislamiento cross-tenant.
+  `audit.module.spec.ts`, `events.module.spec.ts`) y pruebas negativas de
+  aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -251,21 +270,25 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Event Bus).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Files).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: Event Bus (diseño ya existe en
-`docs/EVENTS.md`, falta
-implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
+Resumen bajo ownership único de Claude: Files (metadata + URLs firmadas
+contra MinIO) → Notifications (puede consumir el Event Bus ya implementado
+como su primer handler real) → Workers (extraer el dispatcher del outbox a
+`apps/worker`, ya funciona in-process hoy) → OpenAPI/Swagger →
 endpoint de invitación de membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
 PLATFORM) → vista de "mi actividad"/administración para eventos no
 tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
 endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
-case y su auditoría existen, pero nada lo invoca todavía). También
-pendiente: ratificar ADR-001 a ADR-005 formalmente. Claude debe completar
+case y su auditoría existen, pero nada lo invoca todavía) → inbox/
+idempotencia de consumidores (requerido antes de registrar cualquier
+handler del Event Bus con efecto secundario no idempotente). También
+pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
+(ADR-004 y ADR-006 ya están ratificados). Claude debe completar
 cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI de
 RBAC, el E2E de sesión y la UI de Configuración ya están hechas e integradas
 (ver Completed). El flujo "invitar usuario → asignar rol" en la UI de RBAC
@@ -332,3 +355,18 @@ no aparecen en la vista tenant-scoped, y que un segundo tenant real
 provisionado en la misma sesión solo ve sus propias 2 entradas — aislamiento
 cross-tenant confirmado en runtime, no solo en el test de integración.
 Toda la data de prueba fue limpiada al terminar.
+
+**Sesión 10 (2026-08-27, Event Bus)**: sexta migración
+(`20260827232432_event_bus_outbox`) generada directamente contra esta misma
+base real vía `prisma migrate dev` — `prisma migrate status` confirma las 6
+migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`): registro, provisioning de
+tenant real, confirmado exactamente 1 fila `PENDING` en `outbox_messages`
+con el payload de `tenancy.tenant.provisioned.v1` correcto, dispatcher
+ejecutado manualmente contra esa misma fila, confirmado que pasa a
+`PUBLISHED` con `publishedAt` poblado. Adicionalmente, contra Postgres real
+vía Testcontainers (no el Docker manual): reclamo concurrente real de 4
+filas por dos claimants simultáneos sin solapamiento de IDs (verifica
+`FOR UPDATE SKIP LOCKED` bajo carga real) y recuperación de una fila
+`PROCESSING` cuyo lease expiró. Toda la data de prueba fue limpiada al
+terminar.

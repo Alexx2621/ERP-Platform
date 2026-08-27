@@ -1,6 +1,7 @@
 import {
   FindProvisionedTenantInput,
   ProvisionedTenant,
+  ProvisionTenantContext,
   TenantProvisioningRepository,
 } from "../application/ports/tenant-provisioning.repository";
 import { InMemoryMembershipRepository } from "./in-memory-membership.repository";
@@ -8,6 +9,8 @@ import { InMemoryTenantRepository } from "./in-memory-tenant.repository";
 
 export class InMemoryTenantProvisioningRepository implements TenantProvisioningRepository {
   private readonly records = new Map<string, ProvisionedTenant>();
+  /** Recorded for tests that want to assert the outbox-relevant context was threaded through — this fake does not simulate the outbox table itself. */
+  readonly createContexts: ProvisionTenantContext[] = [];
 
   constructor(
     private readonly tenants: InMemoryTenantRepository,
@@ -23,7 +26,8 @@ export class InMemoryTenantProvisioningRepository implements TenantProvisioningR
     return record;
   }
 
-  async create(provisioned: ProvisionedTenant): Promise<void> {
+  async create(provisioned: ProvisionedTenant, context: ProvisionTenantContext): Promise<void> {
+    this.createContexts.push(context);
     this.records.set(provisioned.tenant.slug, provisioned);
     await this.tenants.save(provisioned.tenant);
     await this.memberships.save(provisioned.ownerMembership);

@@ -24,6 +24,7 @@ import {
 import { GetEffectiveSettingUseCase, SetSettingValueUseCase } from "./core/configuration";
 import { SettingsController } from "./core/configuration/presentation/settings.controller";
 import { PreferencesController } from "./core/configuration/presentation/preferences.controller";
+import { DomainEventBus, DispatchOutboxBatchUseCase } from "./core/events";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -62,6 +63,8 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(RecordAuditEntryUseCase)).toBeInstanceOf(RecordAuditEntryUseCase);
     expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
     expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
+    expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
+    expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
 
     await moduleRef.close();
   });

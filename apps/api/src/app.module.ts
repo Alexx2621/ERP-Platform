@@ -12,6 +12,7 @@ import { CompaniesModule } from "./core/companies";
 import { AccessControlModule } from "./core/access-control";
 import { ConfigurationModule } from "./core/configuration";
 import { AuditModule } from "./core/audit";
+import { EventsModule } from "./core/events";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AuditModule } from "./core/audit";
     CompaniesModule,
     AccessControlModule,
     AuditModule,
+    EventsModule,
     TenantsModule,
     ConfigurationModule,
   ],

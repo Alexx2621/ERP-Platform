@@ -20,6 +20,7 @@ export interface ProvisionTenantInput {
   ownerUserId: string;
   organization: { code: string; name: string };
   company?: { code: string; name: string };
+  correlationId: string;
 }
 
 @Injectable()
@@ -95,7 +96,7 @@ export class ProvisionTenantUseCase {
 
     tenant.activate();
     const provisioned = { tenant, ownerMembership, organization, company };
-    await this.provisioning.create(provisioned);
+    await this.provisioning.create(provisioned, { correlationId: input.correlationId });
     return provisioned;
   }
 }

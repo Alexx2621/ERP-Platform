@@ -304,3 +304,59 @@ generated and applied via `prisma migrate dev --name audit_foundation`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+---
+
+## Event Bus / transactional outbox table (2026-08-27)
+
+Scope: `docs/EVENTS.md` — `OutboxMessage`. Applied to the real running
+PostgreSQL instance via `prisma migrate dev` (not just diffed).
+
+### `outbox_messages`
+
+The transactional outbox (`docs/EVENTS.md` §8). Unlike every other table in
+this Foundation schema, atomicity with the state change it describes is a
+**hard requirement**, not a documented best-effort gap: `appendOutboxMessage`
+(`apps/api/src/core/events`) is the only function that inserts here, and it
+is always called with the *same* Prisma transaction client the producer's
+own repository is already using inside its own `$transaction` — see
+`PrismaTenantProvisioningRepository.create()` for the first real producer.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7 — also the envelope's `eventId` (`docs/EVENTS.md` §6). |
+| `tenant_id`, `company_id` | `uuid?` | Same composite-FK pattern as `setting_values`/`audit_entries`: `(tenant_id, company_id) → companies(tenant_id, id)`, only checked by Postgres when both are non-null. `NULL` for platform-global events (none exist yet). |
+| `event_type` | `varchar(150)` | `<bounded-context>.<aggregate>.<past-tense>.v<major>` (`docs/EVENTS.md` §7), e.g. `tenancy.tenant.provisioned.v1`. |
+| `event_version` | `int` | The envelope's major version, separate from the `.v<major>` suffix in `event_type` for easier querying/telemetry. |
+| `aggregate_type`, `aggregate_id`, `aggregate_version` | `varchar` / `uuid` / `int?` | Identify which aggregate instance the event describes and, when the aggregate tracks one, its version at the time — lets a consumer detect it received a stale/out-of-order event (`docs/EVENTS.md` §10). |
+| `payload` | `jsonb` | Self-contained — IDs and stable values only, never a full entity dump (`docs/EVENTS.md` §6). |
+| `occurred_at` | `timestamptz(6)` | When the fact happened (usually `now()` at append time). |
+| `available_at` | `timestamptz(6)` | When this row becomes claimable — `now()` at insert, pushed forward on a retry (exponential backoff, see `OutboxMessage.markFailed`). |
+| `status` | enum `PENDING`/`PROCESSING`/`PUBLISHED`/`FAILED` | `FAILED` is the dead-letter state after `maxAttempts` (currently 5) — no infinite retry loop. |
+| `attempt_count`, `last_error_code` | `int` / `varchar?` | Retry bookkeeping; `last_error_code` is the failing handler's error name+message, never a raw stack trace or sensitive payload. |
+| `locked_at`, `locked_by` | `timestamptz?` / `varchar?` | Set when a dispatcher claims the row (`PROCESSING`); a `PROCESSING` row whose `locked_at` is older than the configured lease becomes claimable again — recovers a dispatcher that crashed mid-batch without ever needing a separate cleanup job. |
+| `published_at` | `timestamptz?` | Set when `DomainEventBus.publish()` returns without throwing. |
+| `correlation_id` | `varchar(100)` | Always present, propagated from the HTTP request that caused the write (`CorrelationIdMiddleware`) — two rows from the same logical operation (e.g. `tenant.provisioned` and its immediately-following `access_control.owner_role.seeded` audit entry) share this value. |
+| `causation_id` | `varchar(100)?` | Not populated by any producer yet — reserved for a future event that is itself caused by consuming another event. |
+| `actor_type`, `actor_id` | `varchar(20)?` / `uuid?` | `USER`+id, or `SYSTEM`+null for a system-initiated fact. FK on `actor_id` → `users.id` `ON DELETE RESTRICT`, same reasoning as `audit_entries.user_id`. |
+| `created_at` | `timestamptz(6)` | |
+
+`@@index([status, availableAt])` supports the dispatcher's claim query
+(`WHERE status = 'PENDING' AND available_at <= now() ... FOR UPDATE SKIP LOCKED`,
+see `PrismaOutboxMessageRepository.claimBatch`). `@@index([tenantId])`
+supports a future per-tenant outbox view, not built yet.
+
+There is deliberately **no `inbox_messages` table yet** (`docs/EVENTS.md`
+§9) — see docs/SECURITY.md "Event Bus" for why: the only consumer today is
+the in-process `DomainEventBus`, invoked synchronously by the same
+dispatcher that just claimed the row, so there is no cross-process
+re-delivery path yet that would need per-consumer dedupe. Add it before any
+real cross-process consumer (a future `apps/worker`) exists.
+
+### Migration
+
+`packages/database/prisma/migrations/20260827232432_event_bus_outbox/` —
+generated and applied via `prisma migrate dev --name event_bus_outbox`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.

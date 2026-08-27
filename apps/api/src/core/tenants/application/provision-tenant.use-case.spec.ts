@@ -49,6 +49,7 @@ describe("ProvisionTenantUseCase", () => {
       ownerUserId: "owner-a",
       organization: { code: "main", name: "Acme Group" },
       company: { code: "gt01", name: "Acme GT" },
+      correlationId: "correlation-1",
     });
 
     expect(result.tenant.status).toBe("ACTIVE");
@@ -70,6 +71,7 @@ describe("ProvisionTenantUseCase", () => {
       ownerUserId: "owner-a",
       organization: { code: "MAIN", name: "Acme Group" },
       company: { code: "GT01", name: "Acme GT" },
+      correlationId: "correlation-1",
     };
 
     const first = await useCase.execute(input);
@@ -91,6 +93,7 @@ describe("ProvisionTenantUseCase", () => {
       slug: "acme-gt",
       name: "Acme",
       organization: { code: "MAIN", name: "Acme" },
+      correlationId: "correlation-1",
     };
     await useCase.execute({ ...base, ownerUserId: "owner-a" });
 

@@ -4,10 +4,119 @@ Format: Title, Status, Context, Decision, Consequences, Alternatives considered.
 
 Numbering follows `docs/ROADMAP.md` §4 (Fase 0 entregables). Only ADRs that have
 actually been written appear below — this is not a placeholder index. ADR-001
-(Modular Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy),
-ADR-004 (Event Architecture) and ADR-005 (Plugin Architecture) are still
-pending; they belong to whoever ratifies the broader Architecture V1 proposal,
-not to a single module task.
+(Modular Monolith), ADR-002 (PostgreSQL/Prisma) and ADR-003 (Multi-Tenancy) are
+still pending; they belong to whoever ratifies the broader Architecture V1
+proposal, not to a single module task. ADR-005 (Plugin Architecture) is also
+still pending — its design exists complete in `docs/PLUGINS.md` but nothing
+has been implemented against it yet, unlike ADR-004 below.
+
+---
+
+## ADR-004 — Event Architecture V1 (Transactional Outbox + In-Process Bus)
+
+**Status:** Accepted (scope: Event Bus backlog item — outbox mechanism, one
+real producer, dispatcher; not the full future scope of `docs/EVENTS.md`,
+e.g. inbox/idempotency, external broker, webhooks)
+
+**Context**
+
+`docs/EVENTS.md` has carried a complete V1 event architecture design since
+the initial commit (envelope, domain vs. integration event taxonomy, outbox
+schema, claim/retry/DLQ semantics, naming) but was never implemented nor
+formally ratified as a numbered ADR. This entry ratifies the concrete V1
+implementation choices made while building it — the parts `docs/EVENTS.md`
+leaves as principles rather than fully pinned-down decisions.
+
+**Decision**
+
+1. **Outbox atomicity is enforced by a plain function taking the caller's
+   own Prisma client, not a service with its own DI-managed connection.**
+   `appendOutboxMessage(client, input)` (`apps/api/src/core/events`) accepts
+   whatever `Prisma.TransactionClient` (or the base `PrismaService`) the
+   producer already has open. Every real call site inserts inside the
+   producer's own `$transaction` callback — see
+   `PrismaTenantProvisioningRepository.create()`. This was chosen over
+   giving `EventsModule` its own injectable "outbox writer" service because
+   a DI-managed service cannot participate in a transaction opened by a
+   *different* module's repository; a plain function that receives the
+   already-open client is the only way to guarantee the same commit.
+
+2. **Domain events are delivered by a purely in-process bus, not BullMQ.**
+   `DomainEventBus` is an in-memory publish/subscribe map with zero
+   persistence — matching `docs/EVENTS.md` §3.3's "Application Notification"
+   characterization (no durability guarantee on its own). Durability comes
+   entirely from the outbox row already being committed before the bus is
+   ever invoked; the bus is the *delivery* mechanism, not the source of
+   truth. BullMQ/Redis remains the future transport for genuine
+   cross-process job dispatch, not for this in-process fan-out.
+
+3. **The outbox dispatcher runs inside the API process on a plain
+   `setInterval`, not `@nestjs/schedule` or a dedicated `apps/worker`.**
+   A periodic poll with no cron expressions or job-queue semantics did not
+   justify a new dependency; `OutboxDispatcherScheduler` uses Nest's own
+   `OnModuleInit`/`OnModuleDestroy` lifecycle to manage a native timer
+   (`.unref()`'d so it never blocks process shutdown). Extracting this into
+   a dedicated `apps/worker` process consuming the same outbox table is a
+   distinct, later backlog item (`docs/WORK_QUEUE.md`) — the outbox schema
+   and claim/lock semantics do not need to change when that happens, only
+   which process runs the poll loop.
+
+4. **Row-level locking uses `SELECT ... FOR UPDATE SKIP LOCKED` via raw
+   SQL**, since Prisma's query builder has no equivalent. Verified against
+   real Postgres with genuinely concurrent claimants
+   (`Promise.all([...claimBatch(...), ...claimBatch(...)])` against a
+   shared pool of rows) that no row is ever claimed twice.
+
+5. **No `inbox_messages` table yet.** `docs/EVENTS.md` §9 describes one for
+   consumer-side idempotency, but the only consumer that exists today
+   (`DomainEventBus`, invoked synchronously by the same dispatcher that
+   claimed the row) has no cross-process re-delivery path that would need
+   it. Building it now, before a real cross-process consumer exists to
+   validate its shape, would be exactly the premature machinery
+   MASTER_SPEC §59/§93 warns against. Required before any handler with a
+   non-idempotent side effect is registered.
+
+6. **Retry policy: exponential backoff capped at 300 seconds, dead-letter
+   (`FAILED`) after 5 attempts.** A fixed, simple policy for V1 — no
+   per-event-type override mechanism yet, since there is only one producer
+   to calibrate against.
+
+7. **Naming**: `<bounded-context>.<aggregate>.<past-tense>.v<major>`
+   exactly as `docs/EVENTS.md` §7 specifies. The first (and, at this
+   writing, only) real event is `tenancy.tenant.provisioned.v1`.
+
+**Consequences**
+
+- Every future producer follows the same two-step pattern: build the
+  payload, call `appendOutboxMessage` with the transaction client already
+  in scope. No new infrastructure is needed per producer.
+- Because delivery is in-process only, a handler must currently run inside
+  the same API process as the dispatcher; there is no way today to have a
+  separate service consume these events without first building the
+  cross-process piece (inbox + a real transport) called out as deferred
+  above.
+- Horizontal scaling of the API process runs one dispatcher per instance;
+  this is safe (the locking guarantees no double-claim) but means dispatch
+  capacity scales with API instance count rather than being independently
+  tunable — acceptable until `apps/worker` exists.
+
+**Alternatives considered**
+
+- **`@nestjs/schedule` for the poll interval:** rejected for V1 — a single
+  periodic tick does not need cron expressions or the extra dependency;
+  revisit if the dispatcher's scheduling needs grow more complex than "poll
+  every N milliseconds".
+- **Publishing directly to BullMQ instead of an outbox + in-process bus:**
+  rejected because it reintroduces the exact dual-write problem the outbox
+  pattern exists to avoid (the state commit and the queue publish would not
+  be atomic) — `docs/EVENTS.md` §1 is explicit that BullMQ/Redis is
+  transport, not source of truth.
+- **A generic "unit of work" abstraction shared across all repositories**
+  instead of passing the transaction client explicitly per call: rejected
+  as unnecessary complexity for the one cross-cutting write (outbox) that
+  currently needs it — every other repository still manages its own
+  transactions independently, per existing precedent (`docs/ARCHITECTURE.md`
+  §6).
 
 ---
 
