@@ -54,6 +54,87 @@ describe("ApiClient", () => {
     expect(headers.get("X-Company-Id")).toBe("company-1");
   });
 
+  it("uses the documented tenant-scoped RBAC endpoints", async () => {
+    const createdRole = {
+      id: "role-1",
+      name: "Supervisor",
+      isSystem: false,
+      permissionKeys: ["access.roles.read"],
+    };
+    const assignment = {
+      id: "assignment-1",
+      membershipId: "membership-1",
+      roleId: "role-1",
+      scopeType: "COMPANY",
+      scopeId: "company-1",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([createdRole]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(createdRole), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(assignment), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listRoles("access-token", "grupo-aurora")).resolves.toEqual([createdRole]);
+    await client.createRole("access-token", "grupo-aurora", {
+      name: "Supervisor",
+      permissionKeys: ["access.roles.read"],
+    });
+    await client.assignRole("access-token", "grupo-aurora", "role/encoded", {
+      membershipId: "membership-1",
+      scopeType: "COMPANY",
+      scopeId: "company-1",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/roles",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Supervisor",
+          permissionKeys: ["access.roles.read"],
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/roles/role%2Fencoded/assignments",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          membershipId: "membership-1",
+          scopeType: "COMPANY",
+          scopeId: "company-1",
+        }),
+      }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer access-token");
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+    }
+  });
+
+  it("lists the permission catalog with tenant context", async () => {
+    const permissions = [
+      { key: "access.roles.read", description: "List roles in the active tenant." },
+    ];
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(permissions), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listPermissions("access-token", "grupo-aurora")).resolves.toEqual(
+      permissions,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/permissions",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

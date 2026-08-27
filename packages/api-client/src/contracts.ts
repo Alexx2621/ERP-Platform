@@ -70,6 +70,39 @@ export interface ProvisionTenantResponse {
   };
 }
 
+export interface RoleResponse {
+  id: string;
+  name: string;
+  isSystem: boolean;
+  permissionKeys: string[];
+}
+
+export interface PermissionResponse {
+  key: string;
+  description: string;
+}
+
+export interface CreateRoleInput {
+  name: string;
+  permissionKeys: string[];
+}
+
+export type RoleAssignmentScope = "TENANT" | "COMPANY";
+
+export interface AssignRoleInput {
+  membershipId: string;
+  scopeType: RoleAssignmentScope;
+  scopeId?: string;
+}
+
+export interface RoleAssignmentResponse {
+  id: string;
+  membershipId: string;
+  roleId: string;
+  scopeType: RoleAssignmentScope;
+  scopeId: string | null;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

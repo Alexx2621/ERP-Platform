@@ -1,10 +1,15 @@
 import type {
+  AssignRoleInput,
   ApiErrorEnvelope,
   AuthenticatedUser,
+  CreateRoleInput,
   LoginInput,
+  PermissionResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
   RegisterInput,
+  RoleAssignmentResponse,
+  RoleResponse,
   SessionResponse,
   TenantExecutionContext,
   TenantSummary,
@@ -121,6 +126,56 @@ export class ApiClient {
       tenantSlug,
       companyId,
     });
+  }
+
+  async listRoles(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<RoleResponse[]> {
+    return this.request<RoleResponse[]>("/roles", { accessToken, tenantSlug, signal });
+  }
+
+  async listPermissions(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<PermissionResponse[]> {
+    return this.request<PermissionResponse[]>("/permissions", {
+      accessToken,
+      tenantSlug,
+      signal,
+    });
+  }
+
+  async createRole(
+    accessToken: string,
+    tenantSlug: string,
+    input: CreateRoleInput,
+  ): Promise<RoleResponse> {
+    return this.request<RoleResponse>("/roles", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      body: input,
+    });
+  }
+
+  async assignRole(
+    accessToken: string,
+    tenantSlug: string,
+    roleId: string,
+    input: AssignRoleInput,
+  ): Promise<RoleAssignmentResponse> {
+    return this.request<RoleAssignmentResponse>(
+      `/roles/${encodeURIComponent(roleId)}/assignments`,
+      {
+        method: "POST",
+        accessToken,
+        tenantSlug,
+        body: input,
+      },
+    );
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
