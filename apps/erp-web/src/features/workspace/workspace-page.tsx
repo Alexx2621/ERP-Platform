@@ -4,8 +4,6 @@ import {
   CheckCircle,
   Factory,
   LockKey,
-  SlidersHorizontal,
-  ShieldCheck,
   SquaresFour,
 } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
@@ -13,6 +11,7 @@ import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
 import { DevelopmentProgressPanel } from "./development-progress-panel";
 import { ProductShell } from "./product-shell";
+import { WorkspaceNavigation } from "./workspace-navigation";
 
 interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -36,21 +35,12 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
       eyebrow={`Tenant / ${selection.slug}`}
       title={selection.name}
       description="El contexto empresarial está listo. Los módulos operativos aparecerán cuando sus permisos y contratos HTTP estén disponibles."
+      navigation={<WorkspaceNavigation activePath="/workspace" navigate={navigate} />}
       action={
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => navigate("/roles")}>
-            <ShieldCheck size={17} weight="bold" aria-hidden="true" />
-            Roles y permisos
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/settings")}>
-            <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
-            Ajustes
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
-            <ArrowLeft size={17} weight="bold" aria-hidden="true" />
-            Cambiar espacio
-          </Button>
-        </div>
+        <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
+          <ArrowLeft size={17} weight="bold" aria-hidden="true" />
+          Cambiar espacio
+        </Button>
       }
     >
       <section className="grid gap-6 pt-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">

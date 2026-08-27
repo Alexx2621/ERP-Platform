@@ -12,13 +12,22 @@ function mergeClassName(base: string, className?: string): string {
 
 interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
   containerClassName?: string;
+  scrollLabel?: string;
 }
 
-export function Table({ className, containerClassName, ...props }: TableProps) {
+export function Table({
+  className,
+  containerClassName,
+  scrollLabel = "Tabla desplazable",
+  ...props
+}: TableProps) {
   return (
     <div
+      role="region"
+      aria-label={scrollLabel}
+      tabIndex={0}
       className={mergeClassName(
-        "overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--paper)]",
+        "overflow-x-auto overscroll-x-contain rounded-[12px] border border-[var(--line)] bg-[var(--paper)] outline-none focus-visible:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent-soft)]",
         containerClassName,
       )}
     >

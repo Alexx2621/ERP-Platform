@@ -16,6 +16,7 @@ import type {
   TenantSummary,
 } from "@erp/api-client";
 import { ProductShell } from "../workspace/product-shell";
+import { WorkspaceNavigation } from "../workspace/workspace-navigation";
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
@@ -609,6 +610,7 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
       eyebrow={`Tenant / ${selection.slug}`}
       title="Roles y permisos"
       description="Administra roles del tenant, consulta el catálogo de permisos y asigna acceso a membresías existentes."
+      navigation={<WorkspaceNavigation activePath="/roles" navigate={navigate} />}
       action={
         <Button type="button" variant="secondary" onClick={() => navigate("/workspace")}>
           <ArrowLeft size={17} weight="bold" aria-hidden="true" />

@@ -142,6 +142,22 @@ export interface UserPreferenceResponse {
   updatedAt: string;
 }
 
+export interface AuditEntryResponse {
+  id: string;
+  userId: string | null;
+  tenantId: string | null;
+  companyId: string | null;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  previousValues: unknown;
+  newValues: unknown;
+  ipAddress: string | null;
+  userAgent: string | null;
+  correlationId: string;
+  createdAt: string;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

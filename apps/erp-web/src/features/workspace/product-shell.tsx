@@ -9,6 +9,7 @@ interface ProductShellProps {
   title: string;
   description?: string;
   action?: ReactNode;
+  navigation?: ReactNode;
 }
 
 export function ProductShell({
@@ -16,6 +17,7 @@ export function ProductShell({
   title,
   description,
   action,
+  navigation,
   children,
 }: PropsWithChildren<ProductShellProps>) {
   const { session, logout } = useAuth();
@@ -54,15 +56,16 @@ export function ProductShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1240px] px-5 py-10 sm:px-8 sm:py-14">
-        <div className="flex flex-col gap-6 border-b border-[var(--line)] pb-8 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+      <main className="mx-auto w-full max-w-[1240px] overflow-hidden px-4 py-7 sm:px-8 sm:py-10 lg:py-12">
+        {navigation ? <div className="mb-7 sm:mb-9">{navigation}</div> : null}
+        <div className="flex flex-col gap-5 border-b border-[var(--line)] pb-7 sm:flex-row sm:items-end sm:justify-between sm:pb-8">
+          <div className="min-w-0">
             {eyebrow ? (
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-[var(--accent)]">
                 {eyebrow}
               </p>
             ) : null}
-            <h1 className="mt-3 text-[clamp(2rem,5vw,4rem)] font-extrabold leading-none tracking-[-0.06em]">
+            <h1 className="mt-3 break-words text-[clamp(2rem,7vw,3.5rem)] font-extrabold leading-[1.02] tracking-[-0.055em]">
               {title}
             </h1>
             {description ? (
@@ -71,7 +74,7 @@ export function ProductShell({
               </p>
             ) : null}
           </div>
-          {action}
+          {action ? <div className="flex w-full shrink-0 sm:w-auto">{action}</div> : null}
         </div>
         {children}
       </main>

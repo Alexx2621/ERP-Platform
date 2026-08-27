@@ -1,6 +1,7 @@
 import type {
   AssignRoleInput,
   ApiErrorEnvelope,
+  AuditEntryResponse,
   AuthenticatedUser,
   CreateRoleInput,
   EffectiveSettingResponse,
@@ -242,6 +243,20 @@ export class ApiClient {
       method: "PUT",
       accessToken,
       body: { value },
+    });
+  }
+
+  async listAuditEntries(
+    accessToken: string,
+    tenantSlug: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<AuditEntryResponse[]> {
+    const query = limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`;
+    return this.request<AuditEntryResponse[]>(`/audit-entries${query}`, {
+      accessToken,
+      tenantSlug,
+      signal,
     });
   }
 

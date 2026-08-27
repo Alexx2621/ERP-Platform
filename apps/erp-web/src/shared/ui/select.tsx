@@ -18,7 +18,9 @@ export function Select({
 }: PropsWithChildren<SelectProps>) {
   const generatedId = useId();
   const selectId = id ?? selectProps.name ?? generatedId;
-  const describedBy = error ? `${selectId}-error` : hint ? `${selectId}-hint` : undefined;
+  const hintId = hint ? `${selectId}-hint` : undefined;
+  const errorId = error ? `${selectId}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className="grid gap-2 text-[13px] font-bold text-[var(--ink)]">
@@ -40,13 +42,14 @@ export function Select({
           className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--muted-strong)]"
         />
       </span>
-      {error ? (
-        <span id={`${selectId}-error`} role="alert" className="text-[12px] font-semibold text-[var(--danger)]">
-          {error}
-        </span>
-      ) : hint ? (
-        <span id={`${selectId}-hint`} className="text-[12px] font-medium text-[var(--muted)]">
+      {hint ? (
+        <span id={hintId} className="text-[12px] font-medium text-[var(--muted)]">
           {hint}
+        </span>
+      ) : null}
+      {error ? (
+        <span id={errorId} role="alert" className="text-[12px] font-semibold text-[var(--danger)]">
+          {error}
         </span>
       ) : null}
     </div>

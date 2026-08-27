@@ -56,7 +56,7 @@ export function Modal({
           onOpenChange(false);
         }
       }}
-      className={`m-auto w-[calc(100%-2rem)] ${widthClass} rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[0_24px_80px_rgba(10,20,16,0.24)] backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px]`}
+      className={`m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100%-2rem)] ${widthClass} rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[0_24px_80px_rgba(10,20,16,0.24)] backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px]`}
     >
       <div onClick={(event) => event.stopPropagation()}>
         <header className="flex items-start justify-between gap-5 border-b border-[var(--line)] px-5 py-4 sm:px-6">
@@ -84,7 +84,7 @@ export function Modal({
         </header>
         <div className="max-h-[min(68dvh,640px)] overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
         {footer ? (
-          <footer className="flex flex-wrap justify-end gap-3 border-t border-[var(--line)] bg-[var(--field-hover)] px-5 py-4 sm:px-6">
+          <footer className="flex flex-col-reverse gap-3 border-t border-[var(--line)] bg-[var(--field-hover)] px-5 py-4 [&>button]:w-full sm:flex-row sm:justify-end sm:px-6 sm:[&>button]:w-auto">
             {footer}
           </footer>
         ) : null}

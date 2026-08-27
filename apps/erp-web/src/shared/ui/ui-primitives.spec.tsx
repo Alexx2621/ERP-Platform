@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FormField } from "./form-field";
 import { Modal } from "./modal";
 import { Select } from "./select";
 import {
@@ -51,6 +52,10 @@ describe("shared UI primitives", () => {
     );
 
     expect(screen.getByRole("table", { name: "Roles del tenant" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Tabla desplazable" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
     expect(screen.getByRole("cell", { name: "Administrador" })).toBeInTheDocument();
 
     rerender(
@@ -66,6 +71,22 @@ describe("shared UI primitives", () => {
 
     expect(screen.getByText("No hay roles")).toBeInTheDocument();
     expect(screen.getByText("Crea el primer rol.")).toBeInTheDocument();
+  });
+
+  it("generates stable field ids and announces hints together with validation errors", () => {
+    render(
+      <FormField
+        label="Nombre visible"
+        hint="Se mostrará en el encabezado."
+        error="El nombre es obligatorio."
+      />,
+    );
+
+    const input = screen.getByRole("textbox", { name: "Nombre visible" });
+    expect(input).toHaveAccessibleDescription(
+      "Se mostrará en el encabezado. El nombre es obligatorio.",
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
   });
 
   it("associates select labels, hints and validation errors", async () => {

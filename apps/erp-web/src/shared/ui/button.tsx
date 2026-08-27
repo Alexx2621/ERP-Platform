@@ -26,7 +26,8 @@ export function Button({
     <button
       {...buttonProps}
       disabled={disabled || busy}
-      className={`inline-flex h-11 items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-extrabold transition-[transform,background-color,border-color] duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 ${variantClass} ${className}`}
+      aria-busy={busy || undefined}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-extrabold leading-5 transition-[transform,background-color,border-color] duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 ${variantClass} ${className}`}
     >
       {busy ? (
         <CircleNotch size={17} weight="bold" className="animate-spin" aria-hidden="true" />

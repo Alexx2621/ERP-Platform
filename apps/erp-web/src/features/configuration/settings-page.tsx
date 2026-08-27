@@ -18,6 +18,7 @@ import type {
   WritableSettingScope,
 } from "@erp/api-client";
 import { ProductShell } from "../workspace/product-shell";
+import { WorkspaceNavigation } from "../workspace/workspace-navigation";
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
@@ -811,6 +812,7 @@ export function SettingsPage({ selection, navigate }: SettingsPageProps) {
       eyebrow={`Tenant / ${selection.slug}`}
       title="Ajustes"
       description="Consulta la configuración efectiva, administra overrides permitidos y conserva tus preferencias personales."
+      navigation={<WorkspaceNavigation activePath="/settings" navigate={navigate} />}
       action={
         <Button type="button" variant="secondary" onClick={() => navigate("/workspace")}>
           <ArrowLeft size={17} weight="bold" aria-hidden="true" />

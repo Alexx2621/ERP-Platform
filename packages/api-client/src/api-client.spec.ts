@@ -208,6 +208,42 @@ describe("ApiClient", () => {
     }
   });
 
+  it("lists tenant audit entries with the documented limit and tenant header", async () => {
+    const entry = {
+      id: "audit-1",
+      userId: "user-1",
+      tenantId: "tenant-1",
+      companyId: null,
+      action: "tenant.provisioned",
+      resource: "tenant",
+      resourceId: "tenant-1",
+      previousValues: null,
+      newValues: { name: "Grupo Aurora" },
+      ipAddress: "127.0.0.1",
+      userAgent: "Vitest",
+      correlationId: "correlation-1",
+      createdAt: "2026-08-27T19:40:23.000Z",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify([entry]), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+    const signal = new AbortController().signal;
+
+    await expect(
+      client.listAuditEntries("access-token", "grupo-aurora", 100, signal),
+    ).resolves.toEqual([entry]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/audit-entries?limit=100",
+      expect.objectContaining({ method: "GET", signal }),
+    );
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer access-token");
+    expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+    expect(headers.get("X-Company-Id")).toBeNull();
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
