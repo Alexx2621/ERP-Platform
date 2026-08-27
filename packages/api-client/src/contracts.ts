@@ -103,6 +103,45 @@ export interface RoleAssignmentResponse {
   scopeId: string | null;
 }
 
+export type SettingDataType = "STRING" | "NUMBER" | "BOOLEAN" | "JSON";
+export type SettingScope = "PLATFORM" | "TENANT" | "COMPANY";
+export type WritableSettingScope = Exclude<SettingScope, "PLATFORM">;
+export type EffectiveSettingSource = SettingScope | "DEFAULT";
+
+export interface SettingDefinitionResponse {
+  key: string;
+  dataType: SettingDataType;
+  description: string;
+  defaultValue: unknown;
+  allowedScopes: SettingScope[];
+}
+
+export interface EffectiveSettingResponse {
+  key: string;
+  value: unknown;
+  source: EffectiveSettingSource;
+}
+
+export interface SetSettingValueInput {
+  scopeType: WritableSettingScope;
+  companyId?: string;
+  value: unknown;
+}
+
+export interface SettingValueResponse {
+  key: string;
+  scopeType: SettingScope;
+  companyId: string | null;
+  value: unknown;
+  updatedAt: string;
+}
+
+export interface UserPreferenceResponse {
+  key: string;
+  value: unknown;
+  updatedAt: string;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

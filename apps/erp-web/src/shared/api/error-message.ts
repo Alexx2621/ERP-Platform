@@ -12,6 +12,11 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   ROLE_NOT_FOUND: "El rol ya no existe en este tenant.",
   MEMBERSHIP_NOT_FOUND: "La membresía no existe en este tenant.",
   ROLE_ASSIGNMENT_DUPLICATE: "Esta membresía ya tiene el rol en ese alcance.",
+  SETTING_NOT_FOUND: "El ajuste ya no existe en el catálogo.",
+  SETTING_SCOPE_NOT_ALLOWED: "Este ajuste no admite el alcance seleccionado.",
+  INVALID_SETTING_VALUE: "El valor no coincide con el tipo definido para este ajuste.",
+  COMPANY_CONTEXT_REQUIRED: "Selecciona una empresa para guardar el ajuste en ese alcance.",
+  COMPANY_NOT_FOUND: "La empresa no existe dentro del tenant activo.",
 };
 
 export function getErrorMessage(error: unknown): string {
