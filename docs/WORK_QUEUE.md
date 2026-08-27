@@ -2,7 +2,7 @@
 
 Reemplaza el modelo `docs/tasks/FOUNDATION-00X.md` + `docs/tasks/CURRENT.md`.
 Mantenida por Claude (Tech Lead/backend). Última actualización: 2026-08-27
-(sesión 7, implementación completa de Typed Configuration).
+(sesión 8, integración de la UI de Configuración/SDK/E2E de `ai/codex`).
 
 Rama de Claude: `ai/claude`. Rama de Codex: `ai/codex`. Integración: `develop`.
 `develop` y `ai/claude` sincronizados (mismo commit en origin, ambas ramas)
@@ -42,6 +42,47 @@ tras esta sesión.
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
+
+### Hecho — sesión 8 (integración de UI de Configuración + SDK + E2E de `ai/codex`)
+
+Revisado como Tech Lead e integrado sin cambios de código — los 2 commits
+eran correctos tal cual, ambos consistentes con el contrato HTTP real
+publicado en la sección Codex de este mismo archivo:
+
+- **`b29d70b` (feat(erp-web): show temporary development progress)** —
+  panel estático de avance del roadmap en el workspace (`development-progress-panel.tsx`),
+  sin llamadas a backend, explícitamente etiquetado como indicador interno
+  ("No representa horas, presupuesto ni fecha de entrega"). Detectado durante
+  la revisión: su lista de "próximos hitos" seguía nombrando "Configuración
+  tipada" como pendiente pese a que ya se integró en el commit padre directo
+  (`429b93b`) — corregido en un commit de seguimiento propio (no se reescribió
+  el commit de Codex) junto con esta actualización de documentación.
+- **`febd05c` (feat(erp-web): add settings management)** — pantalla
+  "Ajustes" completa (`features/configuration/settings-page.tsx`) con
+  pestañas Ajustes/Preferencias, editor de valor consciente de `dataType`
+  (texto/número/booleano/JSON), y los 5 métodos nuevos en `@erp/api-client`
+  (`listSettingDefinitions`, `listEffectiveSettings`, `setSettingValue`,
+  `listUserPreferences`, `setUserPreference`) — verificados campo por campo
+  contra los DTOs reales del backend. Codifica la restricción de seguridad
+  de PLATFORM directamente en TypeScript (`WritableSettingScope =
+  Exclude<SettingScope, "PLATFORM">`) y en el copy de la UI ("Los valores de
+  plataforma son de solo lectura"), en vez de inventar una UI de
+  administración de plataforma que no existe. E2E real (Testcontainers +
+  API compilada + Vite) cubre catálogo → efectivo → override COMPANY
+  (verificado que gana sobre el valor por defecto en la vista) →
+  preferencia nueva, con los bodies de request verificados contra la forma
+  real de los DTOs.
+- Validación completa ejecutada por mí tras el merge: `pnpm lint`,
+  `pnpm typecheck`, `pnpm test` (132 tests: api 109, api-client 7,
+  erp-web 16), `pnpm build` (5 paquetes), `pnpm --filter @erp/api
+  test:integration` (4/4 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (**2/2 Playwright con Chromium real**)
+  — todo verde. Nota operativa: la primera corrida de E2E chocó con
+  procesos `node`/`vite` huérfanos de sesiones anteriores ocupando los
+  puertos 3000/5173; liberados y la corrida se repitió limpia antes de
+  darla por válida — ver también la corrección de contenido del panel de
+  avance arriba. Merge sin conflictos (`ai/codex` era ancestro lineal
+  directo de mi commit de Typed Configuration).
 
 ### Hecho — sesión 7 (Typed Configuration)
 
@@ -267,6 +308,12 @@ en tsc dejaba `dist/` incompleto sin fallar el build.
 - ~~E2E del ciclo completo de sesión (rotación, replay, revocación,
   logout)~~ — hecho, integrado (sesión 6, `8814a5e`). Ver "Hecho — sesión 6"
   arriba.
+- ~~UI de Configuración ("Ajustes") + SDK + E2E~~ — hecho, integrado
+  (sesión 8, `febd05c`). Ver "Hecho — sesión 8" arriba para el detalle
+  completo.
+- ~~Panel de avance de desarrollo~~ — hecho, integrado (sesión 8,
+  `b29d70b`, con una corrección de contenido de seguimiento). Ver "Hecho —
+  sesión 8" arriba.
 
 ### Contrato HTTP de referencia para RBAC (ya consumido por la UI integrada)
 
@@ -309,55 +356,12 @@ agregue ese endpoint (ítem 7 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
-### Nueva tarea disponible: UI de Configuración ("Ajustes")
-
-El backend de Typed Configuration está implementado, probado (unit +
-integración con Postgres real) y verificado con un smoke test manual contra
-la infraestructura Docker real (ver "Hecho — sesión 7" arriba). El contrato
-HTTP real es:
-
-- `GET /api/v1/settings/definitions` — catálogo de configuración (todas las
-  claves, con su `dataType`, `description`, `defaultValue`,
-  `allowedScopes`). Requiere `configuration.settings.read`. Responde
-  `SettingDefinitionResponseDto[]`. Hoy solo 3 claves existen:
-  `localization.currency`, `localization.timezone`, `localization.locale`
-  — las tres con `allowedScopes: ["PLATFORM","TENANT","COMPANY"]`.
-- `GET /api/v1/settings` — valores efectivos para el tenant/company activo
-  (resueltos COMPANY → TENANT → PLATFORM → default, con `X-Company-Id`
-  determinando si se resuelve a nivel compañía). Requiere
-  `configuration.settings.read`. Responde `EffectiveSettingResponseDto[]`:
-  `{ key, value, source: "COMPANY"|"TENANT"|"PLATFORM"|"DEFAULT" }` — el
-  campo `source` es útil para que la UI muestre de dónde viene cada valor
-  (por ejemplo, atenuado si es "DEFAULT").
-- `PUT /api/v1/settings/:key` — fijar un valor. Requiere
-  `configuration.settings.manage`. Body: `{ scopeType: "TENANT"|"COMPANY",
-  companyId?: string, value: unknown }` (`companyId` requerido solo si
-  `scopeType` es `"COMPANY"`; **`PLATFORM` no es un scope válido en este
-  endpoint** — ver `docs/SECURITY.md`, es una decisión de seguridad
-  deliberada, no un hueco a rellenar). `200` con `SettingValueResponseDto`.
-  Errores: `404 SETTING_NOT_FOUND`, `400 SETTING_SCOPE_NOT_ALLOWED` (con
-  `details.scopeType`), `400 INVALID_SETTING_VALUE`,
-  `400 COMPANY_CONTEXT_REQUIRED`, `404 COMPANY_NOT_FOUND`.
-- `GET /api/v1/preferences` — preferencias del usuario autenticado. Solo
-  requiere sesión (`SessionAuthGuard`) — **no** requiere contexto de tenant
-  ni permiso alguno, porque una preferencia es del usuario, no del tenant
-  (ver `docs/MULTITENANCY.md` §4.8). Responde `UserPreferenceResponseDto[]`.
-- `PUT /api/v1/preferences/:key` — fijar una preferencia propia. Mismo
-  guard mínimo. Body: `{ value: unknown }` (clave libre, sin catálogo).
-  `200` con `UserPreferenceResponseDto`.
-- Envelope de error igual al ya usado (`statusCode/code/message/details/correlationId`).
-
-La UI natural es una pantalla "Ajustes" separada de "Roles y permisos",
-usando los mismos primitivos ya construidos (`Table` para listar
-efectivos/catálogo, `Modal`+`Select` para fijar un valor eligiendo scope).
-No hay trabajo de Design System pendiente. A diferencia de RBAC, esta
-pantalla **no** tiene el hueco de "membership inexistente" — todo lo que
-expone es completable de punta a punta hoy mismo.
-
 ### Disponible ahora
 
-- **UI de Configuración ("Ajustes")** — ver arriba, contrato real y
-  verificado, sin bloqueos.
+- Sin tarea nueva asignada a Codex en este momento. Lo próximo de cara al
+  usuario depende de que Claude entregue Audit (sin superficie HTTP propia
+  esperable) o, más adelante, Files/Notifications (sí tendrán superficie de
+  UI).
 - **Documentación**: no quedan huecos obvios — `docs/EVENTS.md` y
   `docs/PLUGINS.md` ya estaban completos (ver corrección en sesiones
   anteriores).

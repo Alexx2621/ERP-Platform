@@ -30,10 +30,10 @@ export const overallDevelopmentProgress = Math.round(
 );
 
 const nextMilestones = [
-  "Configuración tipada",
   "Auditoría append-only",
   "Event Bus y transactional outbox",
   "Files, notificaciones y workers",
+  "OpenAPI/Swagger",
 ] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {

@@ -1,9 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 7), tras implementar Typed
-Configuration completo (SettingDefinition, SettingValue, UserPreference,
-resolución PLATFORM→TENANT→COMPANY→default) y verificarlo contra Postgres
-real y con un smoke test HTTP completo.
+Última actualización: 2026-08-27 (sesión 8), tras integrar de `ai/codex` la
+UI de Configuración ("Ajustes"), el SDK tipado y la cobertura E2E real de
+Typed Configuration y preferencias, verificadas end-to-end contra
+infraestructura real.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -133,7 +133,22 @@ decisión explícita del usuario, no por reinterpretación del proceso.
   valor incorrecto rechazado (`400 INVALID_SETTING_VALUE`) → preferencia de
   usuario sin necesitar contexto de tenant. Detalle completo en
   `docs/WORK_QUEUE.md` ("Hecho — sesión 7").
-- 127 tests unitarios pasando (api 109, api-client 6, erp-web 12) + 4 tests
+- **UI de Configuración — "Ajustes"** (`apps/erp-web/src/features/
+  configuration`, Codex, sesión 8): pantalla con pestañas Ajustes/
+  Preferencias, editor de valor consciente del `dataType` de cada
+  definición, y 5 métodos nuevos en `@erp/api-client`
+  (`listSettingDefinitions`, `listEffectiveSettings`, `setSettingValue`,
+  `listUserPreferences`, `setUserPreference`). Codifica la restricción de
+  PLATFORM directamente en el tipo `WritableSettingScope` y en el copy de
+  la UI, en vez de simular administración de plataforma. Revisado e
+  integrado por Claude (Tech Lead) sin cambios de código.
+- **Panel de avance de desarrollo** (`apps/erp-web/src/features/workspace/
+  development-progress-panel.tsx`, Codex, sesión 8): indicador estático,
+  explícitamente no vinculante, del roadmap de MASTER_SPEC. Corregido por
+  Claude en un commit de seguimiento: su lista de "próximos hitos" seguía
+  nombrando "Configuración tipada" como pendiente pese a estar ya
+  integrada.
+- 132 tests unitarios pasando (api 109, api-client 7, erp-web 16) + 4 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
   contra infraestructura real completa** (Chromium real, Postgres+Redis
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
@@ -194,11 +209,11 @@ implementar) → Files → Notifications → Workers → OpenAPI/Swagger →
 endpoint de invitación de membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
 PLATFORM). También pendiente: ratificar ADR-001 a ADR-005 formalmente.
-Para Codex: UI de Configuración ("Ajustes") — **nueva tarea disponible**,
-contrato HTTP real y verificado en `docs/WORK_QUEUE.md`, sin bloqueos. El
-flujo "invitar usuario → asignar rol" en la UI de RBAC **sigue bloqueado**
-hasta que exista el endpoint de invitación de membership — no se debe
-simular ni inventar mientras tanto.
+Para Codex: sin tarea nueva asignada en este momento — UI de RBAC, E2E de
+sesión y UI de Configuración ya están hechas e integradas (ver Completed).
+El flujo "invitar usuario → asignar rol" en la UI de RBAC **sigue
+bloqueado** hasta que exista el endpoint de invitación de membership — no
+se debe simular ni inventar mientras tanto.
 
 ## Production Status
 
