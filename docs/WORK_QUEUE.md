@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-28 (sesión 12,
-implementación completa de Notifications — solicitud, canal IN_APP,
-listado/marcado de leído). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-28 (sesión 13,
+extracción del outbox dispatcher a `apps/worker` — nuevo paquete compartido
+`@erp/events`). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,49 +21,115 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
-   in-process dentro de `apps/api` (`OutboxDispatcherScheduler`, ver ADR-004)
-   deliberadamente; extraerlo a `apps/worker` es un cambio de qué proceso
-   ejecuta el poll loop, no del esquema/semántica del outbox.
-2. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+1. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-3. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+2. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-4. **System-administration plane** — necesario antes de exponer escritura de
+3. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-5. **"Mi actividad" / vista de administración de plataforma para eventos no
+4. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-6. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+5. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
-7. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+6. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-8. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+7. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-9. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+8. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
+
+### Hecho — sesión 13 (Workers: extracción del outbox dispatcher)
+
+- **Nuevo paquete compartido `packages/events` (`@erp/events`)**: todo el
+  dominio del outbox (`OutboxMessage`, `appendOutboxMessage`,
+  `DomainEventBus`, `DispatchOutboxBatchUseCase`,
+  `PrismaOutboxMessageRepository`, `OutboxDispatcherScheduler`) se movió
+  desde `apps/api/src/core/events/` a este paquete, con un módulo Nest
+  reusable `OutboxDispatcherModule` listo para importar. Decisión
+  arquitectónica clave: `PrismaOutboxMessageRepository` ya no depende de la
+  clase concreta `PrismaService` de ninguna app — depende de un token DI
+  `PRISMA_CLIENT` (`infrastructure/prisma-client.token`) que cada app
+  consumidora provee globalmente (`useExisting` sobre su propio
+  `PrismaService`), igual patrón que ya usaban `PrismaService`/`RedisService`
+  en `apps/api`. Esto mantiene el paquete desacoplado de la infraestructura
+  concreta de cada proceso.
+- **`apps/api` ya no tiene el dispatcher en absoluto.** Solo importa
+  `appendOutboxMessage`/`OutboxMessage` desde `@erp/events` (usado por
+  `PrismaTenantProvisioningRepository`, sin cambios de comportamiento —
+  sigue insertando dentro de la misma transacción del productor). Se quitó
+  `EventsModule` de `AppModule`, y `OUTBOX_DISPATCH_INTERVAL_MS` del
+  `EnvironmentVariables`/`.env` de `apps/api` (ya no aplica ahí).
+- **Nueva app `apps/worker`**: composition root NestJS mínimo — importa
+  `ConfigModule` (con su propio `EnvironmentVariables` reducido: solo
+  `PORT`, `DATABASE_URL`, `OUTBOX_DISPATCH_INTERVAL_MS`, sin tokens/S3/rate
+  limits que no le conciernen), su propio `PrismaModule` (provee tanto
+  `PrismaService` como `PRISMA_CLIENT` para `@erp/events`), y
+  `OutboxDispatcherModule` directamente desde el paquete compartido. Expone
+  `GET /health` (liveness únicamente, MASTER_SPEC §37 — no valida
+  conectividad a Postgres, ver hueco documentado en `docs/SECURITY.md`) en
+  el puerto 3001 por defecto.
+- **Verificado end-to-end contra Docker real, con los dos procesos
+  corriendo simultáneamente**: `apps/api` (sin actividad de dispatcher en
+  su propio log) aprovisionó un tenant real y escribió la fila `PENDING` al
+  outbox; `apps/worker` (proceso completamente separado, puerto 3001) la
+  reclamó y publicó (`claimed=1 published=1 failed=0`) — confirmado en el
+  log de CADA proceso por separado, no uno combinado. La notificación
+  automática de provisioning (sesión 12, llamada directa desde
+  `TenantsController`, no vía el bus) se confirmó intacta tras el refactor.
+- **Arnés E2E actualizado** (`apps/e2e/src/global-setup.ts`): ahora también
+  arranca el proceso real de `apps/worker` (puerto 3011, distinto del 3001
+  de desarrollo local para evitar colisiones) junto a Postgres/Redis/MinIO
+  efímeros — la arquitectura de dos procesos se prueba de forma real, no
+  simulada. `pretest:e2e` ahora compila `@erp/api` y `@erp/worker`. El log
+  del E2E confirma el mismo patrón de separación de procesos que el smoke
+  test manual.
+- **ADR-004 enmendado** (`docs/DECISIONS.md`): se tachó la decisión
+  original ("el dispatcher corre in-process en la API") y se agregó una
+  sección "Amendment (2026-08-28)" completa documentando el nuevo diseño,
+  sin reescribir el historial de la decisión original.
+- Tests: 18 tests movidos a `packages/events` (mismos tests, mismas
+  aserciones, cero tests nuevos añadidos ya que la lógica no cambió — solo
+  su ubicación y cómo obtiene su conexión a Postgres) + 1 test de wiring
+  nuevo (`WorkerModule wiring`) — 174 tests unitarios en `apps/api` (antes
+  192, -18 por la extracción), 18 en `@erp/events`, 1 en `@erp/worker`.
+  Suite de integración de `apps/api` (10/10) actualizada para importar
+  desde `@erp/events` en vez de rutas internas — mismo comportamiento
+  verificado contra Postgres real (incluyendo reclamo concurrente y
+  recuperación de lease, que ahora también prueban indirectamente el
+  paquete compartido).
+- Documentación actualizada: `docs/DECISIONS.md` (ADR-004 enmendado),
+  `docs/SECURITY.md` (sección Event Bus actualizada con la nueva topología
+  de dos procesos y el hueco del healthcheck liveness-only),
+  `docs/DATABASE.md` (rutas actualizadas a `packages/events`).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+  (174 api + 18 events + 1 worker + resto sin cambios), `pnpm build`
+  (7 paquetes: se agregaron `@erp/events` y `@erp/worker`),
+  `pnpm --filter @erp/api test:integration` (10/10 contra Postgres real),
+  y `pnpm --filter @erp/e2e test:e2e` (2/2 Playwright, ahora arrancando
+  api+worker+erp-web como tres procesos reales separados) — todo verde.
 
 ### Hecho — sesión 12 (Notifications)
 
@@ -695,8 +761,8 @@ inventarse mientras tanto.
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará Workers y cualquier superficie de UI, SDK, pruebas o
-  documentación que ese bloque requiera.
+- Claude continuará OpenAPI/Swagger y cualquier superficie de UI, SDK,
+  pruebas o documentación que ese bloque requiera.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
@@ -704,7 +770,7 @@ inventarse mientras tanto.
   conservarse como fuente técnica para la implementación y ratificación de sus
   ADR.
 - El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
-  endpoint de invitación de membership (ítem 3 del backlog activo). Claude es
+  endpoint de invitación de membership (ítem 2 del backlog activo). Claude es
   responsable de resolver el backend y completar después la experiencia de
   punta a punta; no debe simularse mientras tanto.
 
@@ -719,28 +785,25 @@ Playwright).
 
 ## Dependencies
 
-- Workers (extracción de `apps/worker`) depende de BullMQ contra el Redis ya
-  disponible; el poll loop del outbox ya funciona in-process hoy (ver
-  ADR-004), así que esto es una extracción, no una funcionalidad nueva.
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 3 de la cola Claude).
+  endpoint de invitación de membership (ítem 2 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 4 de la cola Claude) —
+  administración de plataforma separado (ítem 3 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 7 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 6 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 8 de la cola
+- Una purga real de storage para archivos borrados (ítem 7 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 9 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 8 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 2).
+  todavía. Sigue en la cola Claude (ítem 1).
 
 ## Architecture decisions needed
 
@@ -748,7 +811,8 @@ Ninguna pendiente de aprobación en este momento. Decisiones ya registradas:
 `docs/DECISIONS.md` ADR-006 (Identity & Session Strategy) — su pregunta
 abierta sobre almacenamiento de tokens en el cliente quedó resuelta en la
 práctica por `apps/erp-web` (memoria, no persistente); ADR-004 (Event
-Architecture — implementado y ratificado en sesión 10). Pendientes de
+Architecture — implementado y ratificado en sesión 10, enmendado en sesión
+13 para reflejar la extracción del dispatcher a `apps/worker`). Pendientes de
 numerar formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
 `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres

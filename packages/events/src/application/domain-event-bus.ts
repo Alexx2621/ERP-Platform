@@ -9,13 +9,15 @@ export type DomainEventHandler = (event: IntegrationEventEnvelope) => Promise<vo
  * (docs/EVENTS.md §3.3/§5) — never called directly by a producer use case,
  * and never invoked before the producer's transaction has committed.
  *
- * V1 scope: purely in-process. There is no cross-process delivery yet (no
- * BullMQ/worker consumer) — that is the future "Workers" backlog item
- * (docs/WORK_QUEUE.md). A handler that throws causes the dispatcher to
- * retry the whole outbox row later (see OutboxMessage.markFailed), so
- * handlers registered here must be safe to run more than once — there is
- * no per-consumer inbox/idempotency table yet (deliberately deferred until
- * a real cross-process consumer needs it — see docs/SECURITY.md "Event Bus").
+ * Lives in `apps/worker` (docs/WORK_QUEUE.md — extracted from the in-process
+ * dispatcher that used to run inside `apps/api`, see ADR-004's amendment).
+ * Delivery itself is still purely in-process within the worker: there is no
+ * cross-process fan-out (no BullMQ). A handler that throws causes the
+ * dispatcher to retry the whole outbox row later (see
+ * OutboxMessage.markFailed), so handlers registered here must be safe to
+ * run more than once — there is no per-consumer inbox/idempotency table yet
+ * (deliberately deferred until a real cross-process consumer needs it — see
+ * docs/SECURITY.md "Event Bus").
  */
 @Injectable()
 export class DomainEventBus {

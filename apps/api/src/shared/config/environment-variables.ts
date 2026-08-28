@@ -34,11 +34,6 @@ export class EnvironmentVariables {
   @Min(1)
   LOGIN_RATE_LIMIT_WINDOW_SECONDS: number = 60;
 
-  /** How often the in-process outbox dispatcher polls for pending messages (docs/EVENTS.md §8.2). Moves to a real apps/worker consumer later; this is Foundation V1. */
-  @IsInt()
-  @Min(100)
-  OUTBOX_DISPATCH_INTERVAL_MS: number = 2000;
-
   /** S3-compatible endpoint for the Files module (MinIO locally, S3 in production — MASTER_SPEC §22). */
   @IsString()
   FILES_S3_ENDPOINT!: string;

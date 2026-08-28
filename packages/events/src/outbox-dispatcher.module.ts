@@ -6,12 +6,13 @@ import { DispatchOutboxBatchUseCase } from "./application/use-cases/dispatch-out
 import { OutboxDispatcherScheduler } from "./application/outbox-dispatcher.scheduler";
 
 /**
- * Deliberately has ZERO dependency on any other core module — same "leaf"
- * shape as AccessControlModule/AuditModule. Every producer module (Tenants
- * today; more as new aggregates emit events) imports EventsModule directly
- * to reach `appendOutboxMessage` (a plain function, not a provider — import
- * it from this module's index.ts, not via DI) and, if it needs to react to
- * events itself, `DomainEventBus.subscribe(...)`.
+ * The consuming app (`apps/worker`) must provide `PRISMA_CLIENT` (see
+ * `infrastructure/prisma-client.token`) somewhere globally reachable in its
+ * own module graph — typically its own `@Global() PrismaModule`, the same
+ * pattern `apps/api` already uses for `PrismaService`/`RedisService`. This
+ * module does not provide `PRISMA_CLIENT` itself: a plain function like
+ * `appendOutboxMessage` has no such requirement, and the dispatcher side is
+ * the only piece that needs a live database connection.
  */
 @Module({
   providers: [
@@ -22,4 +23,4 @@ import { OutboxDispatcherScheduler } from "./application/outbox-dispatcher.sched
   ],
   exports: [DomainEventBus, DispatchOutboxBatchUseCase],
 })
-export class EventsModule {}
+export class OutboxDispatcherModule {}

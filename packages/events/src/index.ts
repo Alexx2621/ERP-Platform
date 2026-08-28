@@ -1,0 +1,31 @@
+/** Public contract of the shared Events package. Consuming apps must only import from here. */
+export {
+  OutboxMessage,
+  type OutboxMessageProps,
+  type OutboxMessageStatus,
+  type EventActorType,
+  type IntegrationEventEnvelope,
+} from "./domain/outbox-message.entity";
+export {
+  OUTBOX_MESSAGE_REPOSITORY,
+  type OutboxMessageRepository,
+  type ClaimOutboxBatchOptions,
+} from "./domain/outbox-message.repository";
+export {
+  appendOutboxMessage,
+  type AppendOutboxMessageInput,
+  type PrismaClientLike,
+} from "./application/append-outbox-message";
+export { DomainEventBus, type DomainEventHandler } from "./application/domain-event-bus";
+export {
+  DispatchOutboxBatchUseCase,
+  type DispatchOutboxBatchInput,
+  type DispatchOutboxBatchResult,
+} from "./application/use-cases/dispatch-outbox-batch.use-case";
+export {
+  OutboxDispatcherScheduler,
+  type OutboxDispatcherEnvironment,
+} from "./application/outbox-dispatcher.scheduler";
+export { PrismaOutboxMessageRepository } from "./infrastructure/prisma-outbox-message.repository";
+export { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
+export { OutboxDispatcherModule } from "./outbox-dispatcher.module";

@@ -317,7 +317,7 @@ PostgreSQL instance via `prisma migrate dev` (not just diffed).
 The transactional outbox (`docs/EVENTS.md` §8). Unlike every other table in
 this Foundation schema, atomicity with the state change it describes is a
 **hard requirement**, not a documented best-effort gap: `appendOutboxMessage`
-(`apps/api/src/core/events`) is the only function that inserts here, and it
+(`packages/events`, used by `apps/api`) is the only function that inserts here, and it
 is always called with the *same* Prisma transaction client the producer's
 own repository is already using inside its own `$transaction` — see
 `PrismaTenantProvisioningRepository.create()` for the first real producer.
@@ -349,9 +349,10 @@ supports a future per-tenant outbox view, not built yet.
 There is deliberately **no `inbox_messages` table yet** (`docs/EVENTS.md`
 §9) — see docs/SECURITY.md "Event Bus" for why: the only consumer today is
 the in-process `DomainEventBus`, invoked synchronously by the same
-dispatcher that just claimed the row, so there is no cross-process
-re-delivery path yet that would need per-consumer dedupe. Add it before any
-real cross-process consumer (a future `apps/worker`) exists.
+dispatcher (now running inside `apps/worker`, see ADR-004's amendment) that
+just claimed the row, so there is no cross-process re-delivery path yet
+that would need per-consumer dedupe. Add it before any real cross-process
+consumer exists.
 
 ### Migration
 

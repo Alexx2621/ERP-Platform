@@ -12,7 +12,6 @@ import { CompaniesModule } from "./core/companies";
 import { AccessControlModule } from "./core/access-control";
 import { ConfigurationModule } from "./core/configuration";
 import { AuditModule } from "./core/audit";
-import { EventsModule } from "./core/events";
 import { FilesModule } from "./core/files";
 import { NotificationsModule } from "./core/notifications";
 
@@ -30,7 +29,6 @@ import { NotificationsModule } from "./core/notifications";
     CompaniesModule,
     AccessControlModule,
     AuditModule,
-    EventsModule,
     TenantsModule,
     ConfigurationModule,
     FilesModule,

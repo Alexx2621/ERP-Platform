@@ -50,16 +50,15 @@ leaves as principles rather than fully pinned-down decisions.
    truth. BullMQ/Redis remains the future transport for genuine
    cross-process job dispatch, not for this in-process fan-out.
 
-3. **The outbox dispatcher runs inside the API process on a plain
-   `setInterval`, not `@nestjs/schedule` or a dedicated `apps/worker`.**
-   A periodic poll with no cron expressions or job-queue semantics did not
-   justify a new dependency; `OutboxDispatcherScheduler` uses Nest's own
-   `OnModuleInit`/`OnModuleDestroy` lifecycle to manage a native timer
-   (`.unref()`'d so it never blocks process shutdown). Extracting this into
-   a dedicated `apps/worker` process consuming the same outbox table is a
-   distinct, later backlog item (`docs/WORK_QUEUE.md`) — the outbox schema
-   and claim/lock semantics do not need to change when that happens, only
-   which process runs the poll loop.
+3. **The outbox dispatcher runs on a plain `setInterval`, not
+   `@nestjs/schedule`.** A periodic poll with no cron expressions or
+   job-queue semantics did not justify a new dependency;
+   `OutboxDispatcherScheduler` uses Nest's own `OnModuleInit`/
+   `OnModuleDestroy` lifecycle to manage a native timer (`.unref()`'d so it
+   never blocks process shutdown). ~~Runs inside the API process for V1;
+   extracting to a dedicated `apps/worker` process is a later backlog
+   item.~~ **Superseded 2026-08-28 — see "Amendment" below: the dispatcher
+   now runs in `apps/worker`, a separate process from `apps/api`.**
 
 4. **Row-level locking uses `SELECT ... FOR UPDATE SKIP LOCKED` via raw
    SQL**, since Prisma's query builder has no equivalent. Verified against
@@ -95,10 +94,59 @@ leaves as principles rather than fully pinned-down decisions.
   separate service consume these events without first building the
   cross-process piece (inbox + a real transport) called out as deferred
   above.
-- Horizontal scaling of the API process runs one dispatcher per instance;
+- ~~Horizontal scaling of the API process runs one dispatcher per instance;
   this is safe (the locking guarantees no double-claim) but means dispatch
   capacity scales with API instance count rather than being independently
-  tunable — acceptable until `apps/worker` exists.
+  tunable — acceptable until `apps/worker` exists.~~ Resolved by the
+  amendment below.
+
+**Amendment (2026-08-28) — Dispatcher extracted to `apps/worker`**
+
+The outbox dispatcher (`DomainEventBus`, `DispatchOutboxBatchUseCase`,
+`OutboxDispatcherScheduler`, `PrismaOutboxMessageRepository`) moved out of
+`apps/api` into a new `apps/worker` process, per the `docs/WORK_QUEUE.md`
+backlog item this ADR always called out as later work. Concretely:
+
+- **The producer/dispatcher split is now enforced by package boundaries,
+  not just convention.** `packages/events` (`@erp/events`) is a new shared
+  package holding the entire outbox domain: `OutboxMessage`,
+  `appendOutboxMessage` (the producer side — still called synchronously
+  inside a producer's own `$transaction`, unchanged), and the dispatcher
+  side (`DomainEventBus`, `DispatchOutboxBatchUseCase`,
+  `OutboxDispatcherScheduler`, `PrismaOutboxMessageRepository`, bundled as
+  an importable `OutboxDispatcherModule`). `apps/api` depends on
+  `@erp/events` only for `appendOutboxMessage`/`OutboxMessage` — it no
+  longer has `DomainEventBus`, the dispatcher, or the scheduler in its own
+  module graph at all. `apps/worker` imports `OutboxDispatcherModule`
+  directly.
+- **`PrismaOutboxMessageRepository` now depends on a `PRISMA_CLIENT` DI
+  token** (`@erp/events`'s `infrastructure/prisma-client.token`) instead of
+  a specific app's `PrismaService` class, so the shared package stays
+  decoupled from which app's Nest lifecycle wiring provides the connection.
+  Each consuming app provides `PRISMA_CLIENT` globally (`useExisting` on its
+  own `PrismaService`) — `apps/worker` does this exactly like `apps/api`
+  already did for its own `PrismaService`/`RedisService`.
+- **The outbox schema and claim/lock semantics did not change** — exactly
+  as originally predicted. `FOR UPDATE SKIP LOCKED`, backoff, dead-letter,
+  and the `outbox_messages` table are byte-for-byte the same; only which
+  process polls it changed.
+- **`apps/worker` exposes a minimal HTTP liveness endpoint** (`GET /health`
+  on its own port, default 3001) per MASTER_SPEC §37 — not a readiness
+  check against Postgres (the dispatcher's own poll-tick logs already
+  surface connection failures), just confirmation the process is up.
+- Verified end-to-end against real Docker infrastructure: `apps/api`
+  (dispatcher-free) appends a `tenancy.tenant.provisioned.v1` row during
+  provisioning with zero dispatch activity in its own log;
+  `apps/worker` (separate process, separate log) claims and publishes that
+  same row (`claimed=1 published=1 failed=0`). The Playwright E2E harness
+  (`apps/e2e/src/global-setup.ts`) now boots both processes for the same
+  reason it already boots Postgres/Redis/MinIO — the real topology, not a
+  simulated one.
+- Horizontal scaling is now independently tunable exactly as originally
+  anticipated: `apps/api` instances scale for HTTP load, `apps/worker`
+  instances scale for dispatch throughput, with no coupling between the two
+  beyond the shared `outbox_messages` table and its existing lock
+  semantics.
 
 **Alternatives considered**
 

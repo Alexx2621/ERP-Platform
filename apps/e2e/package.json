@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "pretest:e2e": "pnpm turbo run build --filter=@erp/api",
+    "pretest:e2e": "pnpm turbo run build --filter=@erp/api --filter=@erp/worker",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

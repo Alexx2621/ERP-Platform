@@ -308,14 +308,20 @@ to do it from, and the use case had no other caller/test to disturb.
   real usage shows entries accumulating fast enough for `limit` alone to be
   insufficient.
 
-## Event Bus (2026-08-27)
+## Event Bus (2026-08-27, topology updated 2026-08-28)
 
 Scope: `OutboxMessage`, `appendOutboxMessage`, `DomainEventBus`,
-`DispatchOutboxBatchUseCase`, `OutboxDispatcherScheduler`
-(`apps/api/src/core/events`) — implements `docs/EVENTS.md`'s V1 design
-(transactional outbox + in-process domain event bus). No HTTP surface: this
-is pure backend infrastructure other modules use as producers, not
-something a client calls directly.
+`DispatchOutboxBatchUseCase`, `OutboxDispatcherScheduler` (`packages/events`,
+`@erp/events`) — implements `docs/EVENTS.md`'s V1 design (transactional
+outbox + in-process domain event bus). No HTTP surface: this is pure
+backend infrastructure other modules use as producers, not something a
+client calls directly. **As of 2026-08-28** the producer and dispatcher
+sides run in separate processes: `apps/api` calls `appendOutboxMessage`
+(still inside its own producer's transaction, unchanged) but no longer
+hosts `DomainEventBus` or the scheduler at all; `apps/worker` imports
+`@erp/events`'s `OutboxDispatcherModule` and is the only process that
+claims/publishes/marks outbox rows. See ADR-004's amendment
+(`docs/DECISIONS.md`) for the full rationale.
 
 ### Assets
 
@@ -348,26 +354,22 @@ something a client calls directly.
   (outbox, claim/lock/retry/dead-letter, in-process bus) is built and
   tested end-to-end regardless, so the next producer is a small, well-worn
   addition, not new infrastructure.
-- **No cross-process consumer, and therefore no `inbox_messages` table.**
-  `DomainEventBus` is purely in-process — the dispatcher claims a row and
-  calls registered handlers synchronously, in the same Node process, before
-  marking the outcome. There is no BullMQ/worker consumer yet (`apps/worker`
-  is a separate, later backlog item), so there is no re-delivery path that
-  could hand the same message to two different processes and therefore no
-  present need for per-consumer idempotency tracking. This must be added
-  before any handler with a non-idempotent side effect is registered, or
-  before a real cross-process consumer exists — see `docs/DATABASE.md`
-  "Event Bus / transactional outbox table".
-- **The dispatcher runs inside the API process itself**, on a plain
-  `setInterval` (`OutboxDispatcherScheduler`), not a dedicated worker
-  process. This means outbox dispatch competes for the same process's
-  resources as HTTP request handling, and there is exactly one dispatcher
-  instance per running API process (fine for a single instance; if the API
-  is ever scaled horizontally, every instance runs its own dispatcher —
-  harmless given the `FOR UPDATE SKIP LOCKED` claim logic already handles
-  multiple concurrent claimants correctly, but worth knowing). Moving this
-  to `apps/worker` is explicitly a later, separate backlog item, not a
-  correctness gap in what exists today.
+- **No cross-process *consumer*, and therefore still no `inbox_messages`
+  table**, even though the dispatcher itself is now a separate process from
+  the API. `DomainEventBus`'s delivery to a registered handler is still
+  purely in-process *within `apps/worker`* — the dispatcher claims a row and
+  calls registered handlers synchronously, in that one process, before
+  marking the outcome. There is still no BullMQ/re-delivery path that could
+  hand the same message to two different consumer processes, so there is
+  still no present need for per-consumer idempotency tracking. This must be
+  added before any handler with a non-idempotent side effect is registered
+  — see `docs/DATABASE.md` "Event Bus / transactional outbox table".
+- **`apps/worker`'s `/health` endpoint is liveness-only**, not a readiness
+  check against Postgres — it confirms the Nest process is up, not that the
+  dispatcher is successfully reaching the database. A DB outage surfaces in
+  the dispatcher's own tick logs (`Outbox dispatch tick failed`), not in
+  `/health`'s response. Acceptable for Foundation; revisit if this process
+  is ever put behind an orchestrator that acts on health check failures.
 - **No retention/purge policy** for `PUBLISHED`/`FAILED` rows — the table
   grows unbounded. `docs/EVENTS.md` §8.2 calls for retention/purge as an
   "operative job, audited, not ad-hoc deletion" — not built yet, since

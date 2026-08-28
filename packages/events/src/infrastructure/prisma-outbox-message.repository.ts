@@ -1,15 +1,15 @@
-import { Injectable } from "@nestjs/common";
-import { Prisma, type OutboxMessage as PrismaOutboxMessage } from "@erp/database";
-import { PrismaService } from "../../../shared/prisma/prisma.service";
+import { Inject, Injectable } from "@nestjs/common";
+import { Prisma, type PrismaClient, type OutboxMessage as PrismaOutboxMessage } from "@erp/database";
 import { OutboxMessage } from "../domain/outbox-message.entity";
 import {
   ClaimOutboxBatchOptions,
   OutboxMessageRepository,
 } from "../domain/outbox-message.repository";
+import { PRISMA_CLIENT } from "./prisma-client.token";
 
 @Injectable()
 export class PrismaOutboxMessageRepository implements OutboxMessageRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
   /**
    * `SELECT ... FOR UPDATE SKIP LOCKED` requires raw SQL — Prisma's query

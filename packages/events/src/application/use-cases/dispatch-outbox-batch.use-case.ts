@@ -28,9 +28,7 @@ function errorCodeFrom(error: unknown): string {
 /**
  * The outbox dispatcher's single unit of work: claim a batch, hand each
  * message to DomainEventBus, and record the outcome (docs/EVENTS.md §8.2).
- * Runs on an interval from OutboxDispatcherScheduler in this same API
- * process for V1 — there is no separate `apps/worker` yet (that is a later
- * backlog item), so this is the closest thing to "the worker" today.
+ * Runs on an interval from OutboxDispatcherScheduler inside `apps/worker`.
  */
 @Injectable()
 export class DispatchOutboxBatchUseCase {

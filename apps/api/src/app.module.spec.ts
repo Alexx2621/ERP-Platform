@@ -25,7 +25,6 @@ import {
 import { GetEffectiveSettingUseCase, SetSettingValueUseCase } from "./core/configuration";
 import { SettingsController } from "./core/configuration/presentation/settings.controller";
 import { PreferencesController } from "./core/configuration/presentation/preferences.controller";
-import { DomainEventBus, DispatchOutboxBatchUseCase } from "./core/events";
 import {
   UploadFileUseCase,
   GetFileDownloadUrlUseCase,
@@ -76,8 +75,6 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(RecordAuditEntryUseCase)).toBeInstanceOf(RecordAuditEntryUseCase);
     expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
     expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
-    expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
-    expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
     expect(moduleRef.get(UploadFileUseCase)).toBeInstanceOf(UploadFileUseCase);
     expect(moduleRef.get(GetFileDownloadUrlUseCase)).toBeInstanceOf(GetFileDownloadUrlUseCase);
     expect(moduleRef.get(ListFilesUseCase)).toBeInstanceOf(ListFilesUseCase);

@@ -1,9 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-28 (sesión 12), tras implementar Notifications
-(solicitud interna, canal IN_APP, listado/marcado de leído) completo y
-verificarlo contra Postgres real con un smoke test HTTP completo, incluyendo
-la notificación automática real generada al aprovisionar un tenant.
+Última actualización: 2026-08-28 (sesión 13), tras extraer el outbox
+dispatcher a una nueva app `apps/worker` (nuevo paquete compartido
+`@erp/events`) y verificarlo contra Docker real con `apps/api` y
+`apps/worker` corriendo como procesos separados de punta a punta.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -25,7 +25,11 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
 infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration + Audit + Event Bus + Files + Notifications).
+Typed Configuration + Audit + Event Bus + Files + Notifications). Desde la
+sesión 13, la topología real de despliegue tiene dos procesos backend
+separados (`apps/api` para HTTP, `apps/worker` para el outbox dispatcher),
+no solo uno — la primera vez que el monorepo despliega más de un proceso
+Node de aplicación.
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` tiene ADR-004 y ADR-006 numerados;
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -266,16 +270,37 @@ ADR-004 nada se ha construido contra él todavía.
   leído real (`204`) → aislamiento cross-tenant/cross-destinatario
   confirmado (`404` real). Detalle completo en `docs/WORK_QUEUE.md`
   ("Hecho — sesión 12").
-- 215 tests unitarios pasando (api 192, api-client 7, erp-web 16) + 10 tests
-  de integración con Postgres real + **2 tests E2E de Playwright pasando
-  contra infraestructura real completa** (Chromium real, Postgres+Redis+MinIO
-  efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
+- **Workers** (`apps/worker`, Claude, sesión 13): nueva app que ejecuta el
+  outbox dispatcher (`OutboxDispatcherScheduler`), extraído de `apps/api` a
+  su propio proceso. El dominio completo del outbox (`OutboxMessage`,
+  `appendOutboxMessage`, `DomainEventBus`, `DispatchOutboxBatchUseCase`,
+  `PrismaOutboxMessageRepository`) se movió a un nuevo paquete compartido
+  `packages/events` (`@erp/events`), con un token DI `PRISMA_CLIENT` que
+  desacopla el paquete de la clase `PrismaService` concreta de cada app.
+  `apps/api` conserva solo `appendOutboxMessage` (el lado productor, sin
+  cambios de comportamiento); ya no tiene `DomainEventBus` ni el scheduler
+  en su propio grafo de módulos. `apps/worker` expone `GET /health`
+  (liveness, puerto 3001 por defecto) y no tiene ninguna otra ruta HTTP —
+  toda request de negocio sigue siendo exclusiva de `apps/api`. ADR-004
+  enmendado documentando el nuevo diseño. **Verificado end-to-end contra
+  Docker real con ambos procesos corriendo simultáneamente**: `apps/api`
+  aprovisionó un tenant real sin ninguna actividad de dispatcher en su
+  propio log; `apps/worker` (proceso separado) reclamó y publicó ese mismo
+  mensaje del outbox. El arnés E2E (`apps/e2e/src/global-setup.ts`) ahora
+  arranca los tres procesos reales (api + worker + erp-web) en vez de solo
+  dos. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 13").
+- 193 tests unitarios pasando (api 174, api-client 7, erp-web 16) + 18 en
+  `@erp/events` + 1 en `@erp/worker` + 10 tests de integración con Postgres
+  real + **2 tests E2E de Playwright pasando contra infraestructura real
+  completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
+  Testcontainers, API y worker compilados reales, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
   `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`, `events.module.spec.ts`, `files.module.spec.ts`,
-  `notifications.module.spec.ts`) y pruebas negativas de aislamiento
-  cross-tenant.
+  `audit.module.spec.ts`, `files.module.spec.ts`, `notifications.module.spec.ts`
+  en `apps/api`; `outbox-dispatcher.module.spec.ts` en `@erp/events`;
+  `worker.module.spec.ts` en `@erp/worker`) y pruebas negativas de
+  aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -332,13 +357,12 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Workers).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (OpenAPI/Swagger).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: Workers (extraer el dispatcher del
-outbox a `apps/worker`, ya funciona in-process hoy) → OpenAPI/Swagger →
+Resumen bajo ownership único de Claude: OpenAPI/Swagger →
 endpoint de invitación de membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
 PLATFORM) → vista de "mi actividad"/administración para eventos no

@@ -78,7 +78,7 @@ jobs:
         run: pnpm --filter @erp/api test:integration
 
   e2e:
-    name: Browser E2E with PostgreSQL, Redis and MinIO
+    name: Browser E2E with api+worker, PostgreSQL, Redis and MinIO
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

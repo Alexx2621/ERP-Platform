@@ -1,0 +1,27 @@
+{
+  "name": "@erp/events",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@erp/database": "workspace:*",
+    "@nestjs/common": "^11.2.1",
+    "@nestjs/config": "^4.0.4",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.2.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.3.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "5.9.3"
+  }
+}

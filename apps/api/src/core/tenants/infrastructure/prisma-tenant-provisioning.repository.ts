@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
-import { appendOutboxMessage } from "../../events";
+import { appendOutboxMessage } from "@erp/events";
 import { Company } from "../../companies";
 import { Organization } from "../../organizations";
 import {

@@ -1,34 +1,43 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { newId } from "@erp/database";
-import type { EnvironmentVariables } from "../../../shared/config/environment-variables";
 import { DispatchOutboxBatchUseCase } from "./use-cases/dispatch-outbox-batch.use-case";
+
+/**
+ * The only environment shape this scheduler needs — deliberately a minimal
+ * interface, not a specific app's full `EnvironmentVariables` class, so any
+ * consuming app's config (which will always have more fields than this) is
+ * structurally assignable without this package depending on that app.
+ */
+export interface OutboxDispatcherEnvironment {
+  OUTBOX_DISPATCH_INTERVAL_MS: number;
+}
 
 /**
  * Polls the outbox on a plain `setInterval` — deliberately not
  * `@nestjs/schedule` or BullMQ: this is a single periodic tick with no
  * cron expressions or job-queue semantics needed, so a native timer
  * managed by Nest's own lifecycle hooks is simpler than a new dependency
- * for it. Runs inside the API process for V1 (docs/WORK_QUEUE.md — a
- * dedicated `apps/worker` consuming this same outbox is a later,
- * separate backlog item, not required for Event Bus itself).
+ * for it. Runs inside `apps/worker` (ADR-004's amendment) — extracted from
+ * the in-process dispatcher that originally ran inside `apps/api`.
  */
 @Injectable()
 export class OutboxDispatcherScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxDispatcherScheduler.name);
-  private readonly workerId = `api-inprocess-${newId()}`;
+  private readonly workerId = `worker-${newId()}`;
   private timer: NodeJS.Timeout | undefined;
   private ticking = false;
 
   constructor(
     private readonly dispatchOutboxBatch: DispatchOutboxBatchUseCase,
-    private readonly config: ConfigService<EnvironmentVariables, true>,
+    private readonly config: ConfigService<OutboxDispatcherEnvironment, true>,
   ) {}
 
   onModuleInit(): void {
     const intervalMs = this.config.get("OUTBOX_DISPATCH_INTERVAL_MS", { infer: true });
     this.timer = setInterval(() => void this.tick(), intervalMs);
     this.timer.unref();
+    this.logger.log(`Outbox dispatcher started (workerId=${this.workerId}, intervalMs=${intervalMs})`);
   }
 
   onModuleDestroy(): void {

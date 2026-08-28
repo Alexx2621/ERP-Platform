@@ -15,6 +15,7 @@ const MINIO_IMAGE = "minio/minio:latest";
 const MINIO_USERNAME = "erp_e2e_minio";
 const MINIO_PASSWORD = "erp_e2e_minio_password";
 const API_URL = "http://127.0.0.1:3000/api/v1/auth/me";
+const WORKER_URL = "http://127.0.0.1:3011/health";
 const ERP_WEB_URL = "http://127.0.0.1:5173/";
 const STARTUP_TIMEOUT_MS = 60_000;
 
@@ -23,6 +24,7 @@ interface E2ERuntime {
   redis?: StartedRedisContainer;
   minio?: StartedMinioContainer;
   api?: ChildProcess;
+  worker?: ChildProcess;
   erpWeb?: ChildProcess;
 }
 
@@ -107,6 +109,7 @@ async function stopProcess(child: ChildProcess | undefined): Promise<void> {
 
 async function stopRuntime(runtime: E2ERuntime): Promise<void> {
   await stopProcess(runtime.erpWeb);
+  await stopProcess(runtime.worker);
   await stopProcess(runtime.api);
   await runtime.redis?.stop();
   await runtime.minio?.stop();
@@ -149,6 +152,15 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       FILES_S3_FORCE_PATH_STYLE: "true",
     });
     await waitForHttp(API_URL, runtime.api, 401);
+
+    runtime.worker = startNodeProcess("worker", path.join(repoRoot, "apps/worker/dist/main.js"), [], {
+      ...process.env,
+      NODE_ENV: "test",
+      PORT: "3011",
+      DATABASE_URL: databaseUrl,
+      OUTBOX_DISPATCH_INTERVAL_MS: "500",
+    });
+    await waitForHttp(WORKER_URL, runtime.worker, 200);
 
     runtime.erpWeb = startNodeProcess(
       "erp-web",

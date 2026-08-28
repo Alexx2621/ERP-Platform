@@ -34,10 +34,12 @@ import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-ca
 import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
 import { PrismaTenantProvisioningRepository } from "../../src/core/tenants/infrastructure/prisma-tenant-provisioning.repository";
 import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provision-tenant.use-case";
-import { PrismaOutboxMessageRepository } from "../../src/core/events/infrastructure/prisma-outbox-message.repository";
-import { DomainEventBus } from "../../src/core/events/application/domain-event-bus";
-import { DispatchOutboxBatchUseCase } from "../../src/core/events/application/use-cases/dispatch-outbox-batch.use-case";
-import { appendOutboxMessage } from "../../src/core/events/application/append-outbox-message";
+import {
+  PrismaOutboxMessageRepository,
+  DomainEventBus,
+  DispatchOutboxBatchUseCase,
+  appendOutboxMessage,
+} from "@erp/events";
 import { PrismaFileObjectRepository } from "../../src/core/files/infrastructure/prisma-file-object.repository";
 import { UploadFileUseCase } from "../../src/core/files/application/use-cases/upload-file.use-case";
 import { GetFileDownloadUrlUseCase } from "../../src/core/files/application/use-cases/get-file-download-url.use-case";
