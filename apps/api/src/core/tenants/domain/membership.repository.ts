@@ -9,6 +9,15 @@ export interface MembershipRepository {
    * onboarding). Every other membership query stays tenant-scoped.
    */
   findActiveByUserId(userId: string): Promise<Membership[]>;
+  /**
+   * Cross-tenant by design, same reasoning as findActiveByUserId: an
+   * invited user has no active membership anywhere in the target tenant
+   * yet, so this is how they discover "which invitations are waiting for
+   * me" before accepting one.
+   */
+  findPendingByUserId(userId: string): Promise<Membership[]>;
+  /** All memberships (any status) in a tenant — the member list, tenant-scoped. */
+  findByTenant(tenantId: string): Promise<Membership[]>;
   save(membership: Membership): Promise<void>;
 }
 

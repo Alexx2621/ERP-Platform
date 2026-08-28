@@ -19,6 +19,14 @@ export class InMemoryMembershipRepository implements MembershipRepository {
     return [...this.records.values()].filter((m) => m.userId === userId && m.isActive());
   }
 
+  async findPendingByUserId(userId: string): Promise<Membership[]> {
+    return [...this.records.values()].filter((m) => m.userId === userId && m.status === "INVITED");
+  }
+
+  async findByTenant(tenantId: string): Promise<Membership[]> {
+    return [...this.records.values()].filter((m) => m.tenantId === tenantId);
+  }
+
   async save(membership: Membership): Promise<void> {
     this.records.set(this.key(membership.tenantId, membership.id), membership);
   }

@@ -31,12 +31,33 @@ export {
   type MyTenantSummary,
 } from "./application/list-my-tenants.use-case";
 export {
+  InviteMembershipUseCase,
+  type InviteMembershipInput,
+  type InvitedMembership,
+} from "./application/invite-membership.use-case";
+export {
+  AcceptMembershipInvitationUseCase,
+  type AcceptMembershipInvitationInput,
+} from "./application/accept-membership-invitation.use-case";
+export {
+  ListMembershipsUseCase,
+  type MembershipWithUser,
+} from "./application/list-memberships.use-case";
+export {
+  ListPendingInvitationsUseCase,
+  type PendingInvitation,
+} from "./application/list-pending-invitations.use-case";
+export {
   TenantSlugAlreadyInUseError,
   ProvisioningUserUnavailableError,
   TenantContextNotFoundError,
   TenantContextInactiveError,
   MembershipContextInactiveError,
   CompanyContextUnavailableError,
+  InvitedUserNotFoundError,
+  InvitedUserDisabledError,
+  MembershipAlreadyExistsError,
+  MembershipNotFoundForUserError,
 } from "./application/errors";
 export { TenantsModule } from "./tenants.module";
 export {
@@ -48,3 +69,9 @@ export { CurrentTenantContext } from "./presentation/current-tenant-context.deco
 export { RolesController } from "./presentation/roles.controller";
 export { AuditEntriesController } from "./presentation/audit-entries.controller";
 export { NotificationsController } from "./presentation/notifications.controller";
+export { MembershipsController } from "./presentation/memberships.controller";
+export {
+  MembershipResponseDto,
+  MembershipWithUserResponseDto,
+  PendingInvitationResponseDto,
+} from "./presentation/dto/membership-response.dto";

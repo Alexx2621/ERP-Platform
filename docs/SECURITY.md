@@ -146,13 +146,9 @@ is user X*, not *user X may act on tenant Y*." Design in
   `scope_id` for an entity type with nothing to validate it against would be
   an unenforced access claim, not a real control — deferred until those
   entities are built, not forgotten.
-- **No membership-invitation endpoint yet.** There is currently no
-  `POST /api/v1/tenants/:id/memberships` (or similar) to add a second user to
-  an existing tenant through the API — the live smoke test for this module
-  had to insert a `Membership` row directly via Prisma to exercise the
-  deny-by-default path with a second, real user. This is a real gap in
-  Organization/Tenancy, not in RBAC itself, and should be closed before
-  multi-user tenants are usable end-to-end.
+- ~~No membership-invitation endpoint yet~~ — closed 2026-08-28:
+  `POST /api/v1/tenants/memberships` (+ list/accept/pending) now exists. See
+  "Membership Invitations" below.
 - **No retroactive permission backfill.** `SeedOwnerRoleUseCase` grants
   "every permission that exists at provisioning time." If a new permission
   is added to the catalog later, existing tenants' Owner roles are **not**
@@ -522,3 +518,59 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
   — same `DEFAULT_LIMIT`/`MAX_LIMIT` pattern as `ListAuditEntriesUseCase`,
   acceptable at Foundation data volume, revisit if a recipient's history
   grows large enough to need cursor-based paging.
+
+## Membership Invitations (2026-08-28)
+
+Scope: `InviteMembershipUseCase`, `AcceptMembershipInvitationUseCase`,
+`ListMembershipsUseCase`, `ListPendingInvitationsUseCase`,
+`MembershipsController` (`apps/api/src/core/tenants`) — closes the RBAC gap
+flagged above: adding a second real user to a tenant, and that user
+accepting on their own, using the `Membership` state machine
+(`INVITED` → `ACTIVE`) that already existed in the domain model
+(`docs/MULTITENANCY.md`).
+
+### Assets
+
+- The ability to add a membership to a tenant — gated by the new
+  `tenants.memberships.manage` permission, same `PermissionGuard` pattern as
+  every other write in this module.
+- The accept-invitation action itself — must be usable by exactly the
+  invited user and no one else, even though (unlike every other tenant-scoped
+  endpoint in this codebase) it cannot be gated by `TenantContextGuard`,
+  because the caller has no ACTIVE membership yet.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| Inviting an email to auto-create a pending account (bypassing real signup/credentials) | `InviteMembershipUseCase` requires an existing, active `User` — `InvitedUserNotFoundError` (`404`) for an unknown email, `InvitedUserDisabledError` (`409`) for a disabled one. There is no deferred/passwordless account creation (MASTER_SPEC §90 "no simular integraciones"). |
+| A different real user accepts someone else's invitation by guessing/reusing a `membershipId` (IDOR) | `AcceptMembershipInvitationUseCase` checks `membership.userId === callerId` in addition to existence; a mismatch and a genuinely unknown id both surface as the identical `404 MEMBERSHIP_NOT_FOUND` via `MembershipNotFoundForUserError` — same shape as `GetFileDownloadUrlUseCase`/`MarkNotificationReadUseCase`. Verified in both the integration suite (real Postgres, a real second user rejected) and a dedicated Playwright E2E test using two isolated browser contexts. |
+| Accept-invitation endpoint requiring `TenantContextGuard` would lock the invitee out (they have no ACTIVE membership yet to resolve one) | `POST /tenants/memberships/:id/accept` is deliberately the one write endpoint in this module guarded only by `SessionAuthGuard`, not `TenantContextGuard`/`PermissionGuard` — it re-resolves the target tenant by slug internally (`AcceptMembershipInvitationUseCase`, duplicating the small amount of lookup logic `ResolveTenantContextUseCase` also does, since that use case's own contract requires an already-ACTIVE membership and cannot be reused here). |
+| Duplicate invitation to a user who is already a member (any status) | `InviteMembershipUseCase` checks `findByUserId` first and rejects with `409 MEMBERSHIP_ALREADY_EXISTS` — a tenant cannot end up with two membership rows for the same user. |
+| `GET /tenants/memberships` (member list) or `GET /tenants/memberships/pending` (my invitations) leaking cross-tenant data | The member list is tenant-scoped through the same `TenantContextGuard` + `tenants.memberships.read` permission pattern as every other tenant-scoped GET. The pending-invitations list is intentionally cross-tenant (same reasoning as `GET /tenants`/`ListMyTenantsUseCase`: the caller has no tenant context yet) but is filtered to `findPendingByUserId(callerId)` — never accepts a caller-supplied user id, so it can only ever show the authenticated caller's own pending invitations. |
+| The in-app notification sent at invite time leaks tenant internals to the invitee before they accept | The notification body is generic ("Fuiste invitado a un espacio de trabajo") and its `data` payload carries only `tenantId`/`membershipId` — no organization/company details, financial data, or other members' identities. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No retroactive permission backfill (same limitation as RBAC's).** The two
+  new permissions (`tenants.memberships.read`, `tenants.memberships.manage`)
+  are seeded into the global catalog and granted automatically to the Owner
+  role of any tenant provisioned *after* this change, but a tenant
+  provisioned before it does not retroactively gain them on its existing
+  Owner role. No production tenants exist yet, so this has no real impact
+  today.
+- **No invitation expiry or revocation.** An `INVITED` membership stays
+  invitable/acceptable indefinitely — there is no TTL, and no endpoint to
+  cancel a pending invitation before it is accepted (`Membership.revoke()`
+  exists in the domain but nothing in this slice's HTTP surface calls it for
+  an `INVITED` row). Deferred rather than built speculatively.
+- **No re-invitation of a `REVOKED` membership.** `MembershipAlreadyExistsError`
+  fires for *any* existing membership regardless of status, including
+  `REVOKED` — a person removed from a tenant cannot currently be re-invited
+  without a direct database change. Revisit alongside building an explicit
+  "remove member" flow, which does not exist yet either.
+- **`ListMembershipsUseCase`/`ListPendingInvitationsUseCase` resolve their
+  joined `User`/`Tenant` one at a time (N+1), not via a batch lookup** — same
+  accepted tradeoff as `ListMembershipsUseCase`'s own docstring: Foundation-scale
+  tenants have at most a handful of members, so this is not the premature
+  optimization MASTER_SPEC §45/§93 warns against yet.

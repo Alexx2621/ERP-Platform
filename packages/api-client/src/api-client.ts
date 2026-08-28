@@ -1,10 +1,15 @@
 import type {
+  AcceptMembershipInvitationInput,
   AssignRoleInput,
   ApiErrorEnvelope,
   AuthenticatedUser,
   CreateRoleInput,
   EffectiveSettingResponse,
+  InviteMembershipInput,
   LoginInput,
+  MembershipResponse,
+  MembershipWithUserResponse,
+  PendingInvitationResponse,
   PermissionResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
@@ -221,6 +226,56 @@ export class ApiClient {
       tenantSlug,
       body: input,
     });
+  }
+
+  async inviteMembership(
+    accessToken: string,
+    tenantSlug: string,
+    input: InviteMembershipInput,
+  ): Promise<MembershipWithUserResponse> {
+    return this.request<MembershipWithUserResponse>("/tenants/memberships", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      body: input,
+    });
+  }
+
+  async listMemberships(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<MembershipWithUserResponse[]> {
+    return this.request<MembershipWithUserResponse[]>("/tenants/memberships", {
+      accessToken,
+      tenantSlug,
+      signal,
+    });
+  }
+
+  async listPendingInvitations(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<PendingInvitationResponse[]> {
+    return this.request<PendingInvitationResponse[]>("/tenants/memberships/pending", {
+      accessToken,
+      signal,
+    });
+  }
+
+  async acceptMembershipInvitation(
+    accessToken: string,
+    membershipId: string,
+    input: AcceptMembershipInvitationInput,
+  ): Promise<MembershipResponse> {
+    return this.request<MembershipResponse>(
+      `/tenants/memberships/${encodeURIComponent(membershipId)}/accept`,
+      {
+        method: "POST",
+        accessToken,
+        body: input,
+      },
+    );
   }
 
   async listUserPreferences(

@@ -208,6 +208,64 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented membership invitation endpoints", async () => {
+    const invited = {
+      id: "membership-1",
+      tenantId: "tenant-1",
+      userId: "user-2",
+      status: "INVITED",
+      createdAt: "2026-08-28T12:00:00.000Z",
+      updatedAt: "2026-08-28T12:00:00.000Z",
+      email: "nuevo@example.com",
+      displayName: "Nuevo",
+    };
+    const pending = {
+      membershipId: "membership-2",
+      tenantSlug: "grupo-aurora",
+      tenantName: "Grupo Aurora",
+      createdAt: "2026-08-28T12:00:00.000Z",
+    };
+    const accepted = { ...invited, status: "ACTIVE" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify(invited), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([invited]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([pending]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(accepted), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.inviteMembership("access-token", "grupo-aurora", { email: "nuevo@example.com" });
+    await client.listMemberships("access-token", "grupo-aurora");
+    await client.listPendingInvitations("access-token");
+    await client.acceptMembershipInvitation("access-token", "membership-2", { tenantSlug: "grupo-aurora" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/tenants/memberships",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "nuevo@example.com" }),
+      }),
+    );
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("X-Tenant-Slug")).toBe("grupo-aurora");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/tenants/memberships/pending",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("X-Tenant-Slug")).toBeNull();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/tenants/memberships/membership-2/accept",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ tenantSlug: "grupo-aurora" }),
+      }),
+    );
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

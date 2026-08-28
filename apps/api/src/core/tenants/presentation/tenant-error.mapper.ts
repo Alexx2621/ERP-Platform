@@ -1,8 +1,13 @@
 import { HttpStatus } from "@nestjs/common";
 import { AppException } from "../../../shared/errors/app.exception";
+import { InvalidMembershipTransitionError } from "../domain/membership.entity";
 import {
   CompanyContextUnavailableError,
+  InvitedUserDisabledError,
+  InvitedUserNotFoundError,
+  MembershipAlreadyExistsError,
   MembershipContextInactiveError,
+  MembershipNotFoundForUserError,
   ProvisioningUserUnavailableError,
   TenantContextInactiveError,
   TenantContextNotFoundError,
@@ -28,6 +33,21 @@ export function handleTenantError(error: unknown): never {
   }
   if (error instanceof ProvisioningUserUnavailableError) {
     throw new AppException("PROVISIONING_USER_UNAVAILABLE", error.message, HttpStatus.BAD_REQUEST);
+  }
+  if (error instanceof InvitedUserNotFoundError) {
+    throw new AppException("INVITED_USER_NOT_FOUND", error.message, HttpStatus.NOT_FOUND);
+  }
+  if (error instanceof InvitedUserDisabledError) {
+    throw new AppException("INVITED_USER_DISABLED", error.message, HttpStatus.CONFLICT);
+  }
+  if (error instanceof MembershipAlreadyExistsError) {
+    throw new AppException("MEMBERSHIP_ALREADY_EXISTS", error.message, HttpStatus.CONFLICT);
+  }
+  if (error instanceof MembershipNotFoundForUserError) {
+    throw new AppException("MEMBERSHIP_NOT_FOUND", error.message, HttpStatus.NOT_FOUND);
+  }
+  if (error instanceof InvalidMembershipTransitionError) {
+    throw new AppException("MEMBERSHIP_INVALID_TRANSITION", error.message, HttpStatus.CONFLICT);
   }
   throw error;
 }

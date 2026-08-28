@@ -8,6 +8,10 @@ import { NotificationsModule } from "../notifications";
 import { ProvisionTenantUseCase } from "./application/provision-tenant.use-case";
 import { ResolveTenantContextUseCase } from "./application/resolve-tenant-context.use-case";
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
+import { InviteMembershipUseCase } from "./application/invite-membership.use-case";
+import { AcceptMembershipInvitationUseCase } from "./application/accept-membership-invitation.use-case";
+import { ListMembershipsUseCase } from "./application/list-memberships.use-case";
+import { ListPendingInvitationsUseCase } from "./application/list-pending-invitations.use-case";
 import { TENANT_PROVISIONING_REPOSITORY } from "./application/ports/tenant-provisioning.repository";
 import { MEMBERSHIP_REPOSITORY } from "./domain/membership.repository";
 import { TENANT_REPOSITORY } from "./domain/tenant.repository";
@@ -18,6 +22,7 @@ import { TenantsController } from "./presentation/tenants.controller";
 import { RolesController } from "./presentation/roles.controller";
 import { AuditEntriesController } from "./presentation/audit-entries.controller";
 import { NotificationsController } from "./presentation/notifications.controller";
+import { MembershipsController } from "./presentation/memberships.controller";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
 
 // AccessControlModule, AuditModule and NotificationsModule all have zero
@@ -37,7 +42,13 @@ import { TenantContextGuard } from "./presentation/tenant-context.guard";
     AuditModule,
     NotificationsModule,
   ],
-  controllers: [TenantsController, RolesController, AuditEntriesController, NotificationsController],
+  controllers: [
+    TenantsController,
+    RolesController,
+    AuditEntriesController,
+    NotificationsController,
+    MembershipsController,
+  ],
   providers: [
     { provide: TENANT_REPOSITORY, useClass: PrismaTenantRepository },
     { provide: MEMBERSHIP_REPOSITORY, useClass: PrismaMembershipRepository },
@@ -48,6 +59,10 @@ import { TenantContextGuard } from "./presentation/tenant-context.guard";
     ProvisionTenantUseCase,
     ResolveTenantContextUseCase,
     ListMyTenantsUseCase,
+    InviteMembershipUseCase,
+    AcceptMembershipInvitationUseCase,
+    ListMembershipsUseCase,
+    ListPendingInvitationsUseCase,
     TenantContextGuard,
   ],
   exports: [

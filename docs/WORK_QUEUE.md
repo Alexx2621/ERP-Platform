@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-28 (sesión 14,
-documentación OpenAPI/Swagger real en `/api/docs`). Modelo operativo
-actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-28 (sesión 15,
+endpoint de invitación de membership + UI de Miembros/Invitaciones
+pendientes). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,47 +21,123 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
-   forma de agregar un segundo usuario a un tenant vía API; anotado como
-   hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
-   bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
-   punta.
-2. **System-administration plane** — necesario antes de exponer escritura de
+1. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-3. **"Mi actividad" / vista de administración de plataforma para eventos no
+2. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-4. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+3. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
-5. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+4. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-6. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+5. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-7. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+6. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
-8. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+7. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
    el SDK ya probado en un mismo cambio — refactor de proceso separado.
+8. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
+   existe en el dominio, pero ningún endpoint lo invoca para una membership
+   `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
+   §"Membership Invitations".
+
+### Hecho — sesión 15 (Membership invitation endpoint + UI)
+
+- **`apps/api/src/core/tenants/`** (backend): `InviteMembershipUseCase`
+  (requiere un `User` existente y activo — `InvitedUserNotFoundError`/
+  `InvitedUserDisabledError`, sin creación de cuenta por correo, MASTER_SPEC
+  §90), `AcceptMembershipInvitationUseCase` (self-service, `INVITED` →
+  `ACTIVE` vía `Membership.activate()` ya existente; resuelve el tenant por
+  slug internamente porque el llamador todavía no tiene una membership
+  `ACTIVE` con la que pasar por `TenantContextGuard`), `ListMembershipsUseCase`
+  (miembros del tenant + su `User`, cualquier status), `ListPendingInvitationsUseCase`
+  (invitaciones pendientes del usuario autenticado, cross-tenant por diseño
+  — mismo patrón que `ListMyTenantsUseCase`). Método nuevo en
+  `MembershipRepository`: `findByTenant`, `findPendingByUserId` (ambos
+  implementados en Prisma y en el fake in-memory).
+- **`MembershipsController`** (`tenants/presentation/`, mismo patrón de
+  ubicación que `RolesController`/`AuditEntriesController` para evitar un
+  ciclo de módulos): `POST /api/v1/tenants/memberships` (invitar, permiso
+  nuevo `tenants.memberships.manage`), `GET /api/v1/tenants/memberships`
+  (listar miembros, permiso nuevo `tenants.memberships.read`),
+  `GET /api/v1/tenants/memberships/pending` (mis invitaciones pendientes,
+  solo `SessionAuthGuard` — cross-tenant), `POST /api/v1/tenants/memberships/:id/accept`
+  (aceptar, deliberadamente **sin** `TenantContextGuard` a nivel de clase —
+  ver el docstring del controller). Invitar dispara una notificación
+  `IN_APP` real al invitado (`RequestNotificationUseCase`, mismo patrón que
+  `TenantsController.provision()`) y una entrada de auditoría
+  (`tenants.membership.invited`/`.accepted`).
+- **Sin migración nueva** — las tablas `memberships`/`tenants` ya existían;
+  este bloque es lógica de aplicación y consultas nuevas sobre schema ya
+  aplicado.
+- Tests: 6 nuevos archivos de spec (3 use cases + wiring de módulo
+  actualizado) — 186 tests unitarios totales en `apps/api` (antes 174), más
+  8 tests en `@erp/api-client` (antes 7) y 16 en `erp-web` (sin cambio neto,
+  una suite existente se ajustó al nuevo `<Select>` de miembro). Suite de
+  integración ampliada con un escenario completo contra Postgres real:
+  invitar → email desconocido rechazado → invitación duplicada rechazada →
+  listado tenant-scoped correcto (aislamiento cross-tenant) → aceptación
+  rechazada para un usuario distinto del invitado (IDOR-resistant) →
+  aceptación real por el usuario correcto.
+- **UI** (`apps/erp-web`): pestaña nueva "Miembros" en la pantalla "Roles y
+  permisos" (tabla de miembros + botón "Invitar miembro" con modal), y el
+  modal "Asignar rol" ahora usa un `<Select>` poblado con los miembros
+  reales del tenant en vez de pedir un `membershipId` escrito a mano —
+  cierra el hueco de UX ya documentado en el historial de Codex. Nueva
+  sección "Invitaciones pendientes" en el tenant picker (`TenantListPage`,
+  `/tenants`) con botón "Aceptar" por invitación; al aceptar, el tenant
+  aparece de inmediato en "Tus espacios". 4 métodos nuevos en
+  `@erp/api-client` (`inviteMembership`, `listMemberships`,
+  `listPendingInvitations`, `acceptMembershipInvitation`).
+- **E2E real** (`apps/e2e/tests/membership-invitations.spec.ts`, Chromium
+  real vía Testcontainers): registra un segundo usuario real por API,
+  invita desde la UI del owner, y usando un **segundo `BrowserContext`
+  aislado** (sesión propia del invitado, sin compartir tokens en memoria con
+  el owner) inicia sesión, ve la invitación pendiente, la acepta por UI, y
+  confirma que el tenant aparece en su propia lista de espacios — de punta a
+  punta contra infraestructura real, no simulado. `onboarding.spec.ts`
+  ajustado al nuevo selector `<Select name="membershipId" label="Miembro">`.
+- Documentación actualizada: `docs/SECURITY.md` (nueva sección "Membership
+  Invitations" con modelo de amenazas y huecos conocidos; cerrado el hueco
+  "No membership-invitation endpoint yet" ya documentado en la sección de
+  RBAC, marcado con tachado).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test` en
+  `@erp/api` (186/186) y `@erp/erp-web` (16/16) y `@erp/api-client` (8/8),
+  `pnpm build` (7 paquetes/apps), `pnpm --filter @erp/api test:integration`
+  (12/12 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (3/3 Playwright con Chromium real,
+  incluyendo el nuevo test de dos contextos de navegador) — todo verde.
+  Smoke test manual adicional contra la infraestructura Docker real (antes
+  de escribir el E2E): registro de 3 usuarios reales, provisioning,
+  invitar → email desconocido (404) → invitación duplicada (409) → listar
+  miembros → aceptar con usuario incorrecto (404, IDOR-resistant) → aceptar
+  con slug incorrecto (404) → aceptar correctamente (201, `ACTIVE`) →
+  reaceptar (409, transición inválida) → `GET /tenants/current` confirma
+  que el invitado ya resuelve contexto de tenant → sin permiso, el invitado
+  no puede invitar (403) → tras asignarle el rol Owner vía RBAC ya
+  existente, sí puede invitar a un tercero → `GET /audit-entries` confirma
+  las auditorías nuevas. Datos de prueba limpiados después.
 
 ### Hecho — sesión 14 (OpenAPI/Swagger)
 
@@ -814,31 +890,25 @@ de Playwright (ver "Hecho — sesión 6"). El contrato HTTP real es:
   responde `403 PERMISSION_DENIED`.
 - Envelope de error igual al ya usado (`statusCode/code/message/details/correlationId`).
 
-**Hueco que sigue vigente, ya reflejado correctamente en la UI integrada**:
-hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
-(`POST /api/v1/tenants/:id/memberships` o similar no existe). La pantalla
-"Roles y permisos" ya integrada lista/crea roles y asigna roles a una
-membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
-no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 1 de la cola Claude). Esto sigue siendo un hueco
-del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
-inventarse mientras tanto.
+~~**Hueco que sigue vigente...**~~ — cerrado en la sesión 15: el endpoint
+`POST /api/v1/tenants/memberships` ya existe, y la pantalla "Roles y
+permisos" ya invita miembros y asigna roles usando un selector real de
+miembros, sin pedir un `membershipId` escrito a mano. Ver "Hecho — sesión
+15" arriba.
 
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará el endpoint de invitación de membership y cualquier
-  superficie de UI, SDK, pruebas o documentación que ese bloque requiera.
+- Claude continuará con el ítem 1 de "Próximo" y cualquier superficie de UI,
+  SDK, pruebas o documentación que ese bloque requiera.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
 - `docs/EVENTS.md` y `docs/PLUGINS.md` ya contienen diseños completos; deben
   conservarse como fuente técnica para la implementación y ratificación de sus
   ADR.
-- El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
-  endpoint de invitación de membership (ítem 1 del backlog activo). Claude es
-  responsable de resolver el backend y completar después la experiencia de
-  punta a punta; no debe simularse mientras tanto.
+- ~~El flujo completo "invitar usuario → asignar rol" continúa bloqueado...~~
+  — cerrado en la sesión 15, ver "Hecho — sesión 15" arriba.
 
 ---
 
@@ -851,23 +921,24 @@ Playwright).
 
 ## Dependencies
 
-- El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
-  ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 1 de la cola Claude).
+- ~~El flujo de tenant multi-usuario de punta a punta...~~ — cerrado en la
+  sesión 15 (endpoint de invitación + UI completa, ver "Hecho — sesión 15").
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 2 de la cola Claude) —
+  administración de plataforma separado (ítem 1 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 5 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 4 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 6 de la cola
+- Una purga real de storage para archivos borrados (ítem 5 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 7 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 6 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 8 de la cola Claude)
+- `@erp/api-client` generado desde OpenAPI (ítem 7 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
+- Expirar/revocar invitaciones pendientes (ítem 8 de la cola Claude) depende
+  de decidir una política de TTL — no bloqueado, no decidido todavía.
 
 ## Integration needed
 

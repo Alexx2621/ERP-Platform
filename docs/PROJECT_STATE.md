@@ -1,9 +1,10 @@
 # Project State
 
-Última actualización: 2026-08-28 (sesión 14), tras publicar documentación
-OpenAPI/Swagger real (`GET /api/docs`, `GET /api/docs-json`) para los 8
-controllers y 18 DTOs existentes, verificada contra el servidor real.
-Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
+Última actualización: 2026-08-28 (sesión 15), tras implementar el endpoint
+de invitación de membership (invitar/listar/aceptar/pendientes) completo —
+backend, SDK y UI — y verificarlo con un E2E de Playwright real que usa dos
+contextos de navegador aislados para simular al owner y al invitado por
+separado. Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
 ## Development Ownership
@@ -311,9 +312,28 @@ ADR-004 nada se ha construido contra él todavía.
   `pnpm-workspace.yaml` en vez de aprobarlo a ciegas. Sin tests nuevos —
   metadata de decoradores sobre código ya probado, no lógica nueva.
   Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 14").
-- 193 tests unitarios pasando (api 174, api-client 7, erp-web 16) + 18 en
-  `@erp/events` + 1 en `@erp/worker` + 10 tests de integración con Postgres
-  real + **2 tests E2E de Playwright pasando contra infraestructura real
+- **Membership Invitations** (`apps/api/src/core/tenants`, Claude, sesión 15):
+  `InviteMembershipUseCase`/`AcceptMembershipInvitationUseCase`/
+  `ListMembershipsUseCase`/`ListPendingInvitationsUseCase` +
+  `MembershipsController` (`POST/GET /api/v1/tenants/memberships`,
+  `GET .../pending`, `POST .../:id/accept`) cierran el hueco de RBAC ya
+  documentado: agregar un segundo usuario real a un tenant, con
+  autoaceptación desde el propio usuario invitado (`Membership.activate()`,
+  patrón `INVITED → ACTIVE` que ya existía en el dominio). Sin migración
+  nueva — solo lógica de aplicación sobre `memberships`/`tenants` ya
+  existentes. 2 permisos nuevos (`tenants.memberships.read/.manage`).
+  Invitar dispara una notificación `IN_APP` real y una entrada de auditoría.
+  UI nueva: pestaña "Miembros" en "Roles y permisos" (listar + invitar por
+  correo) y el modal "Asignar rol" ahora usa un selector real de miembros en
+  vez de un ID escrito a mano; sección "Invitaciones pendientes" en el
+  tenant picker con botón "Aceptar". **Verificado con un E2E de Playwright
+  real usando dos `BrowserContext` aislados** (sesión del owner y sesión del
+  invitado, sin compartir tokens): invita → el invitado ve su invitación →
+  la acepta → el tenant aparece en su propia lista de espacios. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 15").
+- 199 tests unitarios pasando (api 186, api-client 8, erp-web 16) + 18 en
+  `@erp/events` + 1 en `@erp/worker` + 12 tests de integración con Postgres
+  real + **3 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
   Testcontainers, API y worker compilados reales, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
@@ -379,14 +399,13 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (endpoint de
-invitación de membership).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (plano de
+administración de plataforma).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: endpoint de invitación de
-membership → plano de administración de
+Resumen bajo ownership único de Claude: plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
 PLATFORM) → vista de "mi actividad"/administración para eventos no
 tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
@@ -399,15 +418,15 @@ storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
 soft-delete de metadata) → adapter real de Email para Notifications
 (proveedor SMTP/transaccional no decidido) → `@erp/api-client` generado
 desde el spec OpenAPI (`/api/docs-json` ya existe; herramienta de
-generación todavía no decidida). También pendiente: ratificar
-ADR-001, ADR-002, ADR-003 y ADR-005 formalmente (ADR-004 y ADR-006 ya están
-ratificados). Claude debe completar cualquier UI, SDK y cobertura de
-pruebas que estos bloques necesiten. La UI de RBAC, el E2E de sesión y la
-UI de Configuración ya están hechas e integradas (ver Completed); la UI de
-Files (subida/listado/descarga) y de Notifications (bandeja/badge de no
-leídas) todavía no se han construido. El flujo "invitar usuario → asignar
-rol" en la UI de RBAC **sigue bloqueado** hasta que exista el endpoint de
-invitación de membership; no se debe simular ni inventar mientras tanto.
+generación todavía no decidida) → expirar/revocar invitaciones pendientes
+(`Membership.revoke()` ya existe en el dominio, sin TTL ni endpoint todavía).
+También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
+(ADR-004 y ADR-006 ya están ratificados). Claude debe completar cualquier
+UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI de RBAC
+(incluida la invitación de miembros), el E2E de sesión y la UI de
+Configuración ya están hechas e integradas (ver Completed); la UI de Files
+(subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
+todavía no se han construido.
 
 ## Production Status
 

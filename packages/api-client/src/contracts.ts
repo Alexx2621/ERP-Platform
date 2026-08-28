@@ -142,6 +142,37 @@ export interface UserPreferenceResponse {
   updatedAt: string;
 }
 
+export type MembershipStatus = "INVITED" | "ACTIVE" | "SUSPENDED" | "REVOKED";
+
+export interface MembershipResponse {
+  id: string;
+  tenantId: string;
+  userId: string;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MembershipWithUserResponse extends MembershipResponse {
+  email: string;
+  displayName: string;
+}
+
+export interface PendingInvitationResponse {
+  membershipId: string;
+  tenantSlug: string;
+  tenantName: string;
+  createdAt: string;
+}
+
+export interface InviteMembershipInput {
+  email: string;
+}
+
+export interface AcceptMembershipInvitationInput {
+  tenantSlug: string;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

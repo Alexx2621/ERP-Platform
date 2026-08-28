@@ -34,6 +34,14 @@ import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-ca
 import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
 import { PrismaTenantProvisioningRepository } from "../../src/core/tenants/infrastructure/prisma-tenant-provisioning.repository";
 import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provision-tenant.use-case";
+import { InviteMembershipUseCase } from "../../src/core/tenants/application/invite-membership.use-case";
+import { AcceptMembershipInvitationUseCase } from "../../src/core/tenants/application/accept-membership-invitation.use-case";
+import { ListMembershipsUseCase } from "../../src/core/tenants/application/list-memberships.use-case";
+import {
+  InvitedUserNotFoundError,
+  MembershipAlreadyExistsError,
+  MembershipNotFoundForUserError,
+} from "../../src/core/tenants/application/errors";
 import {
   PrismaOutboxMessageRepository,
   DomainEventBus,
@@ -825,5 +833,78 @@ describe("Prisma repositories against PostgreSQL", () => {
     const afterRead = await listNotifications.execute({ tenantId: tenantA.id, recipientUserId: recipient.id });
     expect(afterRead).toHaveLength(1);
     expect(afterRead[0]?.delivery?.readAt).not.toBeNull();
+  });
+
+  it("invites, lists and accepts a membership with real FK-backed identity, and rejects cross-user acceptance", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const memberships = new PrismaMembershipRepository(prisma);
+    const inviteMembership = new InviteMembershipUseCase(memberships, users);
+    const listMemberships = new ListMembershipsUseCase(memberships, users);
+    const acceptInvitation = new AcceptMembershipInvitationUseCase(tenants, memberships);
+    const now = new Date("2026-08-28T10:00:00.000Z");
+
+    const owner = createUser(now, "membership-owner@example.com");
+    const invitee = createUser(now, "membership-invitee@example.com");
+    const stranger = createUser(now, "membership-stranger@example.com");
+    await users.save(owner);
+    await users.save(invitee);
+    await users.save(stranger);
+    const tenantA = createTenant(now, "membership-tenant-a");
+    const tenantB = createTenant(now, "membership-tenant-b");
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+    await memberships.save(
+      Membership.create({
+        id: newId(),
+        tenantId: tenantA.id,
+        userId: owner.id,
+        status: "ACTIVE",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    const invited = await inviteMembership.execute({ tenantId: tenantA.id, email: invitee.email });
+    expect(invited.membership.status).toBe("INVITED");
+
+    // Real FK: inviting an email with no matching user is a genuine 404, not
+    // a deferred/passwordless account creation (MASTER_SPEC §90).
+    await expect(
+      inviteMembership.execute({ tenantId: tenantA.id, email: "no-such-user@example.com" }),
+    ).rejects.toThrow(InvitedUserNotFoundError);
+
+    // Duplicate invitation to the same user in the same tenant is rejected.
+    await expect(
+      inviteMembership.execute({ tenantId: tenantA.id, email: invitee.email }),
+    ).rejects.toThrow(MembershipAlreadyExistsError);
+
+    // Tenant-scoped listing: tenant B never sees tenant A's memberships,
+    // even though both rows share the same physical table.
+    await expect(listMemberships.execute(tenantB.id)).resolves.toEqual([]);
+    const listedForA = await listMemberships.execute(tenantA.id);
+    expect(listedForA).toHaveLength(2);
+    expect(listedForA.map((m) => m.user.email).sort()).toEqual([invitee.email, owner.email].sort());
+
+    // IDOR-resistant: a different real user (not the invitee) cannot accept
+    // the invitation, even with the correct tenant slug and membership id.
+    await expect(
+      acceptInvitation.execute({
+        tenantSlug: tenantA.slug,
+        membershipId: invited.membership.id,
+        userId: stranger.id,
+      }),
+    ).rejects.toThrow(MembershipNotFoundForUserError);
+
+    const accepted = await acceptInvitation.execute({
+      tenantSlug: tenantA.slug,
+      membershipId: invited.membership.id,
+      userId: invitee.id,
+    });
+    expect(accepted.status).toBe("ACTIVE");
+    await expect(memberships.findById(tenantA.id, invited.membership.id)).resolves.toMatchObject({
+      status: "ACTIVE",
+    });
   });
 });

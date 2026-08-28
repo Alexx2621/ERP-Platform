@@ -6,11 +6,16 @@ import { RedisService } from "../../shared/redis/redis.service";
 import { ProvisionTenantUseCase } from "./application/provision-tenant.use-case";
 import { ResolveTenantContextUseCase } from "./application/resolve-tenant-context.use-case";
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
+import { InviteMembershipUseCase } from "./application/invite-membership.use-case";
+import { AcceptMembershipInvitationUseCase } from "./application/accept-membership-invitation.use-case";
+import { ListMembershipsUseCase } from "./application/list-memberships.use-case";
+import { ListPendingInvitationsUseCase } from "./application/list-pending-invitations.use-case";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
 import { TenantsController } from "./presentation/tenants.controller";
 import { RolesController } from "./presentation/roles.controller";
 import { AuditEntriesController } from "./presentation/audit-entries.controller";
 import { NotificationsController } from "./presentation/notifications.controller";
+import { MembershipsController } from "./presentation/memberships.controller";
 import { TenantsModule } from "./tenants.module";
 import { SeedOwnerRoleUseCase } from "../access-control";
 import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "../audit";
@@ -68,6 +73,11 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(ListNotificationsUseCase)).toBeInstanceOf(ListNotificationsUseCase);
     expect(moduleRef.get(MarkNotificationReadUseCase)).toBeInstanceOf(MarkNotificationReadUseCase);
     expect(moduleRef.get(NotificationsController)).toBeInstanceOf(NotificationsController);
+    expect(moduleRef.get(InviteMembershipUseCase)).toBeInstanceOf(InviteMembershipUseCase);
+    expect(moduleRef.get(AcceptMembershipInvitationUseCase)).toBeInstanceOf(AcceptMembershipInvitationUseCase);
+    expect(moduleRef.get(ListMembershipsUseCase)).toBeInstanceOf(ListMembershipsUseCase);
+    expect(moduleRef.get(ListPendingInvitationsUseCase)).toBeInstanceOf(ListPendingInvitationsUseCase);
+    expect(moduleRef.get(MembershipsController)).toBeInstanceOf(MembershipsController);
 
     await moduleRef.close();
   });

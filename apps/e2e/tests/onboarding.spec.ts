@@ -192,7 +192,7 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
   const roleRow = page.getByRole("row").filter({ hasText: roleName });
   await expect(roleRow).toBeVisible();
   await roleRow.getByRole("button", { name: `Asignar rol ${roleName}` }).click();
-  const membershipId = await page.getByLabel("ID de membresía").inputValue();
+  const membershipId = await page.getByRole("combobox", { name: "Miembro" }).inputValue();
   expect(membershipId).not.toBe("");
   await page.getByRole("combobox", { name: "Alcance" }).selectOption("COMPANY");
   const companyId = await page.getByLabel("ID de empresa").inputValue();

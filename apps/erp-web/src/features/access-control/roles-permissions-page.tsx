@@ -1,14 +1,17 @@
 import {
   ArrowLeft,
   CheckCircle,
+  EnvelopeSimple,
   Key,
   LockKey,
   Plus,
   ShieldCheck,
   UserPlus,
+  Users,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type {
+  MembershipWithUserResponse,
   PermissionResponse,
   RoleAssignmentResponse,
   RoleAssignmentScope,
@@ -57,8 +60,16 @@ interface CreateRoleModalProps {
 interface AssignRoleModalProps {
   role: RoleResponse | null;
   selection: WorkspaceSelection;
+  members: MembershipWithUserResponse[];
   onOpenChange: (open: boolean) => void;
   onAssigned: (assignment: RoleAssignmentResponse) => void;
+}
+
+interface InviteMemberModalProps {
+  open: boolean;
+  tenantSlug: string;
+  onOpenChange: (open: boolean) => void;
+  onInvited: (membership: MembershipWithUserResponse) => void;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -238,7 +249,7 @@ function CreateRoleModal({
   );
 }
 
-function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRoleModalProps) {
+function AssignRoleModal({ role, selection, members, onOpenChange, onAssigned }: AssignRoleModalProps) {
   const { getAccessToken } = useAuth();
   const [membershipId, setMembershipId] = useState(selection.membershipId);
   const [scopeType, setScopeType] = useState<RoleAssignmentScope>("TENANT");
@@ -250,7 +261,7 @@ function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRo
 
   useEffect(() => {
     if (role) {
-      setMembershipId(selection.membershipId);
+      setMembershipId(members[0]?.id ?? selection.membershipId);
       setScopeType("TENANT");
       setScopeId(selection.companyId ?? "");
       setMembershipError(undefined);
@@ -258,7 +269,7 @@ function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRo
       setRequestError(undefined);
       setBusy(false);
     }
-  }, [role, selection.companyId, selection.membershipId]);
+  }, [role, members, selection.companyId, selection.membershipId]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -270,7 +281,7 @@ function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRo
     const normalizedScopeId = scopeId.trim();
     const nextMembershipError = normalizedMembershipId
       ? undefined
-      : "Ingresa el ID de una membresía existente.";
+      : "Selecciona una membresía.";
     const nextScopeError =
       scopeType === "COMPANY" && !normalizedScopeId
         ? "Ingresa el ID de la empresa para este alcance."
@@ -327,18 +338,38 @@ function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRo
         onSubmit={(event) => void handleSubmit(event)}
       >
         {requestError ? <ErrorNotice message={requestError} /> : null}
-        <FormField
-          name="membershipId"
-          label="ID de membresía"
-          value={membershipId}
-          autoComplete="off"
-          error={membershipError}
-          hint="Se usa tu membresía actual como valor inicial. Puedes reemplazarla por otro ID conocido."
-          onChange={(event) => {
-            setMembershipId(event.target.value);
-            setMembershipError(undefined);
-          }}
-        />
+        {members.length > 0 ? (
+          <Select
+            name="membershipId"
+            label="Miembro"
+            value={membershipId}
+            error={membershipError}
+            hint="Miembros del tenant activo, con su correo y estado."
+            onChange={(event) => {
+              setMembershipId(event.target.value);
+              setMembershipError(undefined);
+            }}
+          >
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.displayName} · {member.email} · {member.status}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <FormField
+            name="membershipId"
+            label="ID de membresía"
+            value={membershipId}
+            autoComplete="off"
+            error={membershipError}
+            hint="No fue posible cargar el listado de miembros; ingresa el ID manualmente."
+            onChange={(event) => {
+              setMembershipId(event.target.value);
+              setMembershipError(undefined);
+            }}
+          />
+        )}
         <Select
           name="scopeType"
           label="Alcance"
@@ -371,13 +402,106 @@ function AssignRoleModal({ role, selection, onOpenChange, onAssigned }: AssignRo
   );
 }
 
+function InviteMemberModal({ open, tenantSlug, onOpenChange, onInvited }: InviteMemberModalProps) {
+  const { getAccessToken } = useAuth();
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState<string>();
+  const [requestError, setRequestError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setEmail("");
+      setEmailError(undefined);
+      setRequestError(undefined);
+      setBusy(false);
+    }
+  }, [open]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim();
+    const nextEmailError = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+      ? undefined
+      : "Ingresa un correo válido.";
+
+    setEmailError(nextEmailError);
+    setRequestError(undefined);
+    if (nextEmailError) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const accessToken = await getAccessToken();
+      const membership = await apiClient.inviteMembership(accessToken, tenantSlug, {
+        email: normalizedEmail,
+      });
+      onInvited(membership);
+      onOpenChange(false);
+    } catch (error) {
+      setRequestError(getErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!busy) {
+          onOpenChange(nextOpen);
+        }
+      }}
+      title="Invitar miembro"
+      description="La persona debe tener ya una cuenta en la plataforma. Quedará como invitación hasta que la acepte."
+      footer={
+        <>
+          <Button type="button" variant="quiet" disabled={busy} onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="invite-member-form" busy={busy}>
+            Enviar invitación
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="invite-member-form"
+        className="grid gap-5"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        {requestError ? <ErrorNotice message={requestError} /> : null}
+        <FormField
+          name="email"
+          type="email"
+          label="Correo electrónico"
+          value={email}
+          autoComplete="off"
+          autoFocus
+          error={emailError}
+          hint="Debe corresponder a una cuenta ya registrada en la plataforma."
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setEmailError(undefined);
+          }}
+        />
+      </form>
+    </Modal>
+  );
+}
+
 export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPageProps) {
   const { getAccessToken } = useAuth();
   const [roles, setRoles] = useState<RoleResponse[] | null>(null);
   const [permissions, setPermissions] = useState<PermissionResponse[] | null>(null);
+  const [members, setMembers] = useState<MembershipWithUserResponse[] | null>(null);
   const [rolesError, setRolesError] = useState<string>();
   const [permissionsError, setPermissionsError] = useState<string>();
+  const [membersError, setMembersError] = useState<string>();
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [assignmentRole, setAssignmentRole] = useState<RoleResponse | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>();
 
@@ -385,8 +509,10 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
     async (signal?: AbortSignal) => {
       setRoles(null);
       setPermissions(null);
+      setMembers(null);
       setRolesError(undefined);
       setPermissionsError(undefined);
+      setMembersError(undefined);
 
       let accessToken: string;
       try {
@@ -396,13 +522,15 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
           const message = getErrorMessage(error);
           setRolesError(message);
           setPermissionsError(message);
+          setMembersError(message);
         }
         return;
       }
 
-      const [rolesResult, permissionsResult] = await Promise.allSettled([
+      const [rolesResult, permissionsResult, membersResult] = await Promise.allSettled([
         apiClient.listRoles(accessToken, selection.slug, signal),
         apiClient.listPermissions(accessToken, selection.slug, signal),
+        apiClient.listMemberships(accessToken, selection.slug, signal),
       ]);
 
       if (rolesResult.status === "fulfilled") {
@@ -415,6 +543,12 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
         setPermissions(permissionsResult.value);
       } else if (!isAbortError(permissionsResult.reason)) {
         setPermissionsError(getErrorMessage(permissionsResult.reason));
+      }
+
+      if (membersResult.status === "fulfilled") {
+        setMembers(membersResult.value);
+      } else if (!isAbortError(membersResult.reason)) {
+        setMembersError(getErrorMessage(membersResult.reason));
       }
     },
     [getAccessToken, selection.slug],
@@ -604,6 +738,87 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
     </section>
   );
 
+  const membersPanel = (
+    <section aria-labelledby="members-section-title" className="grid gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 id="members-section-title" className="text-[17px] font-extrabold tracking-[-0.025em]">
+            Miembros
+          </h2>
+          <p className="mt-1 text-[12px] font-medium text-[var(--muted-strong)]">
+            Personas con una membresía en {selection.name}, incluidas invitaciones pendientes.
+          </p>
+        </div>
+        <Button type="button" onClick={() => setInviteOpen(true)}>
+          <EnvelopeSimple size={17} weight="bold" aria-hidden="true" />
+          Invitar miembro
+        </Button>
+      </div>
+
+      {membersError ? (
+        <div className="grid gap-3">
+          <ErrorNotice message={membersError} />
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-fit"
+            onClick={() => void loadCatalogs()}
+          >
+            Reintentar
+          </Button>
+        </div>
+      ) : (
+        <Table aria-busy={members === null}>
+          <TableCaption>Miembros del tenant activo</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Nombre</TableHead>
+              <TableHead scope="col">Correo</TableHead>
+              <TableHead scope="col">Estado</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {members === null ? (
+              <LoadingRows columns={3} />
+            ) : members.length === 0 ? (
+              <TableRow>
+                <TableEmpty
+                  colSpan={3}
+                  title="No hay miembros"
+                  description="Invita a la primera persona para que se una a este tenant."
+                />
+              </TableRow>
+            ) : (
+              members.map((member) => (
+                <TableRow key={member.id}>
+                  <TableCell>
+                    <span className="flex items-center gap-2.5">
+                      <Users
+                        size={18}
+                        weight="duotone"
+                        className="shrink-0 text-[var(--accent)]"
+                        aria-hidden="true"
+                      />
+                      <span>{member.displayName}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-medium text-[var(--muted-strong)]">
+                    {member.email}
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+                      {member.status}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </section>
+  );
+
   return (
     <ProductShell
       eyebrow={`Tenant / ${selection.slug}`}
@@ -636,6 +851,7 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
           ariaLabel="Administración de roles y permisos"
           items={[
             { id: "roles", label: "Roles", panel: rolesPanel },
+            { id: "members", label: "Miembros", panel: membersPanel },
             { id: "permissions", label: "Permisos", panel: permissionsPanel },
           ]}
         />
@@ -648,11 +864,11 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
             aria-hidden="true"
           />
           <div>
-            <p className="font-extrabold text-[var(--ink)]">Membresías existentes</p>
+            <p className="font-extrabold text-[var(--ink)]">Invitaciones</p>
             <p className="mt-1 max-w-[76ch]">
-              La API todavía no ofrece invitaciones, listado de miembros ni consulta de
-              asignaciones. Esta pantalla solo envía una asignación cuando proporcionas un ID de
-              membresía ya existente.
+              Invitar requiere que la persona ya tenga una cuenta en la plataforma — no se crean
+              cuentas por correo. La invitación queda pendiente hasta que la persona la acepte
+              desde su propia sesión.
             </p>
           </div>
         </aside>
@@ -671,6 +887,7 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
       <AssignRoleModal
         role={assignmentRole}
         selection={selection}
+        members={members ?? []}
         onOpenChange={(open) => {
           if (!open) {
             setAssignmentRole(null);
@@ -680,6 +897,15 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
           setStatusMessage(
             `El rol fue asignado a la membresía ${assignment.membershipId} con alcance ${assignment.scopeType}.`,
           );
+        }}
+      />
+      <InviteMemberModal
+        open={inviteOpen}
+        tenantSlug={selection.slug}
+        onOpenChange={setInviteOpen}
+        onInvited={(membership) => {
+          setMembers((current) => [...(current ?? []), membership]);
+          setStatusMessage(`Se invitó a ${membership.email}. Queda pendiente de aceptación.`);
         }}
       />
     </ProductShell>

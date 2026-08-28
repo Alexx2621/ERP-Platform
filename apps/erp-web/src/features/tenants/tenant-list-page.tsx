@@ -1,6 +1,6 @@
-import { ArrowClockwise, ArrowRight, Buildings, Plus } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowRight, Buildings, EnvelopeSimpleOpen, Plus } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import type { TenantSummary } from "@erp/api-client";
+import type { PendingInvitationResponse, TenantSummary } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
@@ -25,6 +25,9 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
   const [attempt, setAttempt] = useState(0);
   const [openingSlug, setOpeningSlug] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<PendingInvitationResponse[] | null>(null);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,8 +43,40 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
         setLoadState({ status: "error", message: getErrorMessage(error) });
       });
 
+    void getAccessToken()
+      .then((token) => apiClient.listPendingInvitations(token, controller.signal))
+      .then(setInvitations)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        // A failure to load invitations must not block the primary tenant
+        // list — the section simply stays hidden rather than surfacing a
+        // second error notice on this screen.
+        setInvitations([]);
+      });
+
     return () => controller.abort();
   }, [attempt, getAccessToken]);
+
+  const acceptInvitation = async (invitation: PendingInvitationResponse) => {
+    setAcceptError(null);
+    setAcceptingId(invitation.membershipId);
+    try {
+      const token = await getAccessToken();
+      await apiClient.acceptMembershipInvitation(token, invitation.membershipId, {
+        tenantSlug: invitation.tenantSlug,
+      });
+      setInvitations((current) =>
+        (current ?? []).filter((item) => item.membershipId !== invitation.membershipId),
+      );
+      setAttempt((value) => value + 1);
+    } catch (error) {
+      setAcceptError(getErrorMessage(error));
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   const openTenant = async (tenant: TenantSummary) => {
     setOpenError(null);
@@ -71,6 +106,47 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
       }
     >
       <section className="pt-8" aria-live="polite">
+        {invitations && invitations.length > 0 ? (
+          <section aria-labelledby="pending-invitations-title" className="mb-7 grid gap-3">
+            <h2
+              id="pending-invitations-title"
+              className="text-[13px] font-extrabold uppercase tracking-[0.06em] text-[var(--muted-strong)]"
+            >
+              Invitaciones pendientes
+            </h2>
+            {acceptError ? <ErrorNotice message={acceptError} /> : null}
+            <ul className="grid gap-2.5">
+              {invitations.map((invitation) => (
+                <li
+                  key={invitation.membershipId}
+                  className="flex items-center gap-4 rounded-[12px] border border-[var(--accent)] bg-[var(--accent-soft)] px-5 py-4"
+                >
+                  <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[var(--paper)] text-[var(--accent)]">
+                    <EnvelopeSimpleOpen size={20} weight="duotone" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-extrabold tracking-[-0.02em]">
+                      {invitation.tenantName}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-strong)]">
+                      {invitation.tenantSlug}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    className="shrink-0"
+                    busy={acceptingId === invitation.membershipId}
+                    disabled={acceptingId !== null && acceptingId !== invitation.membershipId}
+                    onClick={() => void acceptInvitation(invitation)}
+                  >
+                    Aceptar
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {openError ? (
           <div className="mb-5">
             <ErrorNotice message={openError} />

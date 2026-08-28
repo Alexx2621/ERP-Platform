@@ -26,6 +26,22 @@ export class PrismaMembershipRepository implements MembershipRepository {
     return records.map((record) => Membership.create(record));
   }
 
+  async findPendingByUserId(userId: string): Promise<Membership[]> {
+    const records = await this.prisma.membership.findMany({
+      where: { userId, status: "INVITED" },
+      orderBy: { createdAt: "asc" },
+    });
+    return records.map((record) => Membership.create(record));
+  }
+
+  async findByTenant(tenantId: string): Promise<Membership[]> {
+    const records = await this.prisma.membership.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "asc" },
+    });
+    return records.map((record) => Membership.create(record));
+  }
+
   async save(membership: Membership): Promise<void> {
     const props = membership.toProps();
     await this.prisma.membership.upsert({
