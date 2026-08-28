@@ -383,3 +383,76 @@ something a client calls directly.
   `tenancy.tenant.provisioned.v1` message logs "No handlers registered" and
   still correctly marks the row `PUBLISHED` — see `docs/WORK_QUEUE.md`), so
   there is nothing to set `causation_id` to yet.
+
+## Files (2026-08-27)
+
+Scope: `FileObject`, `UploadFileUseCase`, `GetFileDownloadUrlUseCase`,
+`ListFilesUseCase`, `DeleteFileUseCase`, `S3FileStorageAdapter`,
+`S3BucketBootstrapper` (`apps/api/src/core/files`) — implements
+MASTER_SPEC §22 ("Storage compatible con S3... Nunca depender del
+almacenamiento local del servidor"). `FilesController` exposes
+`POST/GET /api/v1/files`, `GET /api/v1/files/:id/download-url`,
+`DELETE /api/v1/files/:id`.
+
+### Assets
+
+- The uploaded bytes themselves, held in the configured S3-compatible
+  bucket (MinIO locally, S3 in production) — never on the API process's
+  local disk (`FileInterceptor` uses Multer's in-memory storage, not
+  `diskStorage`).
+- `file_objects` metadata — ownership (`tenant_id`, `company_id`,
+  `owner_user_id`) and the `storage_key` needed to fetch/sign/delete the
+  real object.
+- Signed download URLs — a time-boxed capability to read one specific
+  object without further authentication; anyone holding the URL can use it
+  until it expires, so issuing one is itself a security-relevant action.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A caller downloads a file belonging to a different tenant by guessing/enumerating a `fileId` | `GetFileDownloadUrlUseCase` looks the file up by id and only proceeds if `file.tenantId === ctx.tenantId` — a match failure and a genuinely missing id both return the identical `FileNotFoundError` (404), so a caller cannot distinguish "doesn't exist" from "exists but isn't yours" (MULTITENANCY.md's IDOR-resistance pattern, same shape as `GetFileDownloadUrlUseCase`'s tenant check). Verified against real Postgres and MinIO in this session's manual smoke test: a second real tenant requesting the first tenant's real `fileId` received `404 FILE_NOT_FOUND`, not the file. |
+| A permanent/public link to a file leaks and grants indefinite access | Every download link is a signed URL from `S3FileStorageAdapter.getSignedDownloadUrl`, valid for `FILES_DOWNLOAD_URL_TTL_SECONDS` (default 300s) — never a bare/public object URL. `FileObject`'s `storage_key` is only ever resolved to a URL after the tenant/ownership check above, so a leaked *metadata* id alone (without an active session in the right tenant) grants nothing. |
+| Uploading an oversized file exhausts API process memory | Two independent limits: Multer's `limits.fileSize` (a coarse, fixed 100 MiB framework-level guard, rejected by Nest as a plain HTTP 413 before the body is fully buffered) and the real, configurable business limit `FILES_MAX_SIZE_BYTES` enforced inside `UploadFileUseCase` and reported as `400 FILE_TOO_LARGE` through the standard error envelope. The upload buffer is in-memory only — never written to local disk regardless of size. |
+| A storage-key collision lets one tenant's upload silently overwrite another tenant's object | `storage_key` is `tenants/{tenantId}/files/{id}` where `id` is a fresh UUIDv7 generated per upload — never derived from the original filename — and `file_objects.storage_key` carries a database-level `UNIQUE` constraint, so a collision is structurally impossible, not merely astronomically unlikely. |
+| The original filename is used to build a path and enables path traversal (`../../etc/passwd`) | `original_filename` is stored purely as display metadata and never concatenated into `storage_key` or any filesystem path — the storage key is always `tenants/{tenantId}/files/{id}`, independent of anything the client supplied. |
+| A request with no `file` field (or a malformed multipart body) crashes the handler and leaks an internal error | **Found in this session's own manual smoke test**: the initial implementation read `file.originalname` without checking `file` was defined, producing an uncaught `TypeError` that the global exception filter turned into a bare `500 INTERNAL_ERROR` — not a security leak (no stack trace reached the client) but a correctness gap inconsistent with MASTER_SPEC §61. Fixed by an explicit `if (!file)` check in `FilesController.upload` that throws a proper `400 FILE_REQUIRED` through the standard envelope. Re-verified against the real running server after the fix. |
+| A tenant admin deletes a file, and the caller assumes the bytes are gone immediately for compliance/legal purposes | `DELETE /files/:id` is a soft-delete only (`FileObject.markDeleted` — MASTER_SPEC §33): the row moves to `DELETED` and disappears from listings/downloads, but `S3FileStorageAdapter.deleteObject` is never called by `DeleteFileUseCase`. See "Known limitations" below — this is a deliberate scope cut, not an oversight, but it means "deleted" today means "no longer reachable through the API," not "erased from storage." |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Deleting a file's metadata does not delete the storage object.**
+  `DeleteFileUseCase` only calls `FileObject.markDeleted` — the real bytes
+  remain in the bucket under their `storage_key` indefinitely. This was a
+  deliberate choice (MASTER_SPEC §33: don't destroy critical data
+  immediately) rather than an oversight, but it means there is currently no
+  path to actually reclaim storage or fully purge a file for a legal/GDPR
+  deletion request. A real purge job (soft-deleted past a retention window
+  → `deleteObject` → hard-delete the row) is future work, not built yet.
+- **No per-file access control beyond tenant scope.** Any membership with
+  `files.read` in the tenant can download *any* file in that tenant,
+  including ones uploaded by a different user or scoped to a different
+  company than the caller's current context — there is no "only the
+  uploader" or strict company-scoped read enforced at the use-case level
+  (`ListFilesUseCase`/`GetFileDownloadUrlUseCase` filter by tenant, and
+  optionally by company when the caller asks, but do not require it).
+  Acceptable for Foundation; revisit if a module needs stricter per-file
+  visibility.
+- **No content-type or file-type allowlist.** Any `contentType` the
+  uploading client reports is trusted and stored as-is — there is no
+  virus/malware scanning and no MIME-sniffing validation that the bytes
+  actually match the declared type. Fine for internal/trusted-tenant
+  documents at this stage; revisit before accepting uploads from a
+  lower-trust surface (e.g. a public storefront).
+- **The bucket is auto-created on boot but never verified for public
+  access settings.** `S3BucketBootstrapper` calls plain `CreateBucketCommand`
+  with no bucket policy — correct for MinIO's default (private) behavior
+  locally, but a production S3 deployment should confirm "Block Public
+  Access" is on for this bucket as part of its own infrastructure setup,
+  not something this code enforces or can enforce from the application
+  side.
+- **No dedicated "file too large" or "wrong type" audit trail entry** —
+  only successful uploads and deletes are audited (`file.uploaded`,
+  `file.deleted`); a rejected upload attempt is not recorded. Consistent
+  with how other modules only audit successful state changes today, not
+  rejected attempts.

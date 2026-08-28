@@ -39,6 +39,7 @@ model User {
   preferences    UserPreference[]
   auditEntries   AuditEntry[]
   outboxMessages OutboxMessage[]
+  ownedFiles     FileObject[]
 
   @@map("users")
 }
@@ -110,6 +111,7 @@ model Tenant {
   settingValues   SettingValue[]
   auditEntries    AuditEntry[]
   outboxMessages  OutboxMessage[]
+  fileObjects     FileObject[]
 
   @@map("tenants")
 }
@@ -191,6 +193,7 @@ model Company {
   settingValues  SettingValue[]
   auditEntries   AuditEntry[]
   outboxMessages OutboxMessage[]
+  fileObjects    FileObject[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -433,4 +436,39 @@ model OutboxMessage {
   @@index([status, availableAt])
   @@index([tenantId])
   @@map("outbox_messages")
+}
+
+enum FileObjectStatus {
+  ACTIVE
+  DELETED
+}
+
+/// File metadata + ownership record for objects held in S3-compatible
+/// storage (MinIO locally, S3 in production — MASTER_SPEC §22). The bytes
+/// themselves never touch this table or local disk: `storageKey` is only the
+/// object key inside the configured bucket, and access happens exclusively
+/// through short-lived signed download URLs issued after a tenant/ownership
+/// check (docs/ARCHITECTURE.md §10, see FilesController). `status` is a
+/// deliberate soft-delete: deleting a FileObject here does not synchronously
+/// delete the underlying storage object (see docs/SECURITY.md "Files" for
+/// the retention gap that leaves).
+model FileObject {
+  id               String           @id @db.Uuid
+  tenantId         String           @map("tenant_id") @db.Uuid
+  companyId        String?          @map("company_id") @db.Uuid
+  ownerUserId      String           @map("owner_user_id") @db.Uuid
+  storageKey       String           @unique @map("storage_key") @db.VarChar(500)
+  originalFilename String           @map("original_filename") @db.VarChar(255)
+  contentType      String           @map("content_type") @db.VarChar(150)
+  sizeBytes        BigInt           @map("size_bytes")
+  status           FileObjectStatus @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company? @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  owner   User     @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, companyId])
+  @@map("file_objects")
 }

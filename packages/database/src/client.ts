@@ -19,6 +19,7 @@ export type {
   UserPreference,
   AuditEntry,
   OutboxMessage,
+  FileObject,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -27,6 +28,7 @@ export {
   ConfigScopeType,
   SettingDataType,
   OutboxMessageStatus,
+  FileObjectStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

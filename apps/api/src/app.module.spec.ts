@@ -25,6 +25,13 @@ import { GetEffectiveSettingUseCase, SetSettingValueUseCase } from "./core/confi
 import { SettingsController } from "./core/configuration/presentation/settings.controller";
 import { PreferencesController } from "./core/configuration/presentation/preferences.controller";
 import { DomainEventBus, DispatchOutboxBatchUseCase } from "./core/events";
+import {
+  UploadFileUseCase,
+  GetFileDownloadUrlUseCase,
+  ListFilesUseCase,
+  DeleteFileUseCase,
+  FilesController,
+} from "./core/files";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -65,6 +72,11 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
     expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
     expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
+    expect(moduleRef.get(UploadFileUseCase)).toBeInstanceOf(UploadFileUseCase);
+    expect(moduleRef.get(GetFileDownloadUrlUseCase)).toBeInstanceOf(GetFileDownloadUrlUseCase);
+    expect(moduleRef.get(ListFilesUseCase)).toBeInstanceOf(ListFilesUseCase);
+    expect(moduleRef.get(DeleteFileUseCase)).toBeInstanceOf(DeleteFileUseCase);
+    expect(moduleRef.get(FilesController)).toBeInstanceOf(FilesController);
 
     await moduleRef.close();
   });

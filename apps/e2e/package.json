@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@testcontainers/minio": "^12.1.0",
     "@testcontainers/postgresql": "^12.1.0",
     "@testcontainers/redis": "^12.1.0",
     "@types/node": "^26.3.0",

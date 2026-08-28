@@ -6,10 +6,14 @@ import { promisify } from "node:util";
 import type { FullConfig } from "@playwright/test";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer, type StartedRedisContainer } from "@testcontainers/redis";
+import { MinioContainer, type StartedMinioContainer } from "@testcontainers/minio";
 
 const execFileAsync = promisify(execFile);
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const REDIS_IMAGE = "redis:7-alpine";
+const MINIO_IMAGE = "minio/minio:latest";
+const MINIO_USERNAME = "erp_e2e_minio";
+const MINIO_PASSWORD = "erp_e2e_minio_password";
 const API_URL = "http://127.0.0.1:3000/api/v1/auth/me";
 const ERP_WEB_URL = "http://127.0.0.1:5173/";
 const STARTUP_TIMEOUT_MS = 60_000;
@@ -17,6 +21,7 @@ const STARTUP_TIMEOUT_MS = 60_000;
 interface E2ERuntime {
   postgres?: StartedPostgreSqlContainer;
   redis?: StartedRedisContainer;
+  minio?: StartedMinioContainer;
   api?: ChildProcess;
   erpWeb?: ChildProcess;
 }
@@ -104,6 +109,7 @@ async function stopRuntime(runtime: E2ERuntime): Promise<void> {
   await stopProcess(runtime.erpWeb);
   await stopProcess(runtime.api);
   await runtime.redis?.stop();
+  await runtime.minio?.stop();
   await runtime.postgres?.stop();
 }
 
@@ -117,6 +123,10 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       .withPassword("erp_e2e_password")
       .start();
     runtime.redis = await new RedisContainer(REDIS_IMAGE).start();
+    runtime.minio = await new MinioContainer(MINIO_IMAGE)
+      .withUsername(MINIO_USERNAME)
+      .withPassword(MINIO_PASSWORD)
+      .start();
 
     const databaseUrl = runtime.postgres.getConnectionUri();
     await deployMigrations(databaseUrl);
@@ -131,6 +141,12 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
       REFRESH_TOKEN_TTL_SECONDS: "2592000",
       LOGIN_RATE_LIMIT_MAX: "50",
       LOGIN_RATE_LIMIT_WINDOW_SECONDS: "60",
+      FILES_S3_ENDPOINT: runtime.minio.getConnectionUrl(),
+      FILES_S3_REGION: "us-east-1",
+      FILES_S3_ACCESS_KEY_ID: MINIO_USERNAME,
+      FILES_S3_SECRET_ACCESS_KEY: MINIO_PASSWORD,
+      FILES_S3_BUCKET: "erp-e2e-files",
+      FILES_S3_FORCE_PATH_STYLE: "true",
     });
     await waitForHttp(API_URL, runtime.api, 401);
 

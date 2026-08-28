@@ -360,3 +360,45 @@ generated and applied via `prisma migrate dev --name event_bus_outbox`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+---
+
+## Files table (2026-08-27)
+
+Scope: MASTER_SPEC §22 — `FileObject`. Applied to the real running
+PostgreSQL instance via `prisma migrate dev` (not just diffed).
+
+### `file_objects`
+
+Metadata + ownership only — the file's bytes never touch this table or
+local disk. `storage_key` is the object key inside the S3-compatible bucket
+(MinIO locally, S3 in production); access happens exclusively through
+short-lived signed URLs issued by `GetFileDownloadUrlUseCase` after a
+tenant/ownership check.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7, also the last path segment of `storage_key`. |
+| `tenant_id` | `uuid` | Not nullable — unlike `audit_entries`/`outbox_messages`, every file belongs to exactly one tenant; there is no platform-global file concept yet. FK → `tenants.id` `ON DELETE RESTRICT`. |
+| `company_id` | `uuid?` | Same composite-FK pattern as `setting_values`/`audit_entries`/`outbox_messages`: `(tenant_id, company_id) → companies(tenant_id, id)`, only checked by Postgres when both are non-null. `NULL` for a file not scoped to a specific company. |
+| `owner_user_id` | `uuid` | Who uploaded the file. FK → `users.id` `ON DELETE RESTRICT` — same reasoning as `audit_entries.user_id`: a user can never be hard-deleted out from under files they own. |
+| `storage_key` | `varchar(500)` | Unique. `tenants/{tenantId}/files/{id}` — deliberately not derived from the original filename (avoids path traversal/collision entirely; the readable name is `original_filename`, metadata only). |
+| `original_filename` | `varchar(255)` | As uploaded, for display only — never used to build `storage_key` or any filesystem path. |
+| `content_type` | `varchar(150)` | As reported by the upload (`multipart` field), passed through to the storage adapter's `PutObject` so signed downloads serve the correct `Content-Type`. |
+| `size_bytes` | `bigint` | `bigint`, not `int` — MASTER_SPEC has no stated file-size ceiling and Postgres `int` tops out at ~2 GiB. Serialized as a string at the API boundary (`FileObjectResponseDto`) since JSON has no native 64-bit integer type. |
+| `status` | enum `ACTIVE`/`DELETED` | Deliberate, explicit soft-delete (MASTER_SPEC §33) rather than a generic `deleted_at`-on-every-table policy — see `docs/SECURITY.md` "Files" for why `DELETE /files/:id` does not synchronously remove the storage object. |
+| `created_at` | `timestamptz(6)` | |
+| `deleted_at` | `timestamptz?` | Set once, by `FileObject.markDeleted` — idempotent (deleting twice keeps the first timestamp). |
+
+`@@unique(storageKey)` makes a duplicate/colliding object key impossible at
+the database level, not just by convention. `@@index([tenantId, companyId])`
+supports the primary read pattern (a tenant's, optionally a company's, file
+listing).
+
+### Migration
+
+`packages/database/prisma/migrations/20260827235703_files_foundation/` —
+generated and applied via `prisma migrate dev --name files_foundation`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.

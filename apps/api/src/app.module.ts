@@ -13,6 +13,7 @@ import { AccessControlModule } from "./core/access-control";
 import { ConfigurationModule } from "./core/configuration";
 import { AuditModule } from "./core/audit";
 import { EventsModule } from "./core/events";
+import { FilesModule } from "./core/files";
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { EventsModule } from "./core/events";
     EventsModule,
     TenantsModule,
     ConfigurationModule,
+    FilesModule,
   ],
 })
 export class AppModule implements NestModule {

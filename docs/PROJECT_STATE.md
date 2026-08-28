@@ -1,9 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 10), tras implementar el Event Bus
-(transactional outbox + bus in-process + dispatcher) completo, ratificar
-ADR-004 y verificarlo contra Postgres real (incluyendo reclamo concurrente
-real vía `FOR UPDATE SKIP LOCKED`) y con un smoke test HTTP completo.
+Última actualización: 2026-08-27 (sesión 11), tras implementar Files
+(metadata + almacenamiento S3/MinIO real, URLs firmadas) completo y
+verificarlo contra Postgres y MinIO reales con un smoke test HTTP completo,
+incluyendo la descarga real de un archivo subido de punta a punta.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -25,7 +25,7 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
 infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration + Audit + Event Bus).
+Typed Configuration + Audit + Event Bus + Files).
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` tiene ADR-004 y ADR-006 numerados;
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -205,15 +205,48 @@ ADR-004 nada se ha construido contra él todavía.
   Notifications). ADR-004 ratificado en `docs/DECISIONS.md` con las 7
   decisiones de implementación V1. Detalle completo en
   `docs/WORK_QUEUE.md` ("Hecho — sesión 10").
-- 161 tests unitarios pasando (api 138, api-client 7, erp-web 16) + 8 tests
+- **Files** (`apps/api/src/core/files`, Claude, sesión 11): `FileObject`
+  (metadata + ownership, sin las bytes — soft-delete explícito vía
+  `markDeleted`), `FileStoragePort` (desacopla dominio/aplicación del SDK de
+  AWS; `S3FileStorageAdapter` es la única implementación),
+  `UploadFileUseCase` (sube al storage antes de persistir metadata),
+  `GetFileDownloadUrlUseCase` (mismo patrón IDOR-resistant que el resto de
+  Foundation: "no encontrado" y "de otro tenant" devuelven el mismo `404`),
+  `ListFilesUseCase`, `DeleteFileUseCase`. Almacenamiento real contra
+  MinIO/S3: `S3FileStorageAdapter` (`@aws-sdk/client-s3` +
+  `@aws-sdk/s3-request-presigner`), `S3BucketBootstrapper` (crea el bucket
+  automáticamente al iniciar si no existe). Subida vía `multipart/form-data`
+  con Multer en memoria — el archivo nunca toca disco local (MASTER_SPEC
+  §22). Tabla nueva (migración `20260827235703_files_foundation`,
+  **generada y aplicada directamente contra Postgres real**), con
+  `storage_key` `UNIQUE` (colisión estructuralmente imposible) y el mismo FK
+  compuesto `(tenant_id, company_id)` ya usado por Configuration/Audit/Event
+  Bus. Contrato HTTP: `POST/GET /api/v1/files`,
+  `GET /api/v1/files/:id/download-url` (URL firmada, TTL configurable),
+  `DELETE /api/v1/files/:id` (soft-delete). **Bug real encontrado y
+  corregido durante el smoke test contra MinIO real**: subir sin el campo
+  `file` producía un `500` genérico en vez de un `400 FILE_REQUIRED` bien
+  formado — corregido con una validación explícita en el controller y
+  re-verificado contra el servidor real reiniciado. **Smoke test manual
+  verificado contra Docker real incluyendo MinIO real** (no solo Postgres):
+  subida multipart real → objeto confirmado en el bucket → URL firmada real
+  → contenido descargado coincide byte a byte con el original → aislamiento
+  cross-tenant confirmado (`404` real) → soft-delete real → auditoría
+  (`file.uploaded`/`file.deleted`) confirmada. El arnés E2E
+  (`apps/e2e/src/global-setup.ts`) ahora también levanta un contenedor
+  MinIO real vía `@testcontainers/minio`, mismo patrón que Postgres/Redis —
+  necesario para que el proceso real de `apps/api` que el E2E arranca
+  pudiera pasar `validateEnvironment` con las variables `FILES_S3_*`
+  requeridas. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 11").
+- 186 tests unitarios pasando (api 163, api-client 7, erp-web 16) + 9 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
   contra infraestructura real completa** (Chromium real, Postgres+Redis
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
   `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`, `events.module.spec.ts`) y pruebas negativas de
-  aislamiento cross-tenant.
+  `audit.module.spec.ts`, `events.module.spec.ts`, `files.module.spec.ts`)
+  y pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -270,30 +303,31 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Files).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Notifications).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: Files (metadata + URLs firmadas
-contra MinIO) → Notifications (puede consumir el Event Bus ya implementado
-como su primer handler real) → Workers (extraer el dispatcher del outbox a
-`apps/worker`, ya funciona in-process hoy) → OpenAPI/Swagger →
-endpoint de invitación de membership → plano de administración de
-plataforma (necesario antes de exponer escritura de settings a nivel
-PLATFORM) → vista de "mi actividad"/administración para eventos no
-tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
-endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
-case y su auditoría existen, pero nada lo invoca todavía) → inbox/
+Resumen bajo ownership único de Claude: Notifications (puede consumir el
+Event Bus ya implementado como su primer handler real) → Workers (extraer
+el dispatcher del outbox a `apps/worker`, ya funciona in-process hoy) →
+OpenAPI/Swagger → endpoint de invitación de membership → plano de
+administración de plataforma (necesario antes de exponer escritura de
+settings a nivel PLATFORM) → vista de "mi actividad"/administración para
+eventos no tenant-scoped (login/logout/cambios de status, hoy grabados pero
+sin endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el
+use case y su auditoría existen, pero nada lo invoca todavía) → inbox/
 idempotencia de consumidores (requerido antes de registrar cualquier
-handler del Event Bus con efecto secundario no idempotente). También
-pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
-(ADR-004 y ADR-006 ya están ratificados). Claude debe completar
-cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI de
-RBAC, el E2E de sesión y la UI de Configuración ya están hechas e integradas
-(ver Completed). El flujo "invitar usuario → asignar rol" en la UI de RBAC
-**sigue bloqueado** hasta que exista el endpoint de invitación de membership;
-no se debe simular ni inventar mientras tanto.
+handler del Event Bus con efecto secundario no idempotente) → purga real de
+storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
+soft-delete de metadata). También pendiente: ratificar ADR-001, ADR-002,
+ADR-003 y ADR-005 formalmente (ADR-004 y ADR-006 ya están ratificados).
+Claude debe completar cualquier UI, SDK y cobertura de pruebas que estos
+bloques necesiten. La UI de RBAC, el E2E de sesión y la UI de Configuración
+ya están hechas e integradas (ver Completed); la UI de Files (subida/listado/
+descarga) todavía no se ha construido. El flujo "invitar usuario → asignar
+rol" en la UI de RBAC **sigue bloqueado** hasta que exista el endpoint de
+invitación de membership; no se debe simular ni inventar mientras tanto.
 
 ## Production Status
 
@@ -370,3 +404,23 @@ filas por dos claimants simultáneos sin solapamiento de IDs (verifica
 `FOR UPDATE SKIP LOCKED` bajo carga real) y recuperación de una fila
 `PROCESSING` cuyo lease expiró. Toda la data de prueba fue limpiada al
 terminar.
+
+**Sesión 11 (2026-08-27, Files)**: séptima migración
+(`20260827235703_files_foundation`) generada directamente contra esta misma
+base real vía `prisma migrate dev` — `prisma migrate status` confirma las 7
+migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`), **esta vez incluyendo MinIO
+real, no solo Postgres**: registro, provisioning con compañía, subida
+multipart real de un archivo (`S3BucketBootstrapper` creó el bucket
+`erp-platform-files` automáticamente en este mismo arranque), confirmado el
+objeto real en el bucket, `GET /files` lo lista, `GET /files/:id/download-url`
+devuelve una URL firmada real de MinIO cuyo contenido descargado coincide
+byte a byte con el archivo original, un segundo tenant real recibe
+`404 FILE_NOT_FOUND` al intentar acceder (aislamiento cross-tenant
+confirmado en runtime), soft-delete real confirmado (desaparece de `GET
+/files` y de `download-url`, pero la fila sigue en la tabla con
+`status: DELETED`), y `GET /audit-entries` confirma `file.uploaded`/
+`file.deleted`. Bug real encontrado y corregido durante este mismo smoke
+test: subir sin el campo `file` causaba un `500` genérico (corregido a
+`400 FILE_REQUIRED`, re-verificado). Toda la data de prueba — filas de
+Postgres y objetos del bucket de MinIO — fue limpiada al terminar.

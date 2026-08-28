@@ -30,4 +30,7 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "audit.entries.read",
     description: "View the tenant's audit trail (provisioning, RBAC and configuration changes).",
   },
+  { key: "files.read", description: "View and download the tenant's uploaded files." },
+  { key: "files.upload", description: "Upload new files for the tenant." },
+  { key: "files.delete", description: "Delete (soft) files uploaded to the tenant." },
 ];

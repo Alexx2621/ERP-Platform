@@ -38,6 +38,12 @@ import { PrismaOutboxMessageRepository } from "../../src/core/events/infrastruct
 import { DomainEventBus } from "../../src/core/events/application/domain-event-bus";
 import { DispatchOutboxBatchUseCase } from "../../src/core/events/application/use-cases/dispatch-outbox-batch.use-case";
 import { appendOutboxMessage } from "../../src/core/events/application/append-outbox-message";
+import { PrismaFileObjectRepository } from "../../src/core/files/infrastructure/prisma-file-object.repository";
+import { UploadFileUseCase } from "../../src/core/files/application/use-cases/upload-file.use-case";
+import { GetFileDownloadUrlUseCase } from "../../src/core/files/application/use-cases/get-file-download-url.use-case";
+import { DeleteFileUseCase } from "../../src/core/files/application/use-cases/delete-file.use-case";
+import { FakeFileStorageAdapter } from "../../src/core/files/test-support/fake-file-storage.adapter";
+import { FileObject } from "../../src/core/files/domain/file-object.entity";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -624,5 +630,112 @@ describe("Prisma repositories against PostgreSQL", () => {
     });
     expect(recovered).toHaveLength(1);
     expect(recovered[0].id).toBe(message.id);
+  });
+
+  it("uploads, downloads and soft-deletes a file with real tenant/company/owner FKs and cross-tenant isolation", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const organizations = new PrismaOrganizationRepository(prisma);
+    const companies = new PrismaCompanyRepository(prisma);
+    const files = new PrismaFileObjectRepository(prisma);
+    const storage = new FakeFileStorageAdapter();
+    const uploadFile = new UploadFileUseCase(files, storage);
+    const getDownloadUrl = new GetFileDownloadUrlUseCase(files, storage);
+    const deleteFile = new DeleteFileUseCase(files);
+    const now = new Date("2026-08-27T22:00:00.000Z");
+
+    const owner = createUser(now, "files-owner@example.com");
+    const tenantA = createTenant(now, "files-tenant-a");
+    const tenantB = createTenant(now, "files-tenant-b");
+    await users.save(owner);
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    const organization = Organization.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      code: "HQ",
+      name: "Files Tenant A HQ",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await organizations.save(organization);
+    const company = Company.create({
+      id: newId(),
+      tenantId: tenantA.id,
+      organizationId: organization.id,
+      code: "CO",
+      name: "Files Tenant A Company",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await companies.save(company);
+
+    const uploaded = await uploadFile.execute({
+      tenantId: tenantA.id,
+      companyId: company.id,
+      ownerUserId: owner.id,
+      originalFilename: "invoice.pdf",
+      contentType: "application/pdf",
+      buffer: Buffer.from("real postgres upload"),
+      maxSizeBytes: 1024,
+    });
+    expect(storage.has(uploaded.storageKey)).toBe(true);
+
+    await expect(files.findById(uploaded.id)).resolves.toMatchObject({
+      id: uploaded.id,
+      tenantId: tenantA.id,
+      companyId: company.id,
+      ownerUserId: owner.id,
+      status: "ACTIVE",
+    });
+
+    // Cross-tenant isolation: the same file must never appear when listing
+    // under a different tenant, even though the row exists in the same table.
+    await expect(files.findByTenant({ tenantId: tenantB.id, limit: 50 })).resolves.toEqual([]);
+    await expect(files.findByTenant({ tenantId: tenantA.id, limit: 50 })).resolves.toMatchObject([
+      { id: uploaded.id },
+    ]);
+
+    const downloadUrl = await getDownloadUrl.execute({
+      fileId: uploaded.id,
+      tenantId: tenantA.id,
+      ttlSeconds: 300,
+    });
+    expect(downloadUrl.url).toContain(uploaded.storageKey);
+
+    await expect(
+      getDownloadUrl.execute({ fileId: uploaded.id, tenantId: tenantB.id, ttlSeconds: 300 }),
+    ).rejects.toThrow("The file was not found.");
+
+    const deleted = await deleteFile.execute({ fileId: uploaded.id, tenantId: tenantA.id });
+    expect(deleted.status).toBe("DELETED");
+    // Soft-deleted files disappear from the tenant listing (PrismaFileObjectRepository
+    // filters to ACTIVE) but the row itself is still retrievable by id.
+    await expect(files.findByTenant({ tenantId: tenantA.id, limit: 50 })).resolves.toEqual([]);
+    await expect(files.findById(uploaded.id)).resolves.toMatchObject({ status: "DELETED" });
+
+    // A companyId belonging to a different tenant must be structurally
+    // impossible via the composite (tenant_id, company_id) FK, not merely
+    // application-filtered — same pattern as setting_values/audit_entries.
+    const crossTenantFile = FileObject.create({
+      id: newId(),
+      tenantId: tenantB.id,
+      companyId: company.id,
+      ownerUserId: owner.id,
+      storageKey: `tenants/${tenantB.id}/files/${newId()}`,
+      originalFilename: "invalid.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 10n,
+      status: "ACTIVE",
+      createdAt: now,
+      deletedAt: null,
+    });
+    await expect(files.save(crossTenantFile)).rejects.toThrow();
   });
 });

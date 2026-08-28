@@ -38,6 +38,35 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(100)
   OUTBOX_DISPATCH_INTERVAL_MS: number = 2000;
+
+  /** S3-compatible endpoint for the Files module (MinIO locally, S3 in production — MASTER_SPEC §22). */
+  @IsString()
+  FILES_S3_ENDPOINT!: string;
+
+  @IsString()
+  FILES_S3_REGION: string = "us-east-1";
+
+  @IsString()
+  FILES_S3_ACCESS_KEY_ID!: string;
+
+  @IsString()
+  FILES_S3_SECRET_ACCESS_KEY!: string;
+
+  @IsString()
+  FILES_S3_BUCKET!: string;
+
+  /** Required for MinIO (bucket-in-path, not subdomain); an AWS S3 deployment would set this to "false". */
+  @IsIn(["true", "false"])
+  FILES_S3_FORCE_PATH_STYLE: string = "true";
+
+  @IsInt()
+  @Min(1)
+  FILES_MAX_SIZE_BYTES: number = 26_214_400;
+
+  /** How long a signed download URL stays valid (docs/ARCHITECTURE.md §10: "URLs firmadas de corta duración"). */
+  @IsInt()
+  @Min(60)
+  FILES_DOWNLOAD_URL_TTL_SECONDS: number = 300;
 }
 
 /**

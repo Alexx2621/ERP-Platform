@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-27 (sesión 10,
-implementación completa de Event Bus / transactional outbox). Modelo
-operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-27 (sesión 11,
+implementación completa de Files — metadata + almacenamiento S3/MinIO).
+Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,44 +21,137 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Files** — metadata de archivos + URLs firmadas contra MinIO.
-2. **Notifications** — solicitud + adapter in-app/email vía worker. Puede
+1. **Notifications** — solicitud + adapter in-app/email vía worker. Puede
    consumir el Event Bus ya implementado (p. ej. reaccionar a
    `tenancy.tenant.provisioned.v1`) en vez de ser invocado directamente por
    un controller.
-3. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
+2. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
    in-process dentro de `apps/api` (`OutboxDispatcherScheduler`, ver ADR-004)
    deliberadamente; extraerlo a `apps/worker` es un cambio de qué proceso
    ejecuta el poll loop, no del esquema/semántica del outbox.
-4. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+3. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-5. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+4. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-6. **System-administration plane** — necesario antes de exponer escritura de
+5. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-7. **"Mi actividad" / vista de administración de plataforma para eventos no
+6. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-8. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+7. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
-9. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+8. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente.
+9. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+   solo marca `DELETED` en metadata; el objeto real permanece en el bucket
+   indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
+   futuro, no bloqueado pero deliberadamente no construido junto con Files.
+
+### Hecho — sesión 11 (Files: metadata + almacenamiento S3/MinIO)
+
+- **`apps/api/src/core/files/`** (nuevo módulo): `FileObject` (metadata +
+  ownership, sin las bytes del archivo — soft-delete explícito vía
+  `markDeleted`, MASTER_SPEC §33), `FileStoragePort` (interfaz que
+  desacopla dominio/aplicación del SDK de AWS — `S3FileStorageAdapter` es
+  la única implementación), `UploadFileUseCase` (sube al storage **antes**
+  de persistir el metadata — si la escritura en DB falla después, el
+  resultado es un objeto huérfano inofensivo en el bucket, nunca una fila
+  que reclama una key que jamás se escribió), `GetFileDownloadUrlUseCase`
+  (verifica tenant/ownership antes de emitir la URL firmada — mismo patrón
+  IDOR-resistant que el resto de Foundation: "no encontrado" y "de otro
+  tenant" devuelven exactamente el mismo `404 FILE_NOT_FOUND`),
+  `ListFilesUseCase`, `DeleteFileUseCase` (soft-delete, no borra el objeto
+  real del bucket — ver hueco documentado abajo).
+- **Almacenamiento real S3/MinIO** (`infrastructure/`): `S3FileStorageAdapter`
+  (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`, `forcePathStyle`
+  configurable para MinIO vs. S3 real), `S3BucketBootstrapper` (crea el
+  bucket configurado al iniciar si no existe — `docker compose up -d` +
+  primer arranque es suficiente para desarrollo local, sin paso manual
+  `mc mb`). Nuevas dependencias: `@aws-sdk/client-s3`,
+  `@aws-sdk/s3-request-presigner`, `multer` (+ `@types/multer`).
+  `FileInterceptor` usa el almacenamiento en memoria por defecto de Multer
+  — el archivo nunca toca disco local (MASTER_SPEC §22).
+- **Contrato HTTP nuevo**: `POST /api/v1/files` (multipart, permiso
+  `files.upload`), `GET /api/v1/files` (permiso `files.read`),
+  `GET /api/v1/files/:id/download-url` (URL firmada de corta duración,
+  `FILES_DOWNLOAD_URL_TTL_SECONDS`, default 300s — permiso `files.read`),
+  `DELETE /api/v1/files/:id` (soft-delete, permiso `files.delete`). 3
+  permisos nuevos agregados a `FOUNDATION_PERMISSIONS`. Auditoría:
+  `file.uploaded`/`file.deleted` grabados desde `FilesController`, mismo
+  patrón que Configuration/RBAC/provisioning.
+- Tabla nueva (migración `20260827235703_files_foundation`, generada y
+  **aplicada contra Postgres real** vía `prisma migrate dev`, no solo
+  diffeada): `file_objects`, con FK real a `tenants`/`users`, el mismo FK
+  compuesto `(tenant_id, company_id) → companies` ya usado por
+  `setting_values`/`audit_entries`/`outbox_messages`, y `storage_key`
+  `UNIQUE` (colisión de key estructuralmente imposible, no solo
+  improbable). Detalle completo en `docs/DATABASE.md` §"Files table".
+- **Bug real encontrado y corregido durante el smoke test manual contra
+  MinIO real**: subir sin el campo `file` en el multipart causaba
+  `file.originalname` sobre `undefined`, capturado por el filtro global de
+  excepciones como un `500 INTERNAL_ERROR` genérico — no una fuga de
+  seguridad (sin stack trace expuesto) pero sí un hueco de correctitud
+  contrario a MASTER_SPEC §61. Corregido con una verificación explícita en
+  `FilesController.upload` que devuelve `400 FILE_REQUIRED` por el
+  envelope estándar. Re-verificado contra el servidor real reiniciado.
+- Tests: 6 nuevos archivos de test (dominio, 4 use cases, wiring de
+  módulo) — 163 tests unitarios totales en `apps/api` (antes 138), todos
+  pasando. Suite de integración contra Postgres real ampliada con un
+  escenario completo: subida → FK real a tenant/company/owner → aislamiento
+  cross-tenant (un segundo tenant no ve ni puede descargar el archivo) →
+  URL firmada real → soft-delete → confirmación de que el archivo
+  desaparece de listados pero sigue recuperable por id → rechazo por FK
+  compuesto de un `companyId` de otro tenant.
+- Smoke test manual contra la infraestructura Docker real, **incluyendo
+  MinIO real** (no solo Postgres): registro → provisioning → subida
+  multipart real de un archivo → confirmado el objeto real en el bucket
+  (`S3BucketBootstrapper` lo creó automáticamente en este mismo arranque)
+  → `GET /files` lo lista → `GET /files/:id/download-url` devuelve una URL
+  firmada real de MinIO → **el contenido descargado por esa URL coincide
+  byte a byte con el archivo original** → un segundo tenant real recibe
+  `404 FILE_NOT_FOUND` al intentar acceder → soft-delete real → confirmado
+  que desaparece de `GET /files` y que la URL de descarga ya no se emite →
+  `GET /audit-entries` confirma `file.uploaded`/`file.deleted` con el
+  `correlationId` de cada request. Toda la data de prueba (filas de DB y
+  objetos del bucket) limpiada después.
+- **Arnés E2E actualizado** (`apps/e2e/src/global-setup.ts`): agrega un
+  contenedor MinIO real vía `@testcontainers/minio` (mismo patrón que
+  Postgres/Redis) y propaga `FILES_S3_*` al proceso real de `apps/api` que
+  el E2E arranca. Encontrado al correr el E2E tras cablear `FilesModule`:
+  sin esto, `validateEnvironment` rechazaba el arranque por faltar
+  `FILES_S3_ENDPOINT`/`FILES_S3_ACCESS_KEY_ID`/`FILES_S3_SECRET_ACCESS_KEY`/
+  `FILES_S3_BUCKET` (los tres primeros no tienen default deliberadamente,
+  igual que `DATABASE_URL`/`REDIS_URL`). CI (`e2e` job) no necesitó cambios
+  más allá de renombrar su descripción — Testcontainers gestiona MinIO
+  dinámicamente dentro del propio proceso de test, igual que ya hacía con
+  Postgres/Redis.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección Files
+  table), `docs/SECURITY.md` (nueva sección Files con modelo de amenazas y
+  huecos conocidos, incluyendo el bug real de `FILE_REQUIRED` encontrado
+  durante el smoke test y que no hay purga real de storage al borrar).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+  (163/163), `pnpm build` (5 paquetes), `pnpm --filter @erp/api
+  test:integration` (9/9 contra Postgres real vía Testcontainers), y
+  `pnpm --filter @erp/e2e test:e2e` (2/2 Playwright con Chromium real,
+  ahora también contra MinIO real vía Testcontainers, confirmado en el log
+  del servidor real: `S3BucketBootstrapper` creando el bucket efímero) —
+  todo verde.
 
 ### Hecho — sesión 10 (Event Bus / transactional outbox)
 
@@ -511,15 +604,15 @@ hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
 "Roles y permisos" ya integrada lista/crea roles y asigna roles a una
 membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
 no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 6 de la cola Claude). Esto sigue siendo un hueco
+agregue ese endpoint (ítem 4 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará Files, Notifications, Workers y cualquier superficie de
-  UI, SDK, pruebas o documentación que esos bloques requieran.
+- Claude continuará Notifications, Workers y cualquier superficie de UI,
+  SDK, pruebas o documentación que esos bloques requieran.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
@@ -527,7 +620,7 @@ inventarse mientras tanto.
   conservarse como fuente técnica para la implementación y ratificación de sus
   ADR.
 - El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
-  endpoint de invitación de membership (ítem 6 del backlog activo). Claude es
+  endpoint de invitación de membership (ítem 4 del backlog activo). Claude es
   responsable de resolver el backend y completar después la experiencia de
   punta a punta; no debe simularse mientras tanto.
 
@@ -542,8 +635,6 @@ Playwright).
 
 ## Dependencies
 
-- Files depende de que el código de MinIO se escriba y se pruebe contra el
-  contenedor ya disponible (no bloqueado, solo pendiente de implementar).
 - Workers (extracción de `apps/worker`) depende de BullMQ contra el Redis ya
   disponible; el poll loop del outbox ya funciona in-process hoy (ver
   ADR-004), así que esto es una extracción, no una funcionalidad nueva.
@@ -552,18 +643,21 @@ Playwright).
   propio — sería el primer handler de producción real.
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 5 de la cola Claude).
+  endpoint de invitación de membership (ítem 4 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 6 de la cola Claude) —
+  administración de plataforma separado (ítem 5 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 9 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 8 de la cola Claude, ver
   ADR-004 punto 5).
+- Una purga real de storage para archivos borrados (ítem 9 de la cola
+  Claude) depende de definir una ventana de retención — no bloqueado, solo
+  pendiente de diseñar como job auditado, no borrado ad-hoc.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 4).
+  todavía. Sigue en la cola Claude (ítem 3).
 
 ## Architecture decisions needed
 

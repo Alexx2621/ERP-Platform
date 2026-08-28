@@ -4,3 +4,7 @@
 // No real connection is made in tests — PrismaService/RedisService are always stubbed out.
 process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/test_placeholder";
 process.env.REDIS_URL ??= "redis://localhost:6379/0";
+process.env.FILES_S3_ENDPOINT ??= "http://localhost:9000";
+process.env.FILES_S3_ACCESS_KEY_ID ??= "test-placeholder";
+process.env.FILES_S3_SECRET_ACCESS_KEY ??= "test-placeholder";
+process.env.FILES_S3_BUCKET ??= "test-placeholder";
