@@ -402,3 +402,65 @@ generated and applied via `prisma migrate dev --name files_foundation`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+---
+
+## Notifications tables (2026-08-28)
+
+Scope: MASTER_SPEC §48 — `Notification`, `NotificationDelivery`. Applied to
+the real running PostgreSQL instance via `prisma migrate dev` (not just
+diffed).
+
+### `notifications`
+
+The notification request itself — content and recipient, no delivery
+state. Nothing over HTTP creates these directly: the only write path is
+`RequestNotificationUseCase`, an internal service call other modules make
+(same pattern as `RecordAuditEntryUseCase`), because a public endpoint that
+let any authenticated caller notify an arbitrary user would be an abuse
+surface.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `tenant_id` | `uuid?` | `NULL` reserved for a future platform-level notification (none exist yet) — every notification produced today is tenant-scoped. FK → `tenants.id` `ON DELETE RESTRICT`. |
+| `recipient_user_id` | `uuid` | Who the notification is for. FK → `users.id` `ON DELETE RESTRICT`. |
+| `type` | `varchar(150)` | Code-defined `<context>.<event>` identifier (e.g. `tenancy.tenant_provisioned`) — not a catalog, same convention as `audit_entries.action`. |
+| `title`, `body` | `varchar(200)` / `text` | |
+| `data` | `jsonb?` | Free-form context for the frontend to render with (e.g. a resource id to link to) — never sensitive data. |
+| `created_at` | `timestamptz(6)` | |
+
+`@@index([tenantId, recipientUserId, createdAt])` supports the primary read
+pattern (a recipient's notifications within a tenant, newest first).
+
+### `notification_deliveries`
+
+One row per channel requested for a `Notification`. V1 dispatches
+synchronously — `IN_APP` "sending" is just this row's own persistence — so
+every delivery is created already `SENT` or `FAILED`; there is no `PENDING`
+state yet (would only matter once an async channel, e.g. Email via a
+worker, actually exists).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | UUIDv7. |
+| `notification_id` | `uuid` | FK → `notifications.id` `ON DELETE CASCADE` — unlike every other Foundation table, cascading here is correct: a delivery has no meaning without its notification, and nothing else references a delivery row. |
+| `channel` | enum `IN_APP`/`EMAIL`/`SMS`/`WHATSAPP`/`PUSH` | Only `IN_APP` has a real adapter (`IMPLEMENTED_NOTIFICATION_CHANNELS`) — the rest are reserved values with no implementation, same "declared but deferred" pattern as `role_assignments`' `BRANCH`/`WAREHOUSE` scopes. Requesting one produces a `FAILED` row with an explanatory `failure_reason`, not a thrown error. |
+| `status` | enum `SENT`/`FAILED` | |
+| `sent_at` | `timestamptz?` | Set only for `SENT` rows. |
+| `read_at` | `timestamptz?` | Only meaningful for `IN_APP` — "read" is a UI concept; other channels don't populate it. `NULL` = unread. |
+| `failure_reason` | `varchar(300)?` | Populated only for `FAILED` rows (enforced by `NotificationDelivery.create`'s domain invariant). |
+| `created_at` | `timestamptz(6)` | |
+
+`@@unique([notificationId, channel])` makes a duplicate delivery for the
+same notification+channel impossible at the database level — a caller
+requesting the same channel twice for one notification is a bug the schema
+itself catches, not a documented convention.
+
+### Migration
+
+`packages/database/prisma/migrations/20260828003322_notifications_foundation/` —
+generated and applied via `prisma migrate dev --name notifications_foundation`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.

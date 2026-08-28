@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-27 (sesión 11,
-implementación completa de Files — metadata + almacenamiento S3/MinIO).
-Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-28 (sesión 12,
+implementación completa de Notifications — solicitud, canal IN_APP,
+listado/marcado de leído). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,47 +21,131 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Notifications** — solicitud + adapter in-app/email vía worker. Puede
-   consumir el Event Bus ya implementado (p. ej. reaccionar a
-   `tenancy.tenant.provisioned.v1`) en vez de ser invocado directamente por
-   un controller.
-2. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
+1. **Workers** — app `apps/worker` separada. El outbox dispatcher hoy corre
    in-process dentro de `apps/api` (`OutboxDispatcherScheduler`, ver ADR-004)
    deliberadamente; extraerlo a `apps/worker` es un cambio de qué proceso
    ejecuta el poll loop, no del esquema/semántica del outbox.
-3. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
+2. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
    existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
    generarse desde el contrato en vez de mantenerse a mano.
-4. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+3. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-5. **System-administration plane** — necesario antes de exponer escritura de
+4. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-6. **"Mi actividad" / vista de administración de plataforma para eventos no
+5. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-7. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+6. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
-8. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+7. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
-   efecto secundario no idempotente.
-9. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+   efecto secundario no idempotente — incluyendo conectar Notifications al
+   Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
+   `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
+8. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
+9. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+   implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
+   reservados que producen un delivery `FAILED` explícito. Requiere elegir
+   un proveedor SMTP/transaccional (no decidido todavía).
+
+### Hecho — sesión 12 (Notifications)
+
+- **`apps/api/src/core/notifications/`** (nuevo módulo, leaf sin
+  dependencias como `access-control`/`audit`/`events`): `Notification`
+  (la solicitud/contenido — sin estado de entrega propio),
+  `NotificationDelivery` (un intento de entrega por canal; V1 despacha
+  sincrónicamente, así que una fila nace ya `SENT` o `FAILED`, nunca
+  `PENDING`), `RequestNotificationUseCase` (el punto de entrada "cualquier
+  módulo puede solicitar una notificación sin conocer al proveedor" de
+  MASTER_SPEC §48 — deliberadamente **no expuesto por HTTP**: un endpoint
+  público que dejara notificar a un usuario arbitrario sería superficie de
+  abuso), `ListNotificationsUseCase`, `MarkNotificationReadUseCase` (mismo
+  patrón IDOR-resistant que `GetFileDownloadUrlUseCase`: "no encontrada" y
+  "de otro tenant/destinatario" devuelven el mismo `404
+  NOTIFICATION_NOT_FOUND`).
+- **Solo `IN_APP` tiene adapter real.** `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son
+  valores de canal reservados sin implementación (`IMPLEMENTED_NOTIFICATION_CHANNELS`)
+  — pedir uno produce un delivery `FAILED` explícito con `failureReason`, no
+  una excepción, así que un caller que pide varios canales igual recibe los
+  que sí funcionan. Mismo patrón "declarado pero diferido" que
+  `BRANCH`/`WAREHOUSE` en `RoleAssignment`.
+- **Contrato HTTP nuevo**: `GET /api/v1/notifications` (`unreadOnly`,
+  `limit`), `PUT /api/v1/notifications/:id/read` (`204`). Vive físicamente
+  en `tenants/presentation/notifications.controller.ts` por la misma razón
+  que `RolesController`/`AuditEntriesController`: necesita
+  `TenantContextGuard`, y `NotificationsModule` debe mantenerse sin
+  dependencia de Tenants. **Sin `PermissionGuard`** — una notificación es
+  siempre personal al llamador (`ctx.actor.userId`), no una acción
+  administrativa con grant, mismo razonamiento que `PreferencesController`.
+- **Primer productor real**: `TenantsController.provision()` llama
+  `RequestNotificationUseCase` directamente (llamada de aplicación
+  síncrona, no vía Event Bus) tras el provisioning exitoso, notificando al
+  owner. Decisión explícita documentada en el propio controller y en
+  `docs/SECURITY.md`: un handler de `DomainEventBus` con este tipo de
+  efecto secundario no idempotente (crear una fila) requiere primero la
+  tabla de inbox/idempotencia (ADR-004 punto 5, todavía no construida) —
+  conectarlo a `tenancy.tenant.provisioned.v1` queda como backlog futuro
+  (ítem 7 de esta cola), no simulado ni adelantado sin resolver esa
+  dependencia.
+- Tablas nuevas (migración `20260828003322_notifications_foundation`,
+  generada y **aplicada contra Postgres real** vía `prisma migrate dev`, no
+  solo diffeada): `notifications`, `notification_deliveries`, con FK real a
+  `tenants`/`users`, `@@unique([notificationId, channel])` (duplicado de
+  canal por notificación estructuralmente imposible), y `ON DELETE CASCADE`
+  de delivery→notification (única tabla de Foundation donde cascade es
+  correcto: una entrega no tiene sentido sin su notificación). Detalle
+  completo en `docs/DATABASE.md` §"Notifications tables".
+- Sin permiso RBAC nuevo — las notificaciones son personales, no
+  administradas por rol (mismo criterio que `UserPreference`). Sin
+  auditoría nueva — no encaja como "operación crítica" de MASTER_SPEC §10 y
+  auditar una notificación sería redundante con su propia existencia.
+- Tests: 6 nuevos archivos de test (2 entidades, 3 use cases, wiring de
+  módulo) — 192 tests unitarios totales en `apps/api` (antes 163), todos
+  pasando. Suite de integración contra Postgres real ampliada con un
+  escenario completo: solicitud con 2 canales (`IN_APP` SENT + `EMAIL`
+  FAILED) → FK real a tenant/recipient → aislamiento cross-tenant y
+  cross-recipient (un tenant/usuario distinto no ve la notificación) →
+  filtro `unreadOnly` → `markRead` rechazado con `404` desde otro tenant →
+  `markRead` real → confirmación de que desaparece de `unreadOnly` pero
+  sigue en el listado completo con `readAt` poblado.
+- Smoke test manual contra la infraestructura Docker real: registro →
+  provisioning → confirmado que se creó automáticamente la notificación
+  `tenancy.tenant_provisioned` con delivery `IN_APP` `SENT` → `GET
+  /notifications` y `?unreadOnly=true` la muestran → `PUT .../read` real
+  (`204`) → desaparece de `unreadOnly` pero conserva `readAt` en el
+  listado completo → un segundo tenant/usuario real solo ve su propia
+  notificación de provisioning y recibe `404 NOTIFICATION_NOT_FOUND` al
+  intentar marcar la del primero. Datos de prueba limpiados después.
+  **Nota operativa** (no un bug de código): Docker Desktop se había
+  detenido entre la sesión anterior y esta (el daemon no respondía);
+  reiniciado antes de correr `test:integration` y el smoke test — los
+  contenedores existentes (`restart: unless-stopped`) se recuperaron solos
+  una vez el daemon volvió a estar arriba.
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección
+  Notifications tables), `docs/SECURITY.md` (nueva sección Notifications
+  con modelo de amenazas y huecos conocidos, incluyendo por qué no está
+  conectado al Event Bus todavía).
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+  (192/192), `pnpm build` (5 paquetes), `pnpm --filter @erp/api
+  test:integration` (10/10 contra Postgres real vía Testcontainers) — todo
+  verde.
 
 ### Hecho — sesión 11 (Files: metadata + almacenamiento S3/MinIO)
 
@@ -604,15 +688,15 @@ hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
 "Roles y permisos" ya integrada lista/crea roles y asigna roles a una
 membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
 no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 4 de la cola Claude). Esto sigue siendo un hueco
+agregue ese endpoint (ítem 3 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará Notifications, Workers y cualquier superficie de UI,
-  SDK, pruebas o documentación que esos bloques requieran.
+- Claude continuará Workers y cualquier superficie de UI, SDK, pruebas o
+  documentación que ese bloque requiera.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
@@ -620,7 +704,7 @@ inventarse mientras tanto.
   conservarse como fuente técnica para la implementación y ratificación de sus
   ADR.
 - El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
-  endpoint de invitación de membership (ítem 4 del backlog activo). Claude es
+  endpoint de invitación de membership (ítem 3 del backlog activo). Claude es
   responsable de resolver el backend y completar después la experiencia de
   punta a punta; no debe simularse mientras tanto.
 
@@ -638,26 +722,25 @@ Playwright).
 - Workers (extracción de `apps/worker`) depende de BullMQ contra el Redis ya
   disponible; el poll loop del outbox ya funciona in-process hoy (ver
   ADR-004), así que esto es una extracción, no una funcionalidad nueva.
-- Notifications puede consumir el Event Bus ya implementado
-  (`DomainEventBus.subscribe`) en vez de requerir un mecanismo de disparo
-  propio — sería el primer handler de producción real.
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 4 de la cola Claude).
+  endpoint de invitación de membership (ítem 3 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 5 de la cola Claude) —
+  administración de plataforma separado (ítem 4 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 8 de la cola Claude, ver
-  ADR-004 punto 5).
-- Una purga real de storage para archivos borrados (ítem 9 de la cola
+  de construir primero `inbox_messages` (ítem 7 de la cola Claude, ver
+  ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
+- Una purga real de storage para archivos borrados (ítem 8 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
+- Un adapter real de Email para Notifications (ítem 9 de la cola Claude)
+  depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
 
 ## Integration needed
 
 - **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 3).
+  todavía. Sigue en la cola Claude (ítem 2).
 
 ## Architecture decisions needed
 

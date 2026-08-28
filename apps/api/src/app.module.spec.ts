@@ -10,6 +10,7 @@ import {
   TenantContextGuard,
   RolesController,
   AuditEntriesController,
+  NotificationsController,
 } from "./core/tenants";
 import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "./core/audit";
 import { TenantsController } from "./core/tenants/presentation/tenants.controller";
@@ -32,6 +33,11 @@ import {
   DeleteFileUseCase,
   FilesController,
 } from "./core/files";
+import {
+  RequestNotificationUseCase,
+  ListNotificationsUseCase,
+  MarkNotificationReadUseCase,
+} from "./core/notifications";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -77,6 +83,10 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(ListFilesUseCase)).toBeInstanceOf(ListFilesUseCase);
     expect(moduleRef.get(DeleteFileUseCase)).toBeInstanceOf(DeleteFileUseCase);
     expect(moduleRef.get(FilesController)).toBeInstanceOf(FilesController);
+    expect(moduleRef.get(RequestNotificationUseCase)).toBeInstanceOf(RequestNotificationUseCase);
+    expect(moduleRef.get(ListNotificationsUseCase)).toBeInstanceOf(ListNotificationsUseCase);
+    expect(moduleRef.get(MarkNotificationReadUseCase)).toBeInstanceOf(MarkNotificationReadUseCase);
+    expect(moduleRef.get(NotificationsController)).toBeInstanceOf(NotificationsController);
 
     await moduleRef.close();
   });

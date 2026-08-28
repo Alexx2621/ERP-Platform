@@ -1,9 +1,9 @@
 # Project State
 
-Última actualización: 2026-08-27 (sesión 11), tras implementar Files
-(metadata + almacenamiento S3/MinIO real, URLs firmadas) completo y
-verificarlo contra Postgres y MinIO reales con un smoke test HTTP completo,
-incluyendo la descarga real de un archivo subido de punta a punta.
+Última actualización: 2026-08-28 (sesión 12), tras implementar Notifications
+(solicitud interna, canal IN_APP, listado/marcado de leído) completo y
+verificarlo contra Postgres real con un smoke test HTTP completo, incluyendo
+la notificación automática real generada al aprovisionar un tenant.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -25,7 +25,7 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 PHASE 1 — Foundation, primer vertical slice integrado y verificado de
 extremo a extremo: backend + frontend + CI + E2E de navegador real contra
 infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration + Audit + Event Bus + Files).
+Typed Configuration + Audit + Event Bus + Files + Notifications).
 Fase 0 no está
 formalmente cerrada: `docs/DECISIONS.md` tiene ADR-004 y ADR-006 numerados;
 `ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
@@ -238,15 +238,44 @@ ADR-004 nada se ha construido contra él todavía.
   necesario para que el proceso real de `apps/api` que el E2E arranca
   pudiera pasar `validateEnvironment` con las variables `FILES_S3_*`
   requeridas. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 11").
-- 186 tests unitarios pasando (api 163, api-client 7, erp-web 16) + 9 tests
+- **Notifications** (`apps/api/src/core/notifications`, Claude, sesión 12):
+  `Notification` (la solicitud/contenido, sin estado de entrega propio),
+  `NotificationDelivery` (un intento de entrega por canal — V1 despacha
+  sincrónicamente, así que nace ya `SENT` o `FAILED`, nunca `PENDING`),
+  `RequestNotificationUseCase` (MASTER_SPEC §48 — deliberadamente **no
+  expuesto por HTTP**, solo invocable internamente por otro módulo, mismo
+  patrón que `RecordAuditEntryUseCase`), `ListNotificationsUseCase`,
+  `MarkNotificationReadUseCase` (mismo patrón IDOR-resistant que el resto
+  de Foundation). Solo `IN_APP` tiene adapter real; `EMAIL`/`SMS`/
+  `WHATSAPP`/`PUSH` son canales reservados que producen un delivery
+  `FAILED` explícito. Contrato HTTP: `GET /api/v1/notifications`
+  (`unreadOnly`, `limit`), `PUT /api/v1/notifications/:id/read` — sin
+  `PermissionGuard` (personal al llamador, mismo criterio que
+  `PreferencesController`). Primer productor real: `TenantsController.
+  provision()` notifica al owner tras el provisioning — llamada directa,
+  deliberadamente **no conectada al Event Bus** todavía (`DomainEventBus`
+  requiere el inbox/idempotencia, aún no construido, antes de registrar un
+  handler con este tipo de efecto secundario, ver ADR-004 punto 5). Tablas
+  nuevas (migración `20260828003322_notifications_foundation`, **generada y
+  aplicada directamente contra Postgres real**), con `@@unique([notificationId,
+  channel])` y `ON DELETE CASCADE` delivery→notification (única tabla de
+  Foundation donde cascade es correcto). Sin permiso RBAC ni auditoría
+  nuevos — decisión consciente, documentada. **Smoke test manual verificado
+  contra Docker real**: provisioning → notificación automática confirmada
+  con delivery `IN_APP` `SENT` → listado y filtro `unreadOnly` → marcado de
+  leído real (`204`) → aislamiento cross-tenant/cross-destinatario
+  confirmado (`404` real). Detalle completo en `docs/WORK_QUEUE.md`
+  ("Hecho — sesión 12").
+- 215 tests unitarios pasando (api 192, api-client 7, erp-web 16) + 10 tests
   de integración con Postgres real + **2 tests E2E de Playwright pasando
-  contra infraestructura real completa** (Chromium real, Postgres+Redis
+  contra infraestructura real completa** (Chromium real, Postgres+Redis+MinIO
   efímeros vía Testcontainers, API compilada real, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
   `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`, `events.module.spec.ts`, `files.module.spec.ts`)
-  y pruebas negativas de aislamiento cross-tenant.
+  `audit.module.spec.ts`, `events.module.spec.ts`, `files.module.spec.ts`,
+  `notifications.module.spec.ts`) y pruebas negativas de aislamiento
+  cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -303,29 +332,31 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Notifications).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (Workers).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: Notifications (puede consumir el
-Event Bus ya implementado como su primer handler real) → Workers (extraer
-el dispatcher del outbox a `apps/worker`, ya funciona in-process hoy) →
-OpenAPI/Swagger → endpoint de invitación de membership → plano de
-administración de plataforma (necesario antes de exponer escritura de
-settings a nivel PLATFORM) → vista de "mi actividad"/administración para
-eventos no tenant-scoped (login/logout/cambios de status, hoy grabados pero
-sin endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el
-use case y su auditoría existen, pero nada lo invoca todavía) → inbox/
+Resumen bajo ownership único de Claude: Workers (extraer el dispatcher del
+outbox a `apps/worker`, ya funciona in-process hoy) → OpenAPI/Swagger →
+endpoint de invitación de membership → plano de administración de
+plataforma (necesario antes de exponer escritura de settings a nivel
+PLATFORM) → vista de "mi actividad"/administración para eventos no
+tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
+endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
+case y su auditoría existen, pero nada lo invoca todavía) → inbox/
 idempotencia de consumidores (requerido antes de registrar cualquier
-handler del Event Bus con efecto secundario no idempotente) → purga real de
+handler del Event Bus con efecto secundario no idempotente, incluyendo
+conectar Notifications a `tenancy.tenant.provisioned.v1`) → purga real de
 storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
-soft-delete de metadata). También pendiente: ratificar ADR-001, ADR-002,
-ADR-003 y ADR-005 formalmente (ADR-004 y ADR-006 ya están ratificados).
-Claude debe completar cualquier UI, SDK y cobertura de pruebas que estos
-bloques necesiten. La UI de RBAC, el E2E de sesión y la UI de Configuración
-ya están hechas e integradas (ver Completed); la UI de Files (subida/listado/
-descarga) todavía no se ha construido. El flujo "invitar usuario → asignar
+soft-delete de metadata) → adapter real de Email para Notifications
+(proveedor SMTP/transaccional no decidido). También pendiente: ratificar
+ADR-001, ADR-002, ADR-003 y ADR-005 formalmente (ADR-004 y ADR-006 ya están
+ratificados). Claude debe completar cualquier UI, SDK y cobertura de
+pruebas que estos bloques necesiten. La UI de RBAC, el E2E de sesión y la
+UI de Configuración ya están hechas e integradas (ver Completed); la UI de
+Files (subida/listado/descarga) y de Notifications (bandeja/badge de no
+leídas) todavía no se han construido. El flujo "invitar usuario → asignar
 rol" en la UI de RBAC **sigue bloqueado** hasta que exista el endpoint de
 invitación de membership; no se debe simular ni inventar mientras tanto.
 
@@ -424,3 +455,22 @@ confirmado en runtime), soft-delete real confirmado (desaparece de `GET
 test: subir sin el campo `file` causaba un `500` genérico (corregido a
 `400 FILE_REQUIRED`, re-verificado). Toda la data de prueba — filas de
 Postgres y objetos del bucket de MinIO — fue limpiada al terminar.
+
+**Sesión 12 (2026-08-28, Notifications)**: octava migración
+(`20260828003322_notifications_foundation`) generada directamente contra
+esta misma base real vía `prisma migrate dev` — `prisma migrate status`
+confirma las 8 migraciones aplicadas sin drift. Flujo HTTP completo
+repetido con el servidor real compilado (`node dist/main.js`): registro,
+provisioning, confirmado que se creó automáticamente la notificación
+`tenancy.tenant_provisioned` con un delivery `IN_APP` `SENT`, `GET
+/notifications` y `?unreadOnly=true` la muestran, `PUT
+/notifications/:id/read` real devuelve `204` y la notificación desaparece
+del filtro `unreadOnly` pero conserva `readAt` en el listado completo, un
+segundo tenant/usuario real solo ve su propia notificación de provisioning
+y recibe `404 NOTIFICATION_NOT_FOUND` al intentar marcar la del primero
+como leída — aislamiento cross-tenant y cross-destinatario confirmado en
+runtime, no solo en el test de integración. Nota operativa: Docker Desktop
+se había detenido entre la sesión anterior y esta; reiniciado antes de
+correr las pruebas, los contenedores existentes se recuperaron solos
+(`restart: unless-stopped`). Toda la data de prueba fue limpiada al
+terminar.

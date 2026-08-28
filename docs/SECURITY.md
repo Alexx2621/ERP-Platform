@@ -456,3 +456,67 @@ almacenamiento local del servidor"). `FilesController` exposes
   `file.deleted`); a rejected upload attempt is not recorded. Consistent
   with how other modules only audit successful state changes today, not
   rejected attempts.
+
+## Notifications (2026-08-28)
+
+Scope: `Notification`, `NotificationDelivery`, `RequestNotificationUseCase`,
+`ListNotificationsUseCase`, `MarkNotificationReadUseCase`
+(`apps/api/src/core/notifications`) — implements MASTER_SPEC §48. Read
+endpoints (`GET /api/v1/notifications`, `PUT /api/v1/notifications/:id/read`)
+live in `NotificationsController`, physically inside `tenants/presentation/`
+for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
+
+### Assets
+
+- Notification content (`title`/`body`/`data`) — potentially informative
+  about what happened in a tenant (e.g. that it was just provisioned), so
+  read access must stay scoped to the actual recipient, not merely the
+  tenant.
+- `RequestNotificationUseCase` itself as a capability — anything that can
+  call it can notify an arbitrary user with arbitrary content. Deliberately
+  **not exposed over HTTP** (see the first threat row below).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| Any authenticated user spams or phishes another user via a public "create notification" endpoint | There is no `POST /api/v1/notifications`. `RequestNotificationUseCase` is only reachable as a direct application call from another module's own code (today: `TenantsController.provision()`) — never as a public request handler, so no caller-supplied recipient/content ever reaches it without that module's own logic deciding what to send and to whom. |
+| A user reads another user's notifications by tenant membership alone | `ListNotificationsUseCase`/`MarkNotificationReadUseCase` always filter by `recipientUserId = ctx.actor.userId` in addition to `tenantId` — there is no way to pass an arbitrary recipient from the HTTP layer (`NotificationsController` never accepts one), so a caller can only ever see their own notifications, not a co-worker's. Verified against real Postgres in this session's manual smoke test: a second real tenant's user only ever saw their own provisioning notification. |
+| A user marks another user's (or another tenant's) notification as read, or discovers whether it exists, via `PUT /:id/read` | `MarkNotificationReadUseCase` loads the notification first and requires both `tenantId` and `recipientUserId` to match before touching anything — a mismatch on either and a genuinely missing id both surface as the identical `404 NOTIFICATION_NOT_FOUND` (same IDOR-resistant shape as `GetFileDownloadUrlUseCase`). Verified against real Postgres: a second real tenant received `404` attempting to mark the first tenant's real notification read. |
+| A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications | Not built this way on purpose: `TenantsController.provision()` calls `RequestNotificationUseCase` as a direct, synchronous application call, not as a `DomainEventBus` subscriber to `tenancy.tenant.provisioned.v1` — ADR-004 point 5 requires an inbox/idempotency table (not built yet, see `docs/WORK_QUEUE.md`) before any Event Bus handler with this kind of side effect is registered. Revisit once that inbox exists. |
+| Sensitive data (passwords, tokens, full entities) ends up in `data` and later gets logged or exposed | `RequestNotificationUseCase` does not enforce a payload schema for `data` — this is an application-layer discipline each caller must follow, not something the infrastructure verifies structurally. The one producer built so far (tenant provisioning) only includes the tenant's id and slug — no credentials. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Only `IN_APP` has a real adapter.** `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` are
+  reserved `NotificationChannel` values (MASTER_SPEC §48 lists all five) with
+  no delivery mechanism built — requesting one produces a `FAILED` delivery
+  row with an explanatory `failure_reason`, not a thrown error, so a caller
+  requesting multiple channels still gets the ones that work. Building a
+  real Email adapter needs an SMTP/provider integration that does not exist
+  in this codebase yet.
+- **Single producer today.** `tenancy.tenant_provisioned` is the only
+  notification type actually requested — deliberately not inventing more
+  producers speculatively (MASTER_SPEC §59/§93) before a real business
+  module needs to notify a user of something. The mechanism (request,
+  per-channel delivery, list, mark-read) is built and tested end-to-end
+  regardless.
+- **Not wired to the Event Bus.** Despite `tenancy.tenant.provisioned.v1`
+  already existing as a real integration event, the tenant-provisioned
+  notification is requested via a direct call from `TenantsController`, not
+  a `DomainEventBus` subscriber — see the Event Bus row above and
+  `docs/WORK_QUEUE.md`'s inbox/idempotency backlog item for why.
+- **No delivery retry.** A `FAILED` delivery (today: any non-`IN_APP`
+  channel) stays `FAILED` permanently — there is no retry/backoff like the
+  outbox's, since V1 dispatch is synchronous and there is nothing async to
+  retry yet. Revisit once a real async channel (e.g. Email via a worker)
+  exists.
+- **No notification preferences or opt-out.** Every requested channel is
+  attempted for every notification; there is no per-user setting to
+  suppress a channel or a type. `UserPreference` (Configuration module)
+  exists as generic per-user key/value storage that a future iteration
+  could use for this, but nothing reads it for notification delivery today.
+- **No pagination beyond a hard 200-row limit** on `GET /api/v1/notifications`
+  — same `DEFAULT_LIMIT`/`MAX_LIMIT` pattern as `ListAuditEntriesUseCase`,
+  acceptable at Foundation data volume, revisit if a recipient's history
+  grows large enough to need cursor-based paging.

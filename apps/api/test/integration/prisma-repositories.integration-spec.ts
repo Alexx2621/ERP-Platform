@@ -44,6 +44,11 @@ import { GetFileDownloadUrlUseCase } from "../../src/core/files/application/use-
 import { DeleteFileUseCase } from "../../src/core/files/application/use-cases/delete-file.use-case";
 import { FakeFileStorageAdapter } from "../../src/core/files/test-support/fake-file-storage.adapter";
 import { FileObject } from "../../src/core/files/domain/file-object.entity";
+import { PrismaNotificationRepository } from "../../src/core/notifications/infrastructure/prisma-notification.repository";
+import { PrismaNotificationDeliveryRepository } from "../../src/core/notifications/infrastructure/prisma-notification-delivery.repository";
+import { RequestNotificationUseCase } from "../../src/core/notifications/application/use-cases/request-notification.use-case";
+import { ListNotificationsUseCase } from "../../src/core/notifications/application/use-cases/list-notifications.use-case";
+import { MarkNotificationReadUseCase } from "../../src/core/notifications/application/use-cases/mark-notification-read.use-case";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -737,5 +742,86 @@ describe("Prisma repositories against PostgreSQL", () => {
       deletedAt: null,
     });
     await expect(files.save(crossTenantFile)).rejects.toThrow();
+  });
+
+  it("requests, lists, filters unread and marks read a notification with real tenant/recipient FKs and cross-tenant/cross-recipient isolation", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const notifications = new PrismaNotificationRepository(prisma);
+    const deliveries = new PrismaNotificationDeliveryRepository(prisma);
+    const requestNotification = new RequestNotificationUseCase(notifications, deliveries);
+    const listNotifications = new ListNotificationsUseCase(notifications);
+    const markRead = new MarkNotificationReadUseCase(notifications, deliveries);
+    const now = new Date("2026-08-28T00:00:00.000Z");
+
+    const recipient = createUser(now, "notifications-recipient@example.com");
+    const otherUser = createUser(now, "notifications-other-user@example.com");
+    const tenantA = createTenant(now, "notifications-tenant-a");
+    const tenantB = createTenant(now, "notifications-tenant-b");
+    await users.save(recipient);
+    await users.save(otherUser);
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    const requested = await requestNotification.execute({
+      tenantId: tenantA.id,
+      recipientUserId: recipient.id,
+      type: "tenancy.tenant_provisioned",
+      title: "Tu empresa fue creada",
+      body: "Acme está lista para usarse.",
+      data: { tenantId: tenantA.id },
+      channels: ["IN_APP", "EMAIL"],
+    });
+    expect(requested.deliveries).toHaveLength(2);
+    expect(requested.deliveries.find((d) => d.channel === "IN_APP")?.status).toBe("SENT");
+    expect(requested.deliveries.find((d) => d.channel === "EMAIL")?.status).toBe("FAILED");
+
+    await expect(notifications.findById(requested.notification.id)).resolves.toMatchObject({
+      id: requested.notification.id,
+      tenantId: tenantA.id,
+      recipientUserId: recipient.id,
+    });
+
+    // Cross-tenant and cross-recipient isolation: the same notification must
+    // never appear when listing under a different tenant or a different
+    // recipient, even though the row exists in the same table.
+    await expect(
+      listNotifications.execute({ tenantId: tenantB.id, recipientUserId: recipient.id }),
+    ).resolves.toEqual([]);
+    await expect(
+      listNotifications.execute({ tenantId: tenantA.id, recipientUserId: otherUser.id }),
+    ).resolves.toEqual([]);
+
+    const beforeRead = await listNotifications.execute({
+      tenantId: tenantA.id,
+      recipientUserId: recipient.id,
+      unreadOnly: true,
+    });
+    expect(beforeRead).toHaveLength(1);
+    expect(beforeRead[0]?.delivery?.readAt).toBeNull();
+
+    await expect(
+      markRead.execute({
+        notificationId: requested.notification.id,
+        tenantId: tenantB.id,
+        recipientUserId: recipient.id,
+      }),
+    ).rejects.toThrow("The notification was not found.");
+
+    const marked = await markRead.execute({
+      notificationId: requested.notification.id,
+      tenantId: tenantA.id,
+      recipientUserId: recipient.id,
+    });
+    expect(marked?.readAt).not.toBeNull();
+
+    // Read filters it out of the unread-only view but it still shows up in the full listing.
+    await expect(
+      listNotifications.execute({ tenantId: tenantA.id, recipientUserId: recipient.id, unreadOnly: true }),
+    ).resolves.toEqual([]);
+    const afterRead = await listNotifications.execute({ tenantId: tenantA.id, recipientUserId: recipient.id });
+    expect(afterRead).toHaveLength(1);
+    expect(afterRead[0]?.delivery?.readAt).not.toBeNull();
   });
 });

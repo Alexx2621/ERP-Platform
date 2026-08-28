@@ -4,6 +4,7 @@ import { UsersModule } from "../users";
 import { AuthModule } from "../auth";
 import { AccessControlModule } from "../access-control";
 import { AuditModule } from "../audit";
+import { NotificationsModule } from "../notifications";
 import { ProvisionTenantUseCase } from "./application/provision-tenant.use-case";
 import { ResolveTenantContextUseCase } from "./application/resolve-tenant-context.use-case";
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
@@ -16,18 +17,27 @@ import { PrismaTenantRepository } from "./infrastructure/prisma-tenant.repositor
 import { TenantsController } from "./presentation/tenants.controller";
 import { RolesController } from "./presentation/roles.controller";
 import { AuditEntriesController } from "./presentation/audit-entries.controller";
+import { NotificationsController } from "./presentation/notifications.controller";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
 
-// AccessControlModule and AuditModule both have zero dependency on Tenants
-// (see their own docstrings), so importing them here — for
-// SeedOwnerRoleUseCase/RecordAuditEntryUseCase at provisioning, and for
-// RolesController's/AuditEntriesController's use-case/guard dependencies —
-// does not create a module cycle. Both controllers are declared under
-// ./presentation/ (not access-control/ or audit/) precisely to avoid a
+// AccessControlModule, AuditModule and NotificationsModule all have zero
+// dependency on Tenants (see their own docstrings), so importing them here
+// — for SeedOwnerRoleUseCase/RecordAuditEntryUseCase/RequestNotificationUseCase
+// at provisioning, and for RolesController's/AuditEntriesController's/
+// NotificationsController's use-case/guard dependencies — does not create a
+// module cycle. All three controllers are declared under ./presentation/
+// (not access-control/, audit/ or notifications/) precisely to avoid a
 // module-loading cycle at the file-import level — see their docstrings.
 @Module({
-  imports: [UsersModule, CompaniesModule, AuthModule, AccessControlModule, AuditModule],
-  controllers: [TenantsController, RolesController, AuditEntriesController],
+  imports: [
+    UsersModule,
+    CompaniesModule,
+    AuthModule,
+    AccessControlModule,
+    AuditModule,
+    NotificationsModule,
+  ],
+  controllers: [TenantsController, RolesController, AuditEntriesController, NotificationsController],
   providers: [
     { provide: TENANT_REPOSITORY, useClass: PrismaTenantRepository },
     { provide: MEMBERSHIP_REPOSITORY, useClass: PrismaMembershipRepository },

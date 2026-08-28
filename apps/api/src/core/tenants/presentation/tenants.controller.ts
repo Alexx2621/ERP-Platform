@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
 import { SeedOwnerRoleUseCase } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
+import { RequestNotificationUseCase } from "../../notifications";
 import { ProvisionTenantUseCase } from "../application/provision-tenant.use-case";
 import { ListMyTenantsUseCase, type MyTenantSummary } from "../application/list-my-tenants.use-case";
 import { ProvisionTenantDto } from "./dto/provision-tenant.dto";
@@ -20,6 +21,7 @@ export class TenantsController {
     private readonly listMyTenants: ListMyTenantsUseCase,
     private readonly seedOwnerRole: SeedOwnerRoleUseCase,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
+    private readonly requestNotification: RequestNotificationUseCase,
   ) {}
 
   /**
@@ -30,7 +32,13 @@ export class TenantsController {
    * left provisioned but ownerless-of-permissions, a known gap documented
    * in docs/SECURITY.md rather than something worth a compensating
    * transaction for at Foundation scale. Same non-atomicity applies to the
-   * two audit entries recorded below: best-effort, right after each write.
+   * two audit entries recorded below and the owner notification: all
+   * best-effort, right after each write. `RequestNotificationUseCase` is
+   * called directly here, not via the Event Bus's `tenancy.tenant.provisioned.v1`
+   * — a DomainEventBus handler with this kind of non-idempotent side effect
+   * (creating a row) needs the not-yet-built inbox/idempotency table first
+   * (ADR-004 point 5), so this stays a direct application call for now,
+   * same pattern as the audit entries.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -73,6 +81,16 @@ export class TenantsController {
         resource: "RoleAssignment",
         newValues: { membershipId: result.ownerMembership.id },
         correlationId: request.correlationId,
+      });
+
+      await this.requestNotification.execute({
+        tenantId: result.tenant.id,
+        recipientUserId: auth.user.id,
+        type: "tenancy.tenant_provisioned",
+        title: "Tu empresa fue creada",
+        body: `${result.tenant.name} está lista para usarse.`,
+        data: { tenantId: result.tenant.id, tenantSlug: result.tenant.slug },
+        channels: ["IN_APP"],
       });
 
       return ProvisionedTenantResponseDto.fromResult(result);

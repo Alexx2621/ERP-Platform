@@ -10,9 +10,15 @@ import { TenantContextGuard } from "./presentation/tenant-context.guard";
 import { TenantsController } from "./presentation/tenants.controller";
 import { RolesController } from "./presentation/roles.controller";
 import { AuditEntriesController } from "./presentation/audit-entries.controller";
+import { NotificationsController } from "./presentation/notifications.controller";
 import { TenantsModule } from "./tenants.module";
 import { SeedOwnerRoleUseCase } from "../access-control";
 import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "../audit";
+import {
+  RequestNotificationUseCase,
+  ListNotificationsUseCase,
+  MarkNotificationReadUseCase,
+} from "../notifications";
 
 // TenantsModule now imports AuthModule (for SessionAuthGuard on TenantsController),
 // which in turn needs Redis for its throttler storage — see auth.module.spec.ts
@@ -58,6 +64,10 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(RecordAuditEntryUseCase)).toBeInstanceOf(RecordAuditEntryUseCase);
     expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
     expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
+    expect(moduleRef.get(RequestNotificationUseCase)).toBeInstanceOf(RequestNotificationUseCase);
+    expect(moduleRef.get(ListNotificationsUseCase)).toBeInstanceOf(ListNotificationsUseCase);
+    expect(moduleRef.get(MarkNotificationReadUseCase)).toBeInstanceOf(MarkNotificationReadUseCase);
+    expect(moduleRef.get(NotificationsController)).toBeInstanceOf(NotificationsController);
 
     await moduleRef.close();
   });

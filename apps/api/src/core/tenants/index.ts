@@ -47,3 +47,4 @@ export {
 export { CurrentTenantContext } from "./presentation/current-tenant-context.decorator";
 export { RolesController } from "./presentation/roles.controller";
 export { AuditEntriesController } from "./presentation/audit-entries.controller";
+export { NotificationsController } from "./presentation/notifications.controller";
