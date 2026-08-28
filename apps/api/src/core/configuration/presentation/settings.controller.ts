@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpStatus, Param, Put, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { SessionAuthGuard } from "../../auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../tenants";
 import type { TenantExecutionContext } from "../../tenants";
 import { PermissionGuard, RequirePermission } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
+import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import { ListSettingDefinitionsUseCase } from "../application/use-cases/list-setting-definitions.use-case";
 import { GetEffectiveSettingUseCase } from "../application/use-cases/get-effective-setting.use-case";
 import { ListEffectiveSettingsUseCase } from "../application/use-cases/list-effective-settings.use-case";
@@ -25,6 +27,9 @@ import { handleConfigurationError } from "./configuration-error.mapper";
  * through PLATFORM as a fallback layer (GetEffectiveSettingUseCase) stays
  * safe and is exposed via GET /settings. See docs/SECURITY.md.
  */
+@ApiTags("Configuration")
+@ApiBearerAuth("session")
+@ApiTenantHeaders()
 @Controller("api/v1/settings")
 @UseGuards(SessionAuthGuard, TenantContextGuard)
 export class SettingsController {
@@ -39,6 +44,8 @@ export class SettingsController {
   @Get("definitions")
   @UseGuards(PermissionGuard)
   @RequirePermission("configuration.settings.read")
+  @ApiOperation({ summary: "The global, code-owned setting catalog." })
+  @ApiResponse({ status: HttpStatus.OK, type: [SettingDefinitionResponseDto] })
   async listCatalog(): Promise<SettingDefinitionResponseDto[]> {
     const definitions = await this.listDefinitions.execute();
     return definitions.map(SettingDefinitionResponseDto.fromDomain);
@@ -47,6 +54,8 @@ export class SettingsController {
   @Get()
   @UseGuards(PermissionGuard)
   @RequirePermission("configuration.settings.read")
+  @ApiOperation({ summary: "Effective settings for the current tenant/company, resolved COMPANY → TENANT → PLATFORM → default." })
+  @ApiResponse({ status: HttpStatus.OK, type: [EffectiveSettingResponseDto] })
   async listEffective(
     @CurrentTenantContext() ctx: TenantExecutionContext,
   ): Promise<EffectiveSettingResponseDto[]> {
@@ -60,6 +69,10 @@ export class SettingsController {
   @Put(":key")
   @UseGuards(PermissionGuard)
   @RequirePermission("configuration.settings.manage")
+  @ApiOperation({ summary: "Set a TENANT- or COMPANY-scoped value for a setting. PLATFORM writes are not exposed here." })
+  @ApiResponse({ status: HttpStatus.OK, type: SettingValueResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "Unknown setting key." })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: "Value doesn't match the setting's declared data type." })
   async set(
     @Param("key") key: string,
     @Body() dto: SetSettingValueDto,

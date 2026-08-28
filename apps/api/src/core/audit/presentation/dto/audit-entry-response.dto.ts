@@ -1,19 +1,21 @@
+import { ApiProperty } from "@nestjs/swagger";
 import type { AuditEntry } from "../../domain/audit-entry.entity";
 
 export class AuditEntryResponseDto {
-  id!: string;
+  @ApiProperty() id!: string;
+  @ApiProperty({ nullable: true, description: "The actor; null for unauthenticated/system-initiated events." })
   userId!: string | null;
-  tenantId!: string | null;
-  companyId!: string | null;
-  action!: string;
-  resource!: string;
-  resourceId!: string | null;
-  previousValues!: unknown;
-  newValues!: unknown;
-  ipAddress!: string | null;
-  userAgent!: string | null;
-  correlationId!: string;
-  createdAt!: string;
+  @ApiProperty({ nullable: true }) tenantId!: string | null;
+  @ApiProperty({ nullable: true }) companyId!: string | null;
+  @ApiProperty({ example: "configuration.setting.changed" }) action!: string;
+  @ApiProperty({ example: "SettingValue" }) resource!: string;
+  @ApiProperty({ nullable: true }) resourceId!: string | null;
+  @ApiProperty({ type: Object, nullable: true }) previousValues!: unknown;
+  @ApiProperty({ type: Object, nullable: true }) newValues!: unknown;
+  @ApiProperty({ nullable: true }) ipAddress!: string | null;
+  @ApiProperty({ nullable: true }) userAgent!: string | null;
+  @ApiProperty() correlationId!: string;
+  @ApiProperty({ format: "date-time" }) createdAt!: string;
 
   static fromDomain(entry: AuditEntry): AuditEntryResponseDto {
     const dto = new AuditEntryResponseDto();

@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-28 (sesión 13,
-extracción del outbox dispatcher a `apps/worker` — nuevo paquete compartido
-`@erp/events`). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-28 (sesión 14,
+documentación OpenAPI/Swagger real en `/api/docs`). Modelo operativo
+actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,45 +21,111 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **OpenAPI/Swagger** — MASTER_SPEC §25 lo pide desde el principio; no
-   existe todavía. Bajo costo, alto valor: con esto `@erp/api-client` puede
-   generarse desde el contrato en vez de mantenerse a mano.
-2. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
+1. **Membership invitation endpoint** (Organization/Tenancy) — hoy no existe
    forma de agregar un segundo usuario a un tenant vía API; anotado como
    hueco real en `docs/SECURITY.md` durante el smoke test de RBAC. No
    bloqueado, pero bloquea que un tenant multi-usuario sea usable de punta a
    punta.
-3. **System-administration plane** — necesario antes de exponer escritura de
+2. **System-administration plane** — necesario antes de exponer escritura de
    settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
    endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
    bloqueado, pero deliberadamente no adelantado sin una decisión de
    arquitectura explícita sobre credenciales/autorización separadas
    (`docs/ARCHITECTURE.md` §10).
-4. **"Mi actividad" / vista de administración de plataforma para eventos no
+3. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
    bloqueado, deliberadamente no construido junto con Audit para no mezclar
    una superficie de lectura nueva con la matriz de grabación
    (`docs/SECURITY.md` §"Audit").
-5. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
+4. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
    auditoría (`user.status_changed`) existen y están probados, pero no hay
    ningún controller que lo invoque todavía. No bloqueado.
-6. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+5. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-7. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+6. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-8. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+7. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
+8. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+   mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
+   generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
+   bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
+   el SDK ya probado en un mismo cambio — refactor de proceso separado.
+
+### Hecho — sesión 14 (OpenAPI/Swagger)
+
+- **`@nestjs/swagger@11.4.7`** (no la última `12.x` — esa requiere
+  `@nestjs/core`/`@nestjs/common` `^12.0.0`, mientras este proyecto sigue en
+  Nest 11; confirmado con `pnpm peers check` antes y después del ajuste de
+  versión). `main.ts` construye el documento con `DocumentBuilder` (título,
+  descripción con el contrato de headers multi-tenant, `addBearerAuth`
+  bajo el nombre `"session"`, un tag por bounded context) y lo publica en
+  `GET /api/docs` (Swagger UI) + `GET /api/docs-json` (spec crudo) —
+  **alcanzable en todo entorno deliberadamente**: el spec describe formas
+  de request/response y requisitos de permiso, no secretos, así que no hay
+  razón de confidencialidad para ocultarlo; reconsiderar solo si un futuro
+  developer portal autenticado (MASTER_SPEC §89) lo reemplaza.
+- **Los 8 controllers y sus 18 DTOs existentes quedaron decorados de
+  verdad**, no solo el bootstrap: `@ApiProperty`/`@ApiPropertyOptional` en
+  cada campo de cada DTO de request y de response (incluyendo los DTOs
+  anidados que antes eran objetos inline sin tipar, ahora clases propias
+  con su propio schema — p. ej. `SessionUserDto`,
+  `ProvisionedTenantSummaryDto`), `@ApiOperation`/`@ApiResponse` por
+  endpoint (incluyendo los códigos de error reales del sistema:
+  `409 ROLE_NAME_IN_USE`, `404 NOTIFICATION_NOT_FOUND`, etc.), `@ApiTags`
+  por módulo, `@ApiBearerAuth("session")` en todo lo que exige
+  `SessionAuthGuard`. El endpoint de subida de `Files` usa
+  `@ApiConsumes("multipart/form-data")` + `@ApiBody` con schema binario —
+  probado que Swagger UI realmente ofrece un selector de archivo, no solo
+  un campo de texto.
+- **Nuevo decorador compuesto reusable `ApiTenantHeaders()`**
+  (`apps/api/src/shared/swagger/api-tenant-headers.decorator.ts`):
+  documenta `X-Tenant-Slug`/`X-Company-Id` una sola vez y se aplica en los
+  6 controllers detrás de `TenantContextGuard` (Roles, AuditEntries,
+  Notifications, Settings, Files a nivel de clase; Tenants solo en
+  `current()`, ya que `provision()`/`listMine()` no usan ese guard) — evita
+  repetir la misma documentación de headers 6 veces.
+- **Verificado contra el servidor real, no solo compilado**: `GET
+  /api/docs` y `/api/docs-json` responden `200` reales; el JSON generado
+  tiene 22 rutas, 7 tags, 28 schemas; inspeccionado el schema de
+  `RegisterDto`/`SessionResponseDto` campo por campo contra el JSON real
+  devuelto por el servidor — coincide exactamente con las validaciones
+  `class-validator` reales (`maxLength`, `minLength`, etc. se reflejan
+  automáticamente desde los mismos decoradores). Confirmado que el flujo
+  real (`POST /auth/register`) sigue funcionando idéntico tras decorar
+  todo — Swagger es puramente aditivo, no reescribe ningún DTO/controller
+  existente.
+- **Bug de entorno encontrado y corregido durante esta sesión (no de
+  código)**: `pnpm install` empezó a fallar con `[ERR_PNPM_IGNORED_BUILDS]`
+  tras instalar `@nestjs/swagger` (arrastra `@scarf/scarf`, un paquete de
+  telemetría de instalación) — bloqueaba cualquier comando de turbo que
+  revisa el estado de dependencias antes de correr (incluido `typecheck`).
+  Corregido rechazando explícitamente ese script (`pnpm approve-builds
+  "!@scarf/scarf"`, que persiste la decisión en `pnpm-workspace.yaml`) en
+  vez de aprobarlo a ciegas — no hay razón para que un paquete de telemetría
+  ejecute nada en este repo. Se limpió también una entrada residual de
+  `minimumReleaseAgeExclude` que apuntaba a la versión `12.0.1` descartada.
+- Tests: sin tests nuevos — Swagger es metadata de decoradores sobre
+  código ya probado, no lógica nueva que testear; la cobertura existente
+  (174 tests api, integración, E2E) ya confirma que el comportamiento real
+  no cambió. Documentado explícitamente en vez de simplemente omitido.
+- Validación completa: `pnpm lint`, `pnpm typecheck`, `pnpm test`
+  (174/174), `pnpm build` (7 paquetes), `pnpm --filter @erp/api
+  test:integration` (10/10 contra Postgres real), y `pnpm --filter @erp/e2e
+  test:e2e` (2/2 Playwright, con "API docs available at /api/docs"
+  confirmado en el log del proceso real arrancado por el harness) — todo
+  verde.
 
 ### Hecho — sesión 13 (Workers: extracción del outbox dispatcher)
 
@@ -754,15 +820,15 @@ hoy no existe ningún endpoint para agregar un segundo usuario a un tenant
 "Roles y permisos" ya integrada lista/crea roles y asigna roles a una
 membership *existente*, pero el flujo "invitar usuario → asignarle un rol"
 no se puede completar de punta a punta hasta que Organization/Tenancy
-agregue ese endpoint (ítem 3 de la cola Claude). Esto sigue siendo un hueco
+agregue ese endpoint (ítem 1 de la cola Claude). Esto sigue siendo un hueco
 del backend, no de la UI ni del contrato de RBAC — no debe simularse ni
 inventarse mientras tanto.
 
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará OpenAPI/Swagger y cualquier superficie de UI, SDK,
-  pruebas o documentación que ese bloque requiera.
+- Claude continuará el endpoint de invitación de membership y cualquier
+  superficie de UI, SDK, pruebas o documentación que ese bloque requiera.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
@@ -770,7 +836,7 @@ inventarse mientras tanto.
   conservarse como fuente técnica para la implementación y ratificación de sus
   ADR.
 - El flujo completo "invitar usuario → asignar rol" continúa bloqueado por el
-  endpoint de invitación de membership (ítem 2 del backlog activo). Claude es
+  endpoint de invitación de membership (ítem 1 del backlog activo). Claude es
   responsable de resolver el backend y completar después la experiencia de
   punta a punta; no debe simularse mientras tanto.
 
@@ -787,23 +853,26 @@ Playwright).
 
 - El flujo de tenant multi-usuario de punta a punta (incluida la UI de RBAC
   ya integrada, en su forma completa "invitar → asignar rol") depende del
-  endpoint de invitación de membership (ítem 2 de la cola Claude).
+  endpoint de invitación de membership (ítem 1 de la cola Claude).
 - Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 3 de la cola Claude) —
+  administración de plataforma separado (ítem 2 de la cola Claude) —
   deliberadamente no adelantado sin esa decisión de arquitectura.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 6 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 5 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 7 de la cola
+- Una purga real de storage para archivos borrados (ítem 6 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 8 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 7 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
+- `@erp/api-client` generado desde OpenAPI (ítem 8 de la cola Claude)
+  depende de elegir una herramienta de generación (p. ej.
+  `openapi-typescript`) — no decidido todavía, no bloqueado.
 
 ## Integration needed
 
-- **OpenAPI/Swagger**: MASTER_SPEC §25 lo pide desde el principio; no existe
-  todavía. Sigue en la cola Claude (ítem 1).
+Ninguna pendiente en este momento — OpenAPI/Swagger (MASTER_SPEC §25) quedó
+resuelto en la sesión 14 (`GET /api/docs`, `GET /api/docs-json`).
 
 ## Architecture decisions needed
 

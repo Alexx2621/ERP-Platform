@@ -1,12 +1,14 @@
+import { ApiProperty } from "@nestjs/swagger";
 import type { Role } from "../../domain/role.entity";
 import type { Permission } from "../../domain/permission.entity";
 import type { RoleAssignment } from "../../domain/role-assignment.entity";
 
 export class RoleResponseDto {
-  id!: string;
-  name!: string;
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: "True for the auto-seeded Owner role — see MULTITENANCY.md §9." })
   isSystem!: boolean;
-  permissionKeys!: string[];
+  @ApiProperty({ type: [String] }) permissionKeys!: string[];
 
   static fromDomain(role: Role): RoleResponseDto {
     const dto = new RoleResponseDto();
@@ -19,8 +21,8 @@ export class RoleResponseDto {
 }
 
 export class PermissionResponseDto {
-  key!: string;
-  description!: string;
+  @ApiProperty({ example: "access.roles.read" }) key!: string;
+  @ApiProperty() description!: string;
 
   static fromDomain(permission: Permission): PermissionResponseDto {
     const dto = new PermissionResponseDto();
@@ -31,11 +33,11 @@ export class PermissionResponseDto {
 }
 
 export class RoleAssignmentResponseDto {
-  id!: string;
-  membershipId!: string;
-  roleId!: string;
-  scopeType!: string;
-  scopeId!: string | null;
+  @ApiProperty() id!: string;
+  @ApiProperty() membershipId!: string;
+  @ApiProperty() roleId!: string;
+  @ApiProperty({ enum: ["TENANT", "COMPANY"] }) scopeType!: string;
+  @ApiProperty({ nullable: true }) scopeId!: string | null;
 
   static fromDomain(assignment: RoleAssignment): RoleAssignmentResponseDto {
     const dto = new RoleAssignmentResponseDto();

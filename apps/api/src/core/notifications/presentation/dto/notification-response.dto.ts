@@ -1,15 +1,16 @@
+import { ApiProperty } from "@nestjs/swagger";
 import type { NotificationWithDelivery } from "../../domain/notification.repository";
 import type { NotificationDelivery } from "../../domain/notification-delivery.entity";
 
 export class NotificationResponseDto {
-  id!: string;
-  type!: string;
-  title!: string;
-  body!: string;
-  data!: unknown;
-  sentAt!: string | null;
-  readAt!: string | null;
-  createdAt!: string;
+  @ApiProperty() id!: string;
+  @ApiProperty({ example: "tenancy.tenant_provisioned" }) type!: string;
+  @ApiProperty() title!: string;
+  @ApiProperty() body!: string;
+  @ApiProperty({ type: Object, nullable: true }) data!: unknown;
+  @ApiProperty({ format: "date-time", nullable: true }) sentAt!: string | null;
+  @ApiProperty({ format: "date-time", nullable: true }) readAt!: string | null;
+  @ApiProperty({ format: "date-time" }) createdAt!: string;
 
   static fromDomain(pair: NotificationWithDelivery): NotificationResponseDto {
     const dto = new NotificationResponseDto();
@@ -26,10 +27,10 @@ export class NotificationResponseDto {
 }
 
 export class NotificationDeliveryResponseDto {
-  id!: string;
-  channel!: string;
-  status!: string;
-  readAt!: string | null;
+  @ApiProperty() id!: string;
+  @ApiProperty({ enum: ["IN_APP", "EMAIL", "SMS", "WHATSAPP", "PUSH"] }) channel!: string;
+  @ApiProperty({ enum: ["SENT", "FAILED"] }) status!: string;
+  @ApiProperty({ format: "date-time", nullable: true }) readAt!: string | null;
 
   static fromDomain(delivery: NotificationDelivery): NotificationDeliveryResponseDto {
     const dto = new NotificationDeliveryResponseDto();

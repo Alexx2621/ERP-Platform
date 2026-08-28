@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ThrottlerGuard } from "@nestjs/throttler";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { LoginUseCase } from "../application/use-cases/login.use-case";
 import { RefreshSessionUseCase } from "../application/use-cases/refresh-session.use-case";
@@ -27,6 +28,7 @@ import { extractBearerToken } from "./extract-bearer-token";
 import { handleAuthError } from "./auth-error.mapper";
 import type { AuthContext } from "./auth-request";
 
+@ApiTags("Authentication")
 @Controller("api/v1/auth")
 @UseGuards(ThrottlerGuard)
 export class AuthController {
@@ -42,6 +44,9 @@ export class AuthController {
   /** MASTER_SPEC §68 "crear cuenta" step — logs the new account in immediately. */
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: "Create an account and start a session immediately." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: SessionResponseDto })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: "Email already registered." })
   async register(@Body() dto: RegisterDto, @Req() request: Request): Promise<SessionResponseDto> {
     try {
       const result = await this.registerUseCase.execute({
@@ -70,6 +75,9 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Authenticate with email and password, starting a new session." })
+  @ApiResponse({ status: HttpStatus.OK, type: SessionResponseDto })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: "Invalid credentials or disabled account." })
   async login(@Body() dto: LoginDto, @Req() request: Request): Promise<SessionResponseDto> {
     try {
       const result = await this.loginUseCase.execute({
@@ -107,6 +115,11 @@ export class AuthController {
 
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Rotate a session's access/refresh token pair. Single-use: reusing an already-rotated refresh token fails.",
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: SessionResponseDto })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: "Refresh token invalid, expired, revoked or already rotated." })
   async refresh(@Body() dto: RefreshDto): Promise<SessionResponseDto> {
     try {
       const result = await this.refreshSessionUseCase.execute({ refreshToken: dto.refreshToken });
@@ -119,6 +132,9 @@ export class AuthController {
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(SessionAuthGuard)
+  @ApiBearerAuth("session")
+  @ApiOperation({ summary: "Revoke the current session (the one identified by the bearer token)." })
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   async logout(@Req() request: Request, @CurrentAuth() auth: AuthContext): Promise<void> {
     const token = extractBearerToken(request.header("authorization"));
     try {
@@ -141,6 +157,9 @@ export class AuthController {
   @Post("logout-all")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(SessionAuthGuard)
+  @ApiBearerAuth("session")
+  @ApiOperation({ summary: "Revoke every active session belonging to the current user." })
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
   async logoutAll(@CurrentAuth() auth: AuthContext, @Req() request: Request): Promise<void> {
     await this.revokeAllSessionsUseCase.execute(auth.user.id);
     await this.recordAuditEntry.execute({
@@ -156,6 +175,8 @@ export class AuthController {
 
   @Get("me")
   @UseGuards(SessionAuthGuard)
+  @ApiBearerAuth("session")
+  @ApiOperation({ summary: "The identity behind the current bearer token." })
   me(@CurrentAuth() auth: AuthContext): { id: string; email: string; displayName: string } {
     return { id: auth.user.id, email: auth.user.email, displayName: auth.user.displayName };
   }

@@ -1,4 +1,5 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, Put, Query, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { SessionAuthGuard } from "../../auth";
 import {
   ListNotificationsUseCase,
@@ -9,6 +10,7 @@ import {
 } from "../../notifications";
 import { TenantContextGuard } from "./tenant-context.guard";
 import { CurrentTenantContext } from "./current-tenant-context.decorator";
+import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import type { TenantExecutionContext } from "../application/tenant-execution-context";
 
 /**
@@ -20,6 +22,9 @@ import type { TenantExecutionContext } from "../application/tenant-execution-con
  * not an administrative action gated by a grant (same reasoning as
  * PreferencesController).
  */
+@ApiTags("Notifications")
+@ApiBearerAuth("session")
+@ApiTenantHeaders()
 @Controller("api/v1/notifications")
 @UseGuards(SessionAuthGuard, TenantContextGuard)
 export class NotificationsController {
@@ -29,6 +34,8 @@ export class NotificationsController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: "The current user's notifications within this tenant." })
+  @ApiResponse({ status: HttpStatus.OK, type: [NotificationResponseDto] })
   async list(
     @Query() query: ListNotificationsDto,
     @CurrentTenantContext() ctx: TenantExecutionContext,
@@ -44,6 +51,9 @@ export class NotificationsController {
 
   @Put(":id/read")
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Mark one of the current user's own notifications as read." })
+  @ApiResponse({ status: HttpStatus.NO_CONTENT })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "Not found, or belongs to another tenant/recipient." })
   async markRead(
     @Param("id") id: string,
     @CurrentTenantContext() ctx: TenantExecutionContext,

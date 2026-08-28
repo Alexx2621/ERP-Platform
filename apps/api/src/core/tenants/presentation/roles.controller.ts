@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { SessionAuthGuard } from "../../auth";
+import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import {
   CreateRoleUseCase,
   AssignRoleUseCase,
@@ -29,6 +31,9 @@ import type { TenantExecutionContext } from "../application/tenant-execution-con
  * module that owns tenant-context resolution and imports access-control's
  * public contract for everything else (use cases, guard, DTOs).
  */
+@ApiTags("Access Control")
+@ApiBearerAuth("session")
+@ApiTenantHeaders()
 @Controller("api/v1")
 @UseGuards(SessionAuthGuard, TenantContextGuard)
 export class RolesController {
@@ -43,6 +48,8 @@ export class RolesController {
   @Get("roles")
   @UseGuards(PermissionGuard)
   @RequirePermission("access.roles.read")
+  @ApiOperation({ summary: "List the tenant's roles and their permissions." })
+  @ApiResponse({ status: HttpStatus.OK, type: [RoleResponseDto] })
   async listAll(@CurrentTenantContext() ctx: TenantExecutionContext): Promise<RoleResponseDto[]> {
     const roles = await this.listRoles.execute(ctx.tenantId);
     return roles.map(RoleResponseDto.fromDomain);
@@ -51,6 +58,8 @@ export class RolesController {
   @Get("permissions")
   @UseGuards(PermissionGuard)
   @RequirePermission("access.permissions.read")
+  @ApiOperation({ summary: "The global, code-owned permission catalog." })
+  @ApiResponse({ status: HttpStatus.OK, type: [PermissionResponseDto] })
   async listCatalog(): Promise<PermissionResponseDto[]> {
     const permissions = await this.listPermissions.execute();
     return permissions.map(PermissionResponseDto.fromDomain);
@@ -60,6 +69,9 @@ export class RolesController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(PermissionGuard)
   @RequirePermission("access.roles.manage")
+  @ApiOperation({ summary: "Create a tenant-scoped role." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: RoleResponseDto })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: "Role name already in use." })
   async create(
     @Body() dto: CreateRoleDto,
     @CurrentTenantContext() ctx: TenantExecutionContext,
@@ -89,6 +101,10 @@ export class RolesController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(PermissionGuard)
   @RequirePermission("access.roles.manage")
+  @ApiOperation({ summary: "Grant a role to an existing membership at TENANT or COMPANY scope." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: RoleAssignmentResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "Role or membership not found in this tenant." })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: "Duplicate assignment." })
   async assign(
     @Param("id") roleId: string,
     @Body() dto: AssignRoleDto,

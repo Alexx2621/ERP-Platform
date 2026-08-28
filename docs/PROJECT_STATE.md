@@ -1,9 +1,8 @@
 # Project State
 
-Última actualización: 2026-08-28 (sesión 13), tras extraer el outbox
-dispatcher a una nueva app `apps/worker` (nuevo paquete compartido
-`@erp/events`) y verificarlo contra Docker real con `apps/api` y
-`apps/worker` corriendo como procesos separados de punta a punta.
+Última actualización: 2026-08-28 (sesión 14), tras publicar documentación
+OpenAPI/Swagger real (`GET /api/docs`, `GET /api/docs-json`) para los 8
+controllers y 18 DTOs existentes, verificada contra el servidor real.
 Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
@@ -289,6 +288,29 @@ ADR-004 nada se ha construido contra él todavía.
   mensaje del outbox. El arnés E2E (`apps/e2e/src/global-setup.ts`) ahora
   arranca los tres procesos reales (api + worker + erp-web) en vez de solo
   dos. Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 13").
+- **OpenAPI/Swagger** (`apps/api/src/main.ts`, Claude, sesión 14):
+  `@nestjs/swagger@11.4.7` (línea 11.x, no la última 12.x — esa exige Nest
+  12), publicado en `GET /api/docs` (Swagger UI) y `GET /api/docs-json`
+  (spec crudo), **alcanzable en todo entorno deliberadamente** (el spec no
+  contiene secretos). Los 8 controllers y 18 DTOs existentes de Foundation
+  quedaron decorados de verdad — `@ApiProperty` en cada campo (incluyendo
+  DTOs anidados antes inline y sin tipar, ahora clases propias),
+  `@ApiOperation`/`@ApiResponse` por endpoint con los códigos de error
+  reales, `@ApiTags` por bounded context, `@ApiBearerAuth("session")`.
+  Nuevo decorador compuesto reusable `ApiTenantHeaders()` documenta
+  `X-Tenant-Slug`/`X-Company-Id` una sola vez para los 6 controllers detrás
+  de `TenantContextGuard`. El endpoint de subida de Files usa
+  `@ApiConsumes`/`@ApiBody` con schema binario. **Verificado contra el
+  servidor real**: 22 rutas, 7 tags, 28 schemas en el JSON generado,
+  inspeccionado campo por campo contra las validaciones `class-validator`
+  reales, y confirmado que el flujo real (`POST /auth/register`) sigue
+  funcionando idéntico — Swagger es puramente aditivo. Bug de entorno
+  encontrado y corregido (no de código): `pnpm install` empezó a fallar
+  tras instalar `@nestjs/swagger` por un script de telemetría ignorado
+  (`@scarf/scarf`) — corregido rechazándolo explícitamente en
+  `pnpm-workspace.yaml` en vez de aprobarlo a ciegas. Sin tests nuevos —
+  metadata de decoradores sobre código ya probado, no lógica nueva.
+  Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 14").
 - 193 tests unitarios pasando (api 174, api-client 7, erp-web 16) + 18 en
   `@erp/events` + 1 en `@erp/worker` + 10 tests de integración con Postgres
   real + **2 tests E2E de Playwright pasando contra infraestructura real
@@ -357,13 +379,14 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (OpenAPI/Swagger).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (endpoint de
+invitación de membership).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: OpenAPI/Swagger →
-endpoint de invitación de membership → plano de administración de
+Resumen bajo ownership único de Claude: endpoint de invitación de
+membership → plano de administración de
 plataforma (necesario antes de exponer escritura de settings a nivel
 PLATFORM) → vista de "mi actividad"/administración para eventos no
 tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
@@ -374,7 +397,9 @@ handler del Event Bus con efecto secundario no idempotente, incluyendo
 conectar Notifications a `tenancy.tenant.provisioned.v1`) → purga real de
 storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
 soft-delete de metadata) → adapter real de Email para Notifications
-(proveedor SMTP/transaccional no decidido). También pendiente: ratificar
+(proveedor SMTP/transaccional no decidido) → `@erp/api-client` generado
+desde el spec OpenAPI (`/api/docs-json` ya existe; herramienta de
+generación todavía no decidida). También pendiente: ratificar
 ADR-001, ADR-002, ADR-003 y ADR-005 formalmente (ADR-004 y ADR-006 ya están
 ratificados). Claude debe completar cualquier UI, SDK y cobertura de
 pruebas que estos bloques necesiten. La UI de RBAC, el E2E de sesión y la

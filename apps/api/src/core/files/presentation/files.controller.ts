@@ -12,12 +12,14 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ConfigService } from "@nestjs/config";
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { SessionAuthGuard } from "../../auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../tenants";
 import type { TenantExecutionContext } from "../../tenants";
 import { PermissionGuard, RequirePermission } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
 import { AppException } from "../../../shared/errors/app.exception";
+import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import type { EnvironmentVariables } from "../../../shared/config/environment-variables";
 import { UploadFileUseCase } from "../application/use-cases/upload-file.use-case";
 import { GetFileDownloadUrlUseCase } from "../application/use-cases/get-file-download-url.use-case";
@@ -39,6 +41,9 @@ import { handleFilesError } from "./files-error.mapper";
  */
 const MULTER_HARD_LIMIT_BYTES = 100 * 1024 * 1024;
 
+@ApiTags("Files")
+@ApiBearerAuth("session")
+@ApiTenantHeaders()
 @Controller("api/v1/files")
 @UseGuards(SessionAuthGuard, TenantContextGuard, PermissionGuard)
 export class FilesController {
@@ -60,6 +65,13 @@ export class FilesController {
   @Post()
   @RequirePermission("files.upload")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MULTER_HARD_LIMIT_BYTES } }))
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: { type: "object", properties: { file: { type: "string", format: "binary" } } },
+  })
+  @ApiOperation({ summary: "Upload a file. Stored in S3-compatible storage — never on local disk." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: FileObjectResponseDto })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: "Missing file, empty file, or exceeds the size limit." })
   async upload(
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentTenantContext() ctx: TenantExecutionContext,
@@ -100,6 +112,8 @@ export class FilesController {
 
   @Get()
   @RequirePermission("files.read")
+  @ApiOperation({ summary: "List the tenant's (optionally, one company's) active files." })
+  @ApiResponse({ status: HttpStatus.OK, type: [FileObjectResponseDto] })
   async list(
     @Query() query: ListFilesDto,
     @CurrentTenantContext() ctx: TenantExecutionContext,
@@ -114,6 +128,9 @@ export class FilesController {
 
   @Get(":id/download-url")
   @RequirePermission("files.read")
+  @ApiOperation({ summary: "A short-lived signed URL to download the file's real bytes." })
+  @ApiResponse({ status: HttpStatus.OK, type: FileDownloadUrlResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "Not found, deleted, or belongs to another tenant." })
   async downloadUrl(
     @Param("id") id: string,
     @CurrentTenantContext() ctx: TenantExecutionContext,
@@ -132,6 +149,9 @@ export class FilesController {
 
   @Delete(":id")
   @RequirePermission("files.delete")
+  @ApiOperation({ summary: "Soft-delete a file — the storage object is not removed synchronously." })
+  @ApiResponse({ status: HttpStatus.OK, type: FileObjectResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "Not found, or belongs to another tenant." })
   async remove(
     @Param("id") id: string,
     @CurrentTenantContext() ctx: TenantExecutionContext,

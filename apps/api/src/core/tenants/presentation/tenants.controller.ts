@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
+import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
 import { SeedOwnerRoleUseCase } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
@@ -13,6 +15,8 @@ import { CurrentTenantContext } from "./current-tenant-context.decorator";
 import { handleTenantError } from "./tenant-error.mapper";
 import type { TenantExecutionContext } from "../application/tenant-execution-context";
 
+@ApiTags("Tenants")
+@ApiBearerAuth("session")
 @Controller("api/v1/tenants")
 @UseGuards(SessionAuthGuard)
 export class TenantsController {
@@ -42,6 +46,9 @@ export class TenantsController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: "Provision a new tenant (MASTER_SPEC §68 \"crear empresa\") with the caller as owner." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: ProvisionedTenantResponseDto })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: "Slug already in use." })
   async provision(
     @Body() dto: ProvisionTenantDto,
     @CurrentAuth() auth: AuthContext,
@@ -101,6 +108,7 @@ export class TenantsController {
 
   /** Tenant picker: "which tenants can I access" before any tenant is selected. */
   @Get()
+  @ApiOperation({ summary: "Tenants the current user has an active membership in — the tenant picker." })
   async listMine(@CurrentAuth() auth: AuthContext): Promise<MyTenantSummary[]> {
     return this.listMyTenants.execute(auth.user.id);
   }
@@ -112,6 +120,8 @@ export class TenantsController {
    */
   @Get("current")
   @UseGuards(TenantContextGuard)
+  @ApiTenantHeaders()
+  @ApiOperation({ summary: "Resolve the tenant context for the caller's X-Tenant-Slug header." })
   current(@CurrentTenantContext() tenantContext: TenantExecutionContext): {
     tenantId: string;
     membershipId: string;

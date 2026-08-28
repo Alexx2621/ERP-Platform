@@ -1,14 +1,15 @@
+import { ApiProperty } from "@nestjs/swagger";
 import type { SettingDefinition } from "../../domain/setting-definition.entity";
 import type { SettingValue } from "../../domain/setting-value.entity";
 import type { EffectiveSetting } from "../../application/use-cases/get-effective-setting.use-case";
 import type { UserPreference } from "../../domain/user-preference.entity";
 
 export class SettingDefinitionResponseDto {
-  key!: string;
-  dataType!: string;
-  description!: string;
-  defaultValue!: unknown;
-  allowedScopes!: string[];
+  @ApiProperty({ example: "localization.currency" }) key!: string;
+  @ApiProperty({ enum: ["STRING", "NUMBER", "BOOLEAN", "JSON"] }) dataType!: string;
+  @ApiProperty() description!: string;
+  @ApiProperty({ type: Object }) defaultValue!: unknown;
+  @ApiProperty({ type: [String], enum: ["PLATFORM", "TENANT", "COMPANY"], isArray: true }) allowedScopes!: string[];
 
   static fromDomain(definition: SettingDefinition): SettingDefinitionResponseDto {
     const dto = new SettingDefinitionResponseDto();
@@ -22,8 +23,9 @@ export class SettingDefinitionResponseDto {
 }
 
 export class EffectiveSettingResponseDto {
-  key!: string;
-  value!: unknown;
+  @ApiProperty() key!: string;
+  @ApiProperty({ type: Object }) value!: unknown;
+  @ApiProperty({ enum: ["PLATFORM", "TENANT", "COMPANY", "DEFAULT"], description: "Which scope the effective value came from." })
   source!: string;
 
   static fromDomain(setting: EffectiveSetting): EffectiveSettingResponseDto {
@@ -36,11 +38,11 @@ export class EffectiveSettingResponseDto {
 }
 
 export class SettingValueResponseDto {
-  key!: string;
-  scopeType!: string;
-  companyId!: string | null;
-  value!: unknown;
-  updatedAt!: string;
+  @ApiProperty() key!: string;
+  @ApiProperty({ enum: ["TENANT", "COMPANY"] }) scopeType!: string;
+  @ApiProperty({ nullable: true }) companyId!: string | null;
+  @ApiProperty({ type: Object }) value!: unknown;
+  @ApiProperty({ format: "date-time" }) updatedAt!: string;
 
   static fromDomain(key: string, value: SettingValue): SettingValueResponseDto {
     const dto = new SettingValueResponseDto();
@@ -54,9 +56,9 @@ export class SettingValueResponseDto {
 }
 
 export class UserPreferenceResponseDto {
-  key!: string;
-  value!: unknown;
-  updatedAt!: string;
+  @ApiProperty() key!: string;
+  @ApiProperty({ type: Object }) value!: unknown;
+  @ApiProperty({ format: "date-time" }) updatedAt!: string;
 
   static fromDomain(preference: UserPreference): UserPreferenceResponseDto {
     const dto = new UserPreferenceResponseDto();
