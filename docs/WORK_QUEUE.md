@@ -22,41 +22,34 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Escritura de settings a nivel `PLATFORM`** — el plano de administración
-   ya existe (`PlatformAdminGuard`, sesión 16), así que la decisión de
-   arquitectura que bloqueaba esto ya está resuelta (ADR-007). Falta el
-   endpoint HTTP en sí: `PUT /api/v1/platform/settings/:key` (o similar)
-   sobre `SetSettingValueUseCase`, que hoy solo acepta `TENANT`/`COMPANY`
-   desde `SettingsController` — ver `docs/SECURITY.md` §"Typed
-   Configuration".
-2. **"Mi actividad" / vista de administración de plataforma para eventos no
+1. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
    (`AuditEntriesController` solo devuelve entradas tenant-scoped). Ya no
    bloqueado por decisión de arquitectura: puede construirse como
    `GET /api/v1/platform/audit-entries` detrás de `PlatformAdminGuard`,
-   mismo patrón que `PlatformUsersController`.
-3. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+   mismo patrón que `PlatformUsersController`/`PlatformSettingsController`.
+2. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-4. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+3. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-5. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+4. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
-6. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+5. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
    el SDK ya probado en un mismo cambio — refactor de proceso separado.
-7. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
+6. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
    existe en el dominio, pero ningún endpoint lo invoca para una membership
    `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
    §"Membership Invitations".
@@ -114,6 +107,72 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
   un endpoint).
 - Validación: `pnpm lint`/`typecheck` limpios, `pnpm test` 193/193 en
   `apps/api`, 16/16 en `apps/erp-web`.
+
+**Segundo bloque de la misma sesión — Escritura de settings PLATFORM
+(cierra el ítem 1 original de esta cola)**:
+
+- **`apps/api/src/core/configuration/`**: `ListPlatformSettingsUseCase`
+  nuevo (reusa `GetEffectiveSettingUseCase` sin `tenantId`/`companyId`, así
+  que su cadena de resolución solo llega a `PLATFORM → DEFAULT`, nunca
+  `TENANT`/`COMPANY`). `SetSettingValueUseCase` no cambió — ya era
+  domain-complete para `PLATFORM` desde que se construyó Typed
+  Configuration; solo le faltaba un caller HTTP seguro. `SettingDefinitionResponseDto`/
+  `EffectiveSettingResponseDto`/`SettingValueResponseDto`/
+  `UserPreferenceResponseDto` ahora exportados desde el barrel público del
+  módulo (antes internos de `presentation/`) para que `platform-admin`
+  pueda reusarlos sin duplicar DTOs.
+- **`apps/api/src/core/platform-admin/`**: `PlatformSettingsController`
+  nuevo, mismo patrón de guard que `PlatformUsersController`
+  (`SessionAuthGuard` + `PlatformAdminGuard`, sin `TenantContextGuard` — un
+  valor PLATFORM no tiene tenant): `GET /api/v1/platform/settings/definitions`,
+  `GET /api/v1/platform/settings` (valor PLATFORM vigente de cada
+  definición, o su default), `PUT /api/v1/platform/settings/:key`. Graba
+  `configuration.platform_setting.changed` — acción de auditoría
+  deliberadamente distinta de `configuration.setting.changed` (tenant) para
+  que una futura vista de auditoría de plataforma pueda diferenciarlas sin
+  inspeccionar `tenantId`. `PlatformAdminModule` ahora importa también
+  `ConfigurationModule` y `AuditModule` directamente (este último no lo
+  re-exporta `ConfigurationModule`, así que sin importarlo aparte
+  `RecordAuditEntryUseCase` no habría sido resoluble — bug real encontrado
+  al correr la suite completa de tests, no solo el test aislado del
+  módulo, corregido antes de continuar).
+- **Sin migración nueva** — reutiliza `setting_definitions`/`setting_values`
+  ya existentes; el `scopeKey` de un valor PLATFORM ya era literalmente
+  `"platform"` en el dominio desde que se construyó Typed Configuration.
+- Tests: 2 nuevos (`ListPlatformSettingsUseCase`) + 3 nuevas aserciones de
+  wiring (`configuration.module.spec.ts`, `platform-admin.module.spec.ts`,
+  `app.module.spec.ts`) — 195 tests unitarios totales en `apps/api` (antes
+  193). Suite de integración ampliada con un escenario real contra Postgres:
+  antes de cualquier override, tanto el listado de plataforma como la
+  resolución efectiva de un tenant real caen en `DEFAULT`; tras escribir un
+  valor PLATFORM real, **el mismo tenant sin override propio pasa a heredar
+  ese valor** (`source: "PLATFORM"`) sin haber tocado nada del lado del
+  tenant — la prueba central de que el fallback funciona de punta a punta,
+  no solo que el valor se puede releer desde su propia fila.
+- Smoke test manual contra Docker real: registro de un admin y un owner de
+  tenant reales, provisioning real → `admin` sin flag rechazado con `403`
+  en `GET /platform/settings/definitions` → flag otorgado vía `UPDATE`
+  directo → catálogo visible → efectivo del tenant real en `DEFAULT` antes
+  del override → `PUT /platform/settings/localization.currency` con
+  `EUR` → `GET /platform/settings` confirma `EUR`/`PLATFORM` → **el
+  mismo tenant real, sin tocar nada de su lado, ahora resuelve `EUR` en
+  vez de `USD`** → el owner (sin flag) rechazado con `403` al intentar
+  escribir en `/platform/settings` → clave inexistente rechazada con
+  `404 SETTING_NOT_FOUND` → valor de tipo incorrecto rechazado con
+  `400 INVALID_SETTING_VALUE` → `SELECT` directo sobre `audit_entries`
+  confirma la entrada `configuration.platform_setting.changed` con el
+  actor real y los valores previo/nuevo correctos. Datos de prueba
+  limpiados después (incluyendo notificaciones automáticas de
+  provisioning, encontradas como dependencia de FK al limpiar).
+- Documentación actualizada: `docs/DECISIONS.md` (ADR-007 enmendado con la
+  sección "Amendment (2026-08-29)"), `docs/SECURITY.md` (sección "Typed
+  Configuration" — hueco "No PLATFORM-scope write endpoint" cerrado con
+  tachado; sección "Platform Administration" ampliada con los assets y
+  amenazas de la escritura de settings).
+- Validación completa: `pnpm lint`/`typecheck` limpios, `pnpm test`
+  (195/195 `apps/api`), `pnpm build` (7 paquetes/apps),
+  `pnpm --filter @erp/api test:integration` (13/13 contra Postgres real),
+  `pnpm --filter @erp/e2e test:e2e` (3/3 Playwright) — todo verde.
 
 ### Hecho — sesión 15 (Membership invitation endpoint + UI)
 
@@ -977,22 +1036,21 @@ Playwright).
 - ~~El flujo de tenant multi-usuario de punta a punta...~~ — cerrado en la
   sesión 15 (endpoint de invitación + UI completa, ver "Hecho — sesión 15").
 - ~~Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado...~~ — la decisión de arquitectura
-  se resolvió en la sesión 16 (ADR-007, `PlatformAdminGuard`). Sigue
-  pendiente el endpoint en sí (ítem 1 de la cola Claude), pero ya no
-  bloqueado por nada.
+  administración de plataforma separado...~~ — cerrado en la sesión 16: el
+  plano (ADR-007) y el endpoint en sí (`PUT /api/v1/platform/settings/:key`)
+  ya existen. Ver "Hecho — sesión 16" (segundo bloque).
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 3 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 2 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 4 de la cola
+- Una purga real de storage para archivos borrados (ítem 3 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 5 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 4 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 6 de la cola Claude)
+- `@erp/api-client` generado desde OpenAPI (ítem 5 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Expirar/revocar invitaciones pendientes (ítem 7 de la cola Claude) depende
+- Expirar/revocar invitaciones pendientes (ítem 6 de la cola Claude) depende
   de decidir una política de TTL — no bloqueado, no decidido todavía.
 
 ## Integration needed

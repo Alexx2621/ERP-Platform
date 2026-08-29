@@ -13,6 +13,7 @@ import { SettingCatalogSeeder } from "./application/setting-catalog-seeder";
 import { ListSettingDefinitionsUseCase } from "./application/use-cases/list-setting-definitions.use-case";
 import { GetEffectiveSettingUseCase } from "./application/use-cases/get-effective-setting.use-case";
 import { ListEffectiveSettingsUseCase } from "./application/use-cases/list-effective-settings.use-case";
+import { ListPlatformSettingsUseCase } from "./application/use-cases/list-platform-settings.use-case";
 import { SetSettingValueUseCase } from "./application/use-cases/set-setting-value.use-case";
 import { GetUserPreferenceUseCase } from "./application/use-cases/get-user-preference.use-case";
 import { ListUserPreferencesUseCase } from "./application/use-cases/list-user-preferences.use-case";
@@ -38,6 +39,7 @@ import { PreferencesController } from "./presentation/preferences.controller";
     ListSettingDefinitionsUseCase,
     GetEffectiveSettingUseCase,
     ListEffectiveSettingsUseCase,
+    ListPlatformSettingsUseCase,
     SetSettingValueUseCase,
     GetUserPreferenceUseCase,
     ListUserPreferencesUseCase,
@@ -47,6 +49,7 @@ import { PreferencesController } from "./presentation/preferences.controller";
     ListSettingDefinitionsUseCase,
     GetEffectiveSettingUseCase,
     ListEffectiveSettingsUseCase,
+    ListPlatformSettingsUseCase,
     SetSettingValueUseCase,
     GetUserPreferenceUseCase,
     ListUserPreferencesUseCase,

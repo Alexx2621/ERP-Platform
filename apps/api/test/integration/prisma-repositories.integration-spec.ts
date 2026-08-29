@@ -34,6 +34,7 @@ import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-ca
 import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
 import { PrismaTenantProvisioningRepository } from "../../src/core/tenants/infrastructure/prisma-tenant-provisioning.repository";
 import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provision-tenant.use-case";
+import { ListPlatformSettingsUseCase } from "../../src/core/configuration/application/use-cases/list-platform-settings.use-case";
 import { InviteMembershipUseCase } from "../../src/core/tenants/application/invite-membership.use-case";
 import { AcceptMembershipInvitationUseCase } from "../../src/core/tenants/application/accept-membership-invitation.use-case";
 import { ListMembershipsUseCase } from "../../src/core/tenants/application/list-memberships.use-case";
@@ -945,5 +946,65 @@ describe("Prisma repositories against PostgreSQL", () => {
     });
     expect(updated.status).toBe("DISABLED");
     await expect(users.findById(target.id)).resolves.toMatchObject({ status: "DISABLED" });
+  });
+
+  it("writes a real PLATFORM-scoped setting value and resolves it as the effective value for a tenant with no override", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const definitions = new PrismaSettingDefinitionRepository(prisma);
+    const values = new PrismaSettingValueRepository(prisma);
+    const setSettingValue = new SetSettingValueUseCase(definitions, values);
+    const getEffectiveSetting = new GetEffectiveSettingUseCase(definitions, values);
+    const listPlatformSettings = new ListPlatformSettingsUseCase(definitions, getEffectiveSetting);
+    const now = new Date("2026-08-28T19:00:00.000Z");
+
+    const tenantA = createTenant(now, "platform-settings-tenant-a");
+    await tenants.save(tenantA);
+
+    await definitions.upsert(
+      SettingDefinition.create({
+        id: newId(),
+        key: "localization.currency.platform-integration-test",
+        dataType: "STRING",
+        description: "Integration test currency setting for PLATFORM writes",
+        defaultValue: "USD",
+        allowedScopes: ["PLATFORM", "TENANT", "COMPANY"],
+        createdAt: now,
+      }),
+    );
+
+    // Before any PLATFORM override, both the platform-wide list and a
+    // tenant's own effective resolution fall back to the definition default.
+    const beforeList = await listPlatformSettings.execute();
+    expect(
+      beforeList.find((s) => s.key === "localization.currency.platform-integration-test"),
+    ).toMatchObject({ value: "USD", source: "DEFAULT" });
+    await expect(
+      getEffectiveSetting.execute({
+        key: "localization.currency.platform-integration-test",
+        tenantId: tenantA.id,
+      }),
+    ).resolves.toMatchObject({ value: "USD", source: "DEFAULT" });
+
+    await setSettingValue.execute({
+      key: "localization.currency.platform-integration-test",
+      scopeType: "PLATFORM",
+      tenantId: null,
+      companyId: null,
+      value: "EUR",
+    });
+
+    const afterList = await listPlatformSettings.execute();
+    expect(
+      afterList.find((s) => s.key === "localization.currency.platform-integration-test"),
+    ).toMatchObject({ value: "EUR", source: "PLATFORM" });
+    // A tenant with no TENANT/COMPANY override of its own now falls back to
+    // the real PLATFORM row, not the definition's hardcoded default.
+    await expect(
+      getEffectiveSetting.execute({
+        key: "localization.currency.platform-integration-test",
+        tenantId: tenantA.id,
+      }),
+    ).resolves.toMatchObject({ value: "EUR", source: "PLATFORM" });
   });
 });

@@ -189,7 +189,7 @@ Scope: `SettingDefinition`, `SettingValue`, `UserPreference`, `SettingsControlle
 
 | Threat | Control |
 | --- | --- |
-| A tenant admin overwrites the platform-wide default for every tenant | `SetSettingValueDto.scopeType` only accepts `"TENANT"`/`"COMPANY"` (`@IsIn`) — `PLATFORM` is a real, domain-modeled scope (`SetSettingValueUseCase`/`SettingValue` both support it) but **no HTTP endpoint accepts it**, because no system-administration plane exists yet (`docs/ARCHITECTURE.md` §10). This is a deliberate gap, not an oversight — see "Known limitations" below. |
+| A tenant admin overwrites the platform-wide default for every tenant | `SettingsController`'s own `SetSettingValueDto.scopeType` still only accepts `"TENANT"`/`"COMPANY"` (`@IsIn`) — a tenant-scoped caller can never reach `PLATFORM` through that endpoint. The only path to `PLATFORM` writes is `PUT /api/v1/platform/settings/:key`, gated by `SessionAuthGuard` + `PlatformAdminGuard` (docs/DECISIONS.md ADR-007) — see "Platform Administration" below. |
 | Setting a value at a scope the definition doesn't declare (e.g. a key meant to be TENANT-only set at COMPANY) | `SetSettingValueUseCase` checks `definition.allowsScope(scopeType)` before writing and rejects with `400 SETTING_SCOPE_NOT_ALLOWED` otherwise. |
 | A value that doesn't match its declared data type (e.g. a string where a number is expected) reaches storage | `SettingDefinition.assertValidValue` runs before every write; a mismatch is `400 INVALID_SETTING_VALUE`. Because `value` is stored as `jsonb`, this is the only type enforcement that exists — Postgres itself accepts any valid JSON in that column, so the application-layer check is load-bearing, not a redundant belt-and-suspenders check. |
 | A `companyId` from a different tenant is used to set a COMPANY-scoped value | Same DB-enforced pattern as RBAC's `role_assignments`: the composite FK `setting_values(tenant_id, company_id) → companies(tenant_id, id)` rejects it at the database level; `PrismaSettingValueRepository` catches the `P2003` and rethrows as `CompanyNotFoundInTenantError` (`404 COMPANY_NOT_FOUND`). Verified against real Postgres in `apps/api/test/integration/prisma-repositories.integration-spec.ts`. |
@@ -199,14 +199,9 @@ Scope: `SettingDefinition`, `SettingValue`, `UserPreference`, `SettingsControlle
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
-- **No PLATFORM-scope write endpoint.** The domain and application layers
-  fully support it (`SetSettingValueUseCase` accepts `scopeType: "PLATFORM"`,
-  the schema has no obstacle to it), but exposing it today — before a
-  separate system-administration plane with its own authorization exists —
-  would mean *any* tenant's admin could change the default for every tenant
-  on the platform through the same tenant-scoped API. This is a genuine gap
-  to close when `docs/ARCHITECTURE.md` §10's "system administration usa un
-  plano y credenciales separados" is actually built, not before.
+- ~~No PLATFORM-scope write endpoint~~ — closed 2026-08-29:
+  `PUT /api/v1/platform/settings/:key` now exists, gated by
+  `PlatformAdminGuard` (ADR-007). See "Platform Administration" below.
 - **No new permissions retroactively granted to existing tenants' Owner
   roles.** `configuration.settings.read`/`configuration.settings.manage`
   were added to `FOUNDATION_PERMISSIONS` in this change; per the
@@ -575,11 +570,12 @@ accepting on their own, using the `Membership` state machine
   tenants have at most a handful of members, so this is not the premature
   optimization MASTER_SPEC §45/§93 warns against yet.
 
-## Platform Administration (2026-08-28)
+## Platform Administration (2026-08-28, extended 2026-08-29)
 
 Scope: `isPlatformAdmin` on `User`, `PlatformAdminGuard`, `ListUsersUseCase`,
-`PlatformUsersController` (`apps/api/src/core/platform-admin`) — the "system
-administration usa un plano ... separado" requirement from
+`PlatformUsersController`, `ListPlatformSettingsUseCase`,
+`PlatformSettingsController` (`apps/api/src/core/platform-admin`) — the
+"system administration usa un plano ... separado" requirement from
 `docs/ARCHITECTURE.md` §10, unblocking three previously-deferred backlog
 items. Full design rationale in `docs/DECISIONS.md` ADR-007.
 
@@ -593,6 +589,11 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
 - The global user list (`GET /api/v1/platform/users`) — emails and display
   names across every tenant, information a tenant-scoped role could never
   see even with every permission granted.
+- The PLATFORM-scoped value of every setting in the catalog
+  (`PUT /api/v1/platform/settings/:key`) — this is the default every tenant
+  without its own TENANT/COMPANY override silently inherits
+  (`GetEffectiveSettingUseCase`'s fallback chain), so a bad or malicious
+  write here has blast radius across the entire platform, not one tenant.
 
 ### Threats considered and controls
 
@@ -602,7 +603,9 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
 | A user self-promotes to platform admin via registration or any other public endpoint | `CreateUserUseCase` hardcodes `isPlatformAdmin: false` for every new account (`POST /auth/register` is the only way to create a `User`); there is no HTTP endpoint anywhere that sets this flag to `true` — it can only be changed by a direct database operation performed by whoever operates the deployment (ADR-007 point 2). |
 | `PlatformAdminGuard` applied without `SessionAuthGuard` running first | Fails closed with a `500` (`PLATFORM_ADMIN_GUARD_REQUIRES_AUTH`) rather than silently treating a missing `authContext` as "not admin, deny" or, worse, crashing in a way that could be misread — same "loud misconfiguration, not silent bypass" pattern as `PermissionGuard`. |
 | A platform admin action on a user bypasses audit trail | `PUT /api/v1/platform/users/:id/status` calls the existing `SetUserStatusUseCase`, which already recorded `user.status_changed` (with `previousValues`/`newValues`) before this controller had any caller — this slice is the first real HTTP path to it, not new audit logic. |
-| Platform-admin capabilities creep beyond what was reviewed | Deliberately minimal in this slice: list users, set status. No tenant suspension, no impersonation, no data export, no `PLATFORM`-scoped settings write yet — each is a separate backlog item requiring its own review before being added under this same guard (ADR-007 point 5). |
+| Platform-admin capabilities creep beyond what was reviewed | Minimal by design: list/disable users, and now PLATFORM setting reads/writes (2026-08-29) — each new capability under this guard gets its own threat-model review before being added, not folded in silently. No tenant suspension, no impersonation, no data export yet (ADR-007 point 5). |
+| A `PLATFORM` write reaches a scope the setting's definition doesn't declare (e.g. a hypothetical TENANT-only key) | `PlatformSettingsController` calls the exact same `SetSettingValueUseCase.execute({ scopeType: "PLATFORM", ... })` as any other caller — `definition.allowsScope("PLATFORM")` is checked identically, rejecting with `400 SETTING_SCOPE_NOT_ALLOWED` if the catalog doesn't allow it. No separate/weaker validation path for platform-admin callers. |
+| A `PLATFORM` write with a value of the wrong data type reaches storage | Same `SettingDefinition.assertValidValue` check as `SettingsController`'s own TENANT/COMPANY writes — verified in this session's smoke test (a numeric value against a STRING-typed key was rejected with `400 INVALID_SETTING_VALUE`). |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
@@ -632,3 +635,16 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
   `ListAuditEntriesUseCase`/`ListNotificationsUseCase`, acceptable at
   Foundation's current user count, revisit once cursor-based paging or a
   search endpoint is actually needed.
+- **PLATFORM setting changes use a distinct audit action
+  (`configuration.platform_setting.changed`) from tenant-scoped changes
+  (`configuration.setting.changed`)**, deliberately, so a future "my
+  activity"/platform-audit view (still-pending backlog item) can tell them
+  apart without inspecting `tenantId`. Not yet queryable by any endpoint —
+  same limitation as the rest of this section.
+- **No confirmation/dry-run before a PLATFORM write.** Unlike a TENANT/
+  COMPANY write, which only affects the caller's own tenant, a PLATFORM
+  write silently changes the fallback every tenant on the platform inherits
+  the instant it commits — there is no staged rollout, canary, or
+  confirmation step. Acceptable at Foundation scale (no production
+  tenants); revisit before this endpoint is used against a populated
+  platform.

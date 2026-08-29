@@ -352,10 +352,20 @@ ADR-004 nada se ha construido contra él todavía.
   avance del workspace actualizado a pedido explícito del usuario: hitos
   próximos corregidos y Foundation recalculado de 53% a 78% (6 de 8 pasos
   de `docs/ARCHITECTURE.md` §17 completos, más trabajo adicional no
-  contemplado ahí). Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
-  sesión 16").
-- 217 tests unitarios pasando (api 193, api-client 8, erp-web 16) + 18 en
-  `@erp/events` + 1 en `@erp/worker` + 12 tests de integración con Postgres
+  contemplado ahí). En la misma sesión, segundo bloque: escritura de
+  settings a nivel PLATFORM (`ListPlatformSettingsUseCase`,
+  `PlatformSettingsController` — `GET .../definitions`, `GET
+  /api/v1/platform/settings`, `PUT /api/v1/platform/settings/:key`), cierra
+  el hueco ya documentado en Typed Configuration ("no PLATFORM-scope write
+  endpoint") ahora que el plano existe. `SetSettingValueUseCase` no cambió
+  — ya era domain-complete para PLATFORM, solo le faltaba un caller HTTP
+  seguro. **Verificado contra Postgres real que la propagación funciona de
+  punta a punta**: un tenant real sin override propio pasa de ver el
+  default de la definición a heredar el valor PLATFORM recién escrito, sin
+  tocar nada de su lado. ADR-007 enmendado con esta extensión. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 16").
+- 219 tests unitarios pasando (api 195, api-client 8, erp-web 16) + 18 en
+  `@erp/events` + 1 en `@erp/worker` + 13 tests de integración con Postgres
   real + **3 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
   Testcontainers, API y worker compilados reales, Vite real), incluyendo
@@ -422,19 +432,19 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (endpoint de
-escritura de settings a nivel PLATFORM, usando el plano de administración
-ya construido).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (vista de
+"mi actividad"/administración de plataforma para eventos no tenant-scoped).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: endpoint de escritura de settings a
-nivel PLATFORM (el plano de administración ya existe — ADR-007, solo falta
-el endpoint) → vista de "mi actividad"/administración para eventos no
-tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
-endpoint de lectura; ya no bloqueado por decisión de arquitectura) → inbox/
-idempotencia de consumidores (requerido antes de registrar cualquier
+Resumen bajo ownership único de Claude: vista de "mi actividad"/
+administración de plataforma para eventos no tenant-scoped
+(login/logout/cambios de status, hoy grabados pero sin endpoint de
+lectura; ya no bloqueado por decisión de arquitectura — puede construirse
+como `GET /api/v1/platform/audit-entries` detrás de `PlatformAdminGuard`,
+mismo patrón que `PlatformUsersController`/`PlatformSettingsController`) →
+inbox/idempotencia de consumidores (requerido antes de registrar cualquier
 handler del Event Bus con efecto secundario no idempotente, incluyendo
 conectar Notifications a `tenancy.tenant.provisioned.v1`) → purga real de
 storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
@@ -449,7 +459,8 @@ cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI
 de RBAC (incluida la invitación de miembros), el E2E de sesión y la UI de
 Configuración ya están hechas e integradas (ver Completed); la UI de Files
 (subida/listado/descarga), de Notifications (bandeja/badge de no leídas) y
-de Platform Administration (panel de admin en erp-web) todavía no se han
+de Platform Administration (panel de admin en erp-web, incluyendo la
+escritura de settings PLATFORM ya expuesta por API) todavía no se han
 construido.
 
 ## Production Status
@@ -589,3 +600,25 @@ sobre `audit_entries` confirma dos entradas `user.status_changed` con
 `user_id` = el id del admin (el actor real), no el del target, y sus
 `previousValues`/`newValues` correctos. Toda la data de prueba fue limpiada
 al terminar.
+
+Segundo bloque de la misma sesión (settings PLATFORM), sin migración nueva
+— reutiliza `setting_definitions`/`setting_values` ya existentes. Flujo
+HTTP completo repetido con el servidor real compilado: registro de un
+admin y un owner de tenant reales, provisioning real → `admin` sin flag
+rechazado con `403` en `GET /platform/settings/definitions` → flag
+otorgado vía `UPDATE` directo → catálogo real visible → efectivo del
+tenant real en `DEFAULT` antes de cualquier override → `PUT
+/platform/settings/localization.currency` con `EUR` real → `GET
+/platform/settings` confirma `EUR`/`PLATFORM` → **el mismo tenant real,
+sin que nadie tocara nada de su lado, ahora resuelve `EUR` en `GET
+/settings` en vez del `USD` de la definición** — la prueba real de que el
+fallback PLATFORM → tenant funciona de punta a punta contra infraestructura
+real, no solo en el test de integración → el owner del tenant (sin flag de
+plataforma) rechazado con `403` al intentar escribir en
+`/platform/settings` → clave inexistente rechazada con `404
+SETTING_NOT_FOUND` → valor de tipo incorrecto (`12345` contra una clave
+`STRING`) rechazado con `400 INVALID_SETTING_VALUE` → `SELECT` directo
+sobre `audit_entries` confirma la entrada real `configuration.platform_setting.changed`
+con el actor correcto y `previousValues`/`newValues` reales. Toda la data
+de prueba (incluida una notificación automática de provisioning, cuya FK
+había que borrar antes que el tenant) fue limpiada al terminar.

@@ -21,6 +21,7 @@ export {
   ListEffectiveSettingsUseCase,
   type ListEffectiveSettingsInput,
 } from "./application/use-cases/list-effective-settings.use-case";
+export { ListPlatformSettingsUseCase } from "./application/use-cases/list-platform-settings.use-case";
 export {
   SetSettingValueUseCase,
   type SetSettingValueInput,
@@ -42,3 +43,9 @@ export {
   CompanyNotFoundInTenantError,
 } from "./application/errors";
 export { ConfigurationModule } from "./configuration.module";
+export {
+  SettingDefinitionResponseDto,
+  EffectiveSettingResponseDto,
+  SettingValueResponseDto,
+  UserPreferenceResponseDto,
+} from "./presentation/dto/setting-response.dto";

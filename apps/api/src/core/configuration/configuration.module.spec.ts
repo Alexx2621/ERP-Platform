@@ -9,6 +9,7 @@ import { PreferencesController } from "./presentation/preferences.controller";
 import { GetEffectiveSettingUseCase } from "./application/use-cases/get-effective-setting.use-case";
 import { SetSettingValueUseCase } from "./application/use-cases/set-setting-value.use-case";
 import { SetUserPreferenceUseCase } from "./application/use-cases/set-user-preference.use-case";
+import { ListPlatformSettingsUseCase } from "./application/use-cases/list-platform-settings.use-case";
 
 // ConfigurationModule imports AuthModule + TenantsModule (for their guards)
 // and AccessControlModule (for PermissionGuard) — same StubInfraModule
@@ -48,6 +49,7 @@ describe("ConfigurationModule wiring", () => {
     expect(moduleRef.get(GetEffectiveSettingUseCase)).toBeInstanceOf(GetEffectiveSettingUseCase);
     expect(moduleRef.get(SetSettingValueUseCase)).toBeInstanceOf(SetSettingValueUseCase);
     expect(moduleRef.get(SetUserPreferenceUseCase)).toBeInstanceOf(SetUserPreferenceUseCase);
+    expect(moduleRef.get(ListPlatformSettingsUseCase)).toBeInstanceOf(ListPlatformSettingsUseCase);
     expect(moduleRef.get(SettingsController)).toBeInstanceOf(SettingsController);
     expect(moduleRef.get(PreferencesController)).toBeInstanceOf(PreferencesController);
 

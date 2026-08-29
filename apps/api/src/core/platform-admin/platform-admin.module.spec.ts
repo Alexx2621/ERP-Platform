@@ -4,8 +4,10 @@ import { Test } from "@nestjs/testing";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { RedisService } from "../../shared/redis/redis.service";
 import { ListUsersUseCase, SetUserStatusUseCase } from "../users";
+import { ListPlatformSettingsUseCase, SetSettingValueUseCase } from "../configuration";
 import { PlatformAdminGuard } from "./presentation/platform-admin.guard";
 import { PlatformUsersController } from "./presentation/platform-users.controller";
+import { PlatformSettingsController } from "./presentation/platform-settings.controller";
 import { PlatformAdminModule } from "./platform-admin.module";
 
 // Same pattern as tenants.module.spec.ts: PlatformAdminModule imports
@@ -46,6 +48,9 @@ describe("PlatformAdminModule wiring", () => {
     expect(moduleRef.get(PlatformUsersController)).toBeInstanceOf(PlatformUsersController);
     expect(moduleRef.get(ListUsersUseCase)).toBeInstanceOf(ListUsersUseCase);
     expect(moduleRef.get(SetUserStatusUseCase)).toBeInstanceOf(SetUserStatusUseCase);
+    expect(moduleRef.get(PlatformSettingsController)).toBeInstanceOf(PlatformSettingsController);
+    expect(moduleRef.get(ListPlatformSettingsUseCase)).toBeInstanceOf(ListPlatformSettingsUseCase);
+    expect(moduleRef.get(SetSettingValueUseCase)).toBeInstanceOf(SetSettingValueUseCase);
 
     await moduleRef.close();
   });

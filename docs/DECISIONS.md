@@ -400,3 +400,23 @@ need yet (MASTER_SPEC §59/§93).
   tenant-scoped (`docs/MULTITENANCY.md` §9) — forcing a cross-tenant concept
   through a tenant-scoped system would be a structural misuse, not a reuse,
   of that module.
+
+**Amendment (2026-08-29) — PLATFORM-scoped settings writes**
+
+The second capability point 5 called out as deliberately deferred —
+`PLATFORM`-scoped settings writes — is now built:
+`GET /api/v1/platform/settings/definitions`,
+`GET /api/v1/platform/settings`, and
+`PUT /api/v1/platform/settings/:key`, all behind the same
+`SessionAuthGuard` + `PlatformAdminGuard` pair as `PlatformUsersController`.
+No new decision was needed here — `SetSettingValueUseCase` was already
+domain-complete for `PLATFORM` since Typed Configuration was first built
+(see that module's own docstrings), waiting only for a safe caller. This
+confirms the pattern point 4 predicted: "every future platform-admin
+capability follows the same two-step pattern" — a new `ListPlatformSettingsUseCase`
+(reusing `GetEffectiveSettingUseCase` with no tenant context, so its
+fallback chain only ever reaches `PLATFORM -> DEFAULT`) plus a new
+controller under the existing guard, nothing else. Verified end-to-end
+against real Postgres: a `PLATFORM` write is confirmed to become the
+effective value for a real tenant with no TENANT/COMPANY override of its
+own, not just readable back from the PLATFORM row itself.
