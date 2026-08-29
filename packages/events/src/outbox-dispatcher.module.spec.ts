@@ -5,6 +5,7 @@ import { OutboxDispatcherModule } from "./outbox-dispatcher.module";
 import { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
 import { DomainEventBus } from "./application/domain-event-bus";
 import { DispatchOutboxBatchUseCase } from "./application/use-cases/dispatch-outbox-batch.use-case";
+import { INBOX_MESSAGE_REPOSITORY } from "./domain/inbox-message.repository";
 
 @Global()
 @Module({
@@ -29,6 +30,7 @@ describe("OutboxDispatcherModule wiring", () => {
 
     expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
     expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
+    expect(moduleRef.get(INBOX_MESSAGE_REPOSITORY)).toBeDefined();
 
     await moduleRef.close();
   });

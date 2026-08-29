@@ -340,16 +340,12 @@ claims/publishes/marks outbox rows. See ADR-004's amendment
   (outbox, claim/lock/retry/dead-letter, in-process bus) is built and
   tested end-to-end regardless, so the next producer is a small, well-worn
   addition, not new infrastructure.
-- **No cross-process *consumer*, and therefore still no `inbox_messages`
-  table**, even though the dispatcher itself is now a separate process from
-  the API. `DomainEventBus`'s delivery to a registered handler is still
-  purely in-process *within `apps/worker`* — the dispatcher claims a row and
-  calls registered handlers synchronously, in that one process, before
-  marking the outcome. There is still no BullMQ/re-delivery path that could
-  hand the same message to two different consumer processes, so there is
-  still no present need for per-consumer idempotency tracking. This must be
-  added before any handler with a non-idempotent side effect is registered
-  — see `docs/DATABASE.md` "Event Bus / transactional outbox table".
+- ~~No cross-process *consumer*, and therefore still no `inbox_messages`
+  table...~~ — the mechanism itself is built (2026-08-29, ADR-008,
+  `inbox_messages` + `consumeIdempotently`). See "Inbox / Consumer
+  Idempotency" below. Still no real business handler registered yet — no
+  producer/consumer pair actually needs this table in production today,
+  only the tests exercise it.
 - **`apps/worker`'s `/health` endpoint is liveness-only**, not a readiness
   check against Postgres — it confirms the Nest process is up, not that the
   dispatcher is successfully reaching the database. A DB outage surfaces in
@@ -471,7 +467,7 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
 | Any authenticated user spams or phishes another user via a public "create notification" endpoint | There is no `POST /api/v1/notifications`. `RequestNotificationUseCase` is only reachable as a direct application call from another module's own code (today: `TenantsController.provision()`) — never as a public request handler, so no caller-supplied recipient/content ever reaches it without that module's own logic deciding what to send and to whom. |
 | A user reads another user's notifications by tenant membership alone | `ListNotificationsUseCase`/`MarkNotificationReadUseCase` always filter by `recipientUserId = ctx.actor.userId` in addition to `tenantId` — there is no way to pass an arbitrary recipient from the HTTP layer (`NotificationsController` never accepts one), so a caller can only ever see their own notifications, not a co-worker's. Verified against real Postgres in this session's manual smoke test: a second real tenant's user only ever saw their own provisioning notification. |
 | A user marks another user's (or another tenant's) notification as read, or discovers whether it exists, via `PUT /:id/read` | `MarkNotificationReadUseCase` loads the notification first and requires both `tenantId` and `recipientUserId` to match before touching anything — a mismatch on either and a genuinely missing id both surface as the identical `404 NOTIFICATION_NOT_FOUND` (same IDOR-resistant shape as `GetFileDownloadUrlUseCase`). Verified against real Postgres: a second real tenant received `404` attempting to mark the first tenant's real notification read. |
-| A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications | Not built this way on purpose: `TenantsController.provision()` calls `RequestNotificationUseCase` as a direct, synchronous application call, not as a `DomainEventBus` subscriber to `tenancy.tenant.provisioned.v1` — ADR-004 point 5 requires an inbox/idempotency table (not built yet, see `docs/WORK_QUEUE.md`) before any Event Bus handler with this kind of side effect is registered. Revisit once that inbox exists. |
+| A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications | Not built this way on purpose: `TenantsController.provision()` calls `RequestNotificationUseCase` as a direct, synchronous application call, not as a `DomainEventBus` subscriber to `tenancy.tenant.provisioned.v1`. The inbox mechanism ADR-004 point 5 required now exists (2026-08-29, ADR-008) — connecting Notifications to the bus is unblocked, but not yet done, since it also requires extracting the module to a shared package `apps/worker` can import (see ADR-008's "Deferred" section). |
 | Sensitive data (passwords, tokens, full entities) ends up in `data` and later gets logged or exposed | `RequestNotificationUseCase` does not enforce a payload schema for `data` — this is an application-layer discipline each caller must follow, not something the infrastructure verifies structurally. The one producer built so far (tenant provisioning) only includes the tenant's id and slug — no credentials. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
@@ -492,8 +488,10 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
 - **Not wired to the Event Bus.** Despite `tenancy.tenant.provisioned.v1`
   already existing as a real integration event, the tenant-provisioned
   notification is requested via a direct call from `TenantsController`, not
-  a `DomainEventBus` subscriber — see the Event Bus row above and
-  `docs/WORK_QUEUE.md`'s inbox/idempotency backlog item for why.
+  a `DomainEventBus` subscriber. The inbox that ADR-004 point 5 required
+  before this could happen now exists (ADR-008) — the remaining blocker is
+  extracting Notifications into a package `apps/worker` can import, a
+  separate backlog item (`docs/WORK_QUEUE.md`).
 - **No delivery retry.** A `FAILED` delivery (today: any non-`IN_APP`
   channel) stays `FAILED` permanently — there is no retry/backoff like the
   outbox's, since V1 dispatch is synchronous and there is nothing async to
@@ -657,3 +655,58 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
   chronological list with no `action`/date-range filter — same accepted
   tradeoff as `ListAuditEntriesUseCase`, revisit once real volume needs
   cursor-based paging or filtering.
+
+## Inbox / Consumer Idempotency (2026-08-29)
+
+Scope: `InboxMessage`, `InboxMessageRepository`, `consumeIdempotently`
+(`packages/events`) — implements `docs/EVENTS.md` §9, the mechanism
+ADR-004 point 5 required before any `DomainEventBus` handler with a
+non-idempotent side effect could be registered. Full design rationale in
+`docs/DECISIONS.md` ADR-008. No real business handler uses it yet — see
+ADR-008's "Deferred" section.
+
+### Assets
+
+- The claim itself (`(consumer_name, message_id)` in `inbox_messages`) —
+  the only thing standing between an at-least-once outbox redelivery and a
+  duplicated side effect (a second welcome email, a second charge, etc.,
+  once real consumers exist).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| The same event delivered twice (outbox retry, or a manual redelivery) causes a consumer's effect to run twice | `consumeIdempotently` claims `(consumerName, messageId)` via `tryClaim` before running the effect at all; a second delivery within the lease window returns `"duplicate"` without invoking the effect. Verified against real Postgres (integration suite) that a real outbox-driven publish followed by a manually replayed publish of the exact same event produces exactly one consumer-side effect. |
+| Two consumer instances (e.g. two `apps/worker` replicas) race to claim the same message | `PrismaInboxMessageRepository.tryClaim` locks an existing row with `SELECT ... FOR UPDATE` inside a transaction, and relies on the `(consumer_name, message_id)` unique constraint to arbitrate a brand-new row between concurrent first-time claimants — verified against real Postgres with genuinely concurrent claimants (`Promise.all`), confirming exactly one caller ever wins for a shared message id. |
+| A handler that fails is silently dropped forever (message never retried) | Failure never marks the row `PROCESSED` — it stays `PROCESSING` with `attempt_count`/`last_error_code` updated, so once its lease expires it becomes reclaimable again, same recovery path already proven for the outbox's own crashed-dispatcher case. Verified: an immediate retry within the lease window is still a `"duplicate"` (correctly refuses to hammer a failing effect), and a retry after the lease expires is `"processed"`. |
+| A consumer's failing effect throws and aborts delivery to *other* handlers subscribed to the same event | `consumeIdempotently` catches the effect's exception itself and returns `"failed"` rather than letting it propagate — `DomainEventBus.publish` runs handlers sequentially and stops at the first throw, so this is what keeps one consumer's bug from silently starving every handler registered after it. |
+| A `messageId` claimed by one consumer blocks a different consumer from processing the same event | The claim key is `(consumer_name, message_id)`, not `message_id` alone — verified that two different `consumerName` values processing the same message id are fully independent claims, matching `docs/EVENTS.md` §12 ("el consumer es dueño de su ... inbox"). |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Claim and effect are not in one shared database transaction**, despite
+  `docs/EVENTS.md` §9's literal wording suggesting they should be. See
+  ADR-008 point 2 and its "Consequences" for the full reasoning: doing so
+  would require every existing use case to accept an externally supplied
+  Prisma transaction client instead of DI-injecting its own repositories, a
+  much larger change than the inbox mechanism itself. This leaves a narrow
+  crash window (claimed but not yet marked processed) where the message is
+  stuck until its lease expires — not lost, not duplicated under normal
+  operation, but not a formal two-phase-commit guarantee either.
+- **No dead-letter/terminal `FAILED` state.** A handler that fails
+  indefinitely just keeps getting reclaimed and retried forever once its
+  lease expires each time — there is no attempt cap or alerting at the
+  inbox level (unlike the outbox's own `maxAttempts` dead-letter). Deferred
+  until a real failing consumer in production shows this is needed — see
+  ADR-008's "Alternatives considered".
+- **No real business handler connected yet.** This entire mechanism is
+  currently exercised only by its own unit/integration tests — no
+  production code path invokes `consumeIdempotently` today. Connecting
+  Notifications to `tenancy.tenant.provisioned.v1` remains a separate,
+  not-yet-done backlog item (`docs/WORK_QUEUE.md`) that additionally
+  requires extracting Notifications into a package `apps/worker` can
+  import.
+- **No observability/metrics** on inbox claim rate, duplicate rate, or
+  stuck (long-`PROCESSING`) rows — `docs/EVENTS.md` §15 calls these out as
+  eventual requirements; not built ahead of a real consumer that would
+  produce meaningful values for them.

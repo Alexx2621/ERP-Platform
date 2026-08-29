@@ -14,10 +14,9 @@ export type DomainEventHandler = (event: IntegrationEventEnvelope) => Promise<vo
  * Delivery itself is still purely in-process within the worker: there is no
  * cross-process fan-out (no BullMQ). A handler that throws causes the
  * dispatcher to retry the whole outbox row later (see
- * OutboxMessage.markFailed), so handlers registered here must be safe to
- * run more than once — there is no per-consumer inbox/idempotency table yet
- * (deliberately deferred until a real cross-process consumer needs it — see
- * docs/SECURITY.md "Event Bus").
+ * OutboxMessage.markFailed), so any handler with a non-idempotent side
+ * effect must wrap it in `consumeIdempotently` (docs/EVENTS.md §9) rather
+ * than assume at-most-once delivery.
  */
 @Injectable()
 export class DomainEventBus {

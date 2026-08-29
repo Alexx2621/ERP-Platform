@@ -115,6 +115,7 @@ model Tenant {
   outboxMessages  OutboxMessage[]
   fileObjects     FileObject[]
   notifications   Notification[]
+  inboxMessages   InboxMessage[]
 
   @@map("tenants")
 }
@@ -439,6 +440,40 @@ model OutboxMessage {
   @@index([status, availableAt])
   @@index([tenantId])
   @@map("outbox_messages")
+}
+
+/**
+ * Consumer-side idempotency ledger (docs/EVENTS.md §9). One row per
+ * (consumerName, messageId) pair — messageId is the outbox message's own id
+ * (its eventId), so this is keyed on "which consumer has seen which event",
+ * not on the event's own identity. Deliberately only two states, no
+ * separate FAILED: a failed effect simply leaves the row in PROCESSING with
+ * its lease intact, so it becomes reclaimable again once that lease
+ * expires — the same recovery mechanism already used for crashed
+ * dispatchers, not a second mechanism to reason about.
+ */
+model InboxMessage {
+  id            String             @id @db.Uuid
+  consumerName  String             @map("consumer_name") @db.VarChar(100)
+  messageId     String             @map("message_id") @db.Uuid
+  tenantId      String?            @map("tenant_id") @db.Uuid
+  status        InboxMessageStatus @default(PROCESSING)
+  attemptCount  Int                @default(0) @map("attempt_count")
+  lastErrorCode String?            @map("last_error_code") @db.VarChar(150)
+  lockedAt      DateTime           @map("locked_at") @db.Timestamptz(6)
+  processedAt   DateTime?          @map("processed_at") @db.Timestamptz(6)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([consumerName, messageId])
+  @@index([status, lockedAt])
+  @@map("inbox_messages")
+}
+
+enum InboxMessageStatus {
+  PROCESSING
+  PROCESSED
 }
 
 enum FileObjectStatus {

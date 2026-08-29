@@ -49,6 +49,9 @@ import {
   DomainEventBus,
   DispatchOutboxBatchUseCase,
   appendOutboxMessage,
+  PrismaInboxMessageRepository,
+  consumeIdempotently,
+  OutboxMessage,
 } from "@erp/events";
 import { PrismaFileObjectRepository } from "../../src/core/files/infrastructure/prisma-file-object.repository";
 import { UploadFileUseCase } from "../../src/core/files/application/use-cases/upload-file.use-case";
@@ -1019,5 +1022,155 @@ describe("Prisma repositories against PostgreSQL", () => {
         tenantId: tenantA.id,
       }),
     ).resolves.toMatchObject({ value: "EUR", source: "PLATFORM" });
+  });
+
+  it("claims each (consumerName, messageId) pair exactly once under real concurrent claimants", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const inbox = new PrismaInboxMessageRepository(prisma as unknown as PrismaClient);
+    const now = new Date();
+
+    const [claimA, claimB] = await Promise.all([
+      inbox.tryClaim({
+        consumerName: "integration-inbox-consumer",
+        messageId: newId(),
+        tenantId: null,
+        now,
+        leaseSeconds: 300,
+      }),
+      inbox.tryClaim({
+        consumerName: "integration-inbox-consumer",
+        messageId: newId(),
+        tenantId: null,
+        now,
+        leaseSeconds: 300,
+      }),
+    ]);
+    // Different message ids: both are genuinely new, both must succeed.
+    expect([claimA, claimB]).toEqual([true, true]);
+
+    const sharedMessageId = newId();
+    const [sharedA, sharedB] = await Promise.all([
+      inbox.tryClaim({
+        consumerName: "integration-inbox-consumer",
+        messageId: sharedMessageId,
+        tenantId: null,
+        now,
+        leaseSeconds: 300,
+      }),
+      inbox.tryClaim({
+        consumerName: "integration-inbox-consumer",
+        messageId: sharedMessageId,
+        tenantId: null,
+        now,
+        leaseSeconds: 300,
+      }),
+    ]);
+    // Same message id claimed concurrently: exactly one caller must win.
+    expect([sharedA, sharedB].filter(Boolean)).toHaveLength(1);
+  });
+
+  it("recovers an inbox message whose PROCESSING lease expired, without a separate worker crashing", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const inbox = new PrismaInboxMessageRepository(prisma as unknown as PrismaClient);
+    const messageId = newId();
+    const staleClaimTime = new Date(Date.now() - 120_000);
+
+    await inbox.tryClaim({
+      consumerName: "integration-inbox-consumer",
+      messageId,
+      tenantId: null,
+      now: staleClaimTime,
+      leaseSeconds: 300,
+    });
+
+    const tooSoon = await inbox.tryClaim({
+      consumerName: "integration-inbox-consumer",
+      messageId,
+      tenantId: null,
+      now: new Date(),
+      leaseSeconds: 300, // lease still valid at this length
+    });
+    expect(tooSoon).toBe(false);
+
+    const recovered = await inbox.tryClaim({
+      consumerName: "integration-inbox-consumer",
+      messageId,
+      tenantId: null,
+      now: new Date(),
+      leaseSeconds: 60, // shorter than the 120s-old lock — now claimable
+    });
+    expect(recovered).toBe(true);
+  });
+
+  it("delivers tenancy.tenant.provisioned.v1 end-to-end through the real outbox and produces exactly one consumer effect despite a redelivery", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const provisioning = new PrismaTenantProvisioningRepository(prisma);
+    const provisionTenant = new ProvisionTenantUseCase(tenants, provisioning, users);
+    const outbox = new PrismaOutboxMessageRepository(prisma as unknown as PrismaClient);
+    const inbox = new PrismaInboxMessageRepository(prisma as unknown as PrismaClient);
+    const bus = new DomainEventBus();
+    const dispatch = new DispatchOutboxBatchUseCase(outbox, bus);
+    const now = new Date("2026-08-29T21:00:00.000Z");
+
+    const owner = createUser(now, "inbox-owner@example.com");
+    await users.save(owner);
+
+    const consumerEffect = jest.fn().mockResolvedValue(undefined);
+    bus.subscribe("tenancy.tenant.provisioned.v1", async (event) => {
+      await consumeIdempotently(
+        inbox,
+        { consumerName: "integration-notifications", messageId: event.eventId, tenantId: event.tenantId, now: new Date() },
+        () => consumerEffect(event.eventId),
+      );
+    });
+
+    await provisionTenant.execute({
+      slug: "inbox-tenant",
+      name: "Inbox Tenant",
+      ownerUserId: owner.id,
+      organization: { code: "HQ", name: "HQ Org" },
+      correlationId: "integration-inbox-correlation-1",
+    });
+
+    const dispatchResult = await dispatch.execute({ workerId: "integration-inbox-worker" });
+    expect(dispatchResult).toEqual({ claimed: 1, published: 1, failed: 0 });
+    expect(consumerEffect).toHaveBeenCalledTimes(1);
+
+    // Simulate a redelivery of the exact same event (the outbox's own
+    // at-least-once guarantee, e.g. a retry after a transport hiccup) — the
+    // consumer must not produce a second effect.
+    const publishedRow = await prisma.outboxMessage.findFirstOrThrow({
+      where: { eventType: "tenancy.tenant.provisioned.v1", correlationId: "integration-inbox-correlation-1" },
+    });
+    await bus.publish(
+      OutboxMessage.create({
+        id: publishedRow.id,
+        tenantId: publishedRow.tenantId,
+        companyId: publishedRow.companyId,
+        eventType: publishedRow.eventType,
+        eventVersion: publishedRow.eventVersion,
+        aggregateType: publishedRow.aggregateType,
+        aggregateId: publishedRow.aggregateId,
+        aggregateVersion: publishedRow.aggregateVersion,
+        payload: publishedRow.payload,
+        occurredAt: publishedRow.occurredAt,
+        availableAt: publishedRow.availableAt,
+        status: publishedRow.status,
+        attemptCount: publishedRow.attemptCount,
+        lastErrorCode: publishedRow.lastErrorCode,
+        lockedAt: publishedRow.lockedAt,
+        lockedBy: publishedRow.lockedBy,
+        publishedAt: publishedRow.publishedAt,
+        correlationId: publishedRow.correlationId,
+        causationId: publishedRow.causationId,
+        actorType: publishedRow.actorType as "USER" | "SYSTEM" | null,
+        actorId: publishedRow.actorId,
+        createdAt: publishedRow.createdAt,
+      }).toEnvelope(),
+    );
+
+    expect(consumerEffect).toHaveBeenCalledTimes(1);
   });
 });

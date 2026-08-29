@@ -6,10 +6,11 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 16,
-plano de administración de plataforma completo — ADR-007: `isPlatformAdmin`/
-`PlatformAdminGuard`, gestión de usuarios, escritura de settings PLATFORM y
-vista de auditoría de plataforma). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 17,
+inbox/idempotencia de consumidores — ADR-008: `InboxMessage`,
+`consumeIdempotently`, verificado contra Postgres real incluyendo reclamo
+concurrente y recuperación de lease). Modelo operativo actualizado:
+2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,13 +23,13 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
-   deliberadamente no construido junto con el Event Bus porque hoy no existe
-   ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
-   Requerido antes de registrar cualquier `DomainEventBus` handler con un
-   efecto secundario no idempotente — incluyendo conectar Notifications al
-   Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
-   `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
+1. **Conectar Notifications al Event Bus** — el inbox que ADR-004 punto 5
+   exigía antes de esto ya existe (ADR-008), pero conectar `Notifications`
+   requiere primero extraer al menos `RequestNotificationUseCase` y sus
+   dependencias a un paquete compartido que `apps/worker` pueda importar
+   (mismo patrón que la extracción de `packages/events` en la sesión 13) —
+   ningún módulo de negocio vive hoy fuera de `apps/api`. Ver ADR-008
+   "Deferred".
 2. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
@@ -51,6 +52,71 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
    de `PlatformAdminGuard`, pero no hay ninguna pantalla que lo consuma
    todavía. No bloqueado, deliberadamente no construido junto con cada
    endpoint individual para revisar el conjunto completo de una vez.
+
+### Hecho — sesión 17 (Inbox / idempotencia de consumidores — ADR-008)
+
+- **ADR-008** (`docs/DECISIONS.md`): documenta el mecanismo de inbox que
+  ADR-004 punto 5 dejó deliberadamente diferido — se construye ahora,
+  antes del primer handler de negocio real, porque el diseño ya está
+  completamente especificado en `docs/EVENTS.md` §9 y el patrón de
+  claim/lease del outbox (ADR-004) es una plantilla ya probada para
+  replicar. Decisión clave: dos estados únicamente (`PROCESSING`/
+  `PROCESSED`, sin `FAILED` separado — un fallo simplemente deja la fila
+  reclamable tras vencer su lease, mismo mecanismo de recuperación ya
+  usado por el outbox) y reclamo atómico (`tryClaim`) en vez de una
+  transacción compartida literal entre el chequeo de inbox y el efecto del
+  consumidor (que habría exigido rediseñar cómo cada caso de uso existente
+  recibe su cliente Prisma — cambio de alcance mucho mayor que el propio
+  mecanismo de inbox).
+- **`packages/events/`**: `InboxMessage` (entidad de dominio simple, sin
+  lógica de transición compleja — el claim/lease vive en el repositorio,
+  igual que `OutboxMessage.claimBatch`), `InboxMessageRepository`
+  (`tryClaim`/`markProcessed`/`markFailed`), `PrismaInboxMessageRepository`
+  (usa `SELECT ... FOR UPDATE` dentro de una transacción para una fila
+  existente, y captura la violación de unicidad `P2002` para el caso de
+  dos reclamos concurrentes de una fila nueva), `consumeIdempotently`
+  (helper de aplicación: claim → ejecutar efecto → marcar procesado/fallido,
+  nunca deja que la excepción del efecto se propague de vuelta a
+  `DomainEventBus.publish`). `OutboxDispatcherModule` ahora también expone
+  `INBOX_MESSAGE_REPOSITORY`, junto a `DomainEventBus`, para que un futuro
+  handler registrado en `apps/worker` pueda inyectar ambos sin wiring
+  adicional.
+- Tabla nueva (migración `20260829224906_inbox_idempotency`, generada y
+  **aplicada directamente contra Postgres real** vía `prisma migrate dev`):
+  `inbox_messages`, con `@@unique([consumerName, messageId])` como
+  frontera real de corrección (rechazada por Postgres, no solo filtrada
+  por aplicación) y el mismo patrón de FK opcional a `tenants` ya usado por
+  `outbox_messages`.
+- Tests: 9 nuevos en `@erp/events` (3 de la entidad, 6 de
+  `consumeIdempotently` cubriendo exactamente los contratos de
+  `docs/EVENTS.md` §16: primera entrega, redelivery duplicada, dos
+  reclamantes concurrentes, fallo sin lanzar + no reintento inmediato,
+  recuperación tras vencer el lease, consumidores independientes para el
+  mismo `messageId`) — 27 tests totales en `@erp/events` (antes 18). Suite
+  de integración de `apps/api` ampliada con 3 escenarios reales contra
+  Postgres: reclamo concurrente real (`Promise.all`, exactamente un
+  ganador para el mismo par), recuperación de lease vencido real, y un
+  escenario de punta a punta que provisiona un tenant real, despacha el
+  outbox real, y confirma que una redelivery manual del mismo evento
+  produce exactamente un efecto de consumidor — 16/16 en total (antes 13).
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección de la tabla
+  `inbox_messages`, corregido el párrafo que decía "no hay inbox_messages
+  todavía"), `docs/SECURITY.md` (nueva sección "Inbox / Consumer
+  Idempotency" con modelo de amenazas y huecos conocidos; cerrado el hueco
+  ya documentado en "Event Bus"; corregidas las referencias en
+  "Notifications" para reflejar que el mecanismo ya existe aunque
+  Notifications siga sin conectarse).
+- Deliberadamente **no** incluido en este bloque: conectar Notifications de
+  verdad al Event Bus — requiere extraer el módulo a un paquete compartido,
+  alcance propio (ver ítem 1 de "Próximo" y ADR-008 "Deferred").
+- Validación completa: `pnpm lint`/`typecheck` limpios, `pnpm test`
+  (198/198 `apps/api`, 27/27 `@erp/events`), `pnpm build` (7 paquetes/apps),
+  `pnpm --filter @erp/api test:integration` (16/16 contra Postgres real),
+  `pnpm --filter @erp/e2e test:e2e` (3/3 Playwright) — todo verde. Migración
+  también verificada manualmente contra la base de desarrollo de Docker
+  Compose (no solo el Testcontainers efímero): `\d inbox_messages` confirma
+  la estructura esperada, y un insert/delete manual confirma que la tabla
+  acepta escrituras reales.
 
 ### Hecho — sesión 16 (Platform Administration plane — ADR-007)
 
@@ -1088,9 +1154,11 @@ Playwright).
   tenant-scoped depende de un plano de administración de plataforma...~~ —
   cerrado en la sesión 16 (tercer bloque): `GET /api/v1/platform/audit-entries`
   ya existe. Ver "Hecho — sesión 16" (tercer bloque).
-- Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 1 de la cola Claude, ver
-  ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
+- ~~Un `DomainEventBus` handler con efecto secundario no idempotente depende
+  de construir primero `inbox_messages`...~~ — cerrado en la sesión 17
+  (ADR-008). Conectar Notifications (ítem 1 de la cola Claude) ahora
+  depende únicamente de extraer el módulo a un paquete compartido, no de
+  ninguna decisión de arquitectura pendiente.
 - Una purga real de storage para archivos borrados (ítem 2 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
@@ -1120,7 +1188,10 @@ Architecture — implementado y ratificado en sesión 10, enmendado en sesión
 13 para reflejar la extracción del dispatcher a `apps/worker`); ADR-007
 (Platform Administration Plane — implementado y ratificado en sesión 16,
 `isPlatformAdmin` + `PlatformAdminGuard`, enfoque elegido explícitamente por
-el usuario entre tres alternativas presentadas). Pendientes de numerar
+el usuario entre tres alternativas presentadas); ADR-008 (Consumer-Side
+Idempotency / Inbox — implementado y ratificado en sesión 17, mecanismo
+completo verificado contra Postgres real; conectar un consumidor de
+negocio real queda como backlog separado). Pendientes de numerar
 formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
 `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres

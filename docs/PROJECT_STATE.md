@@ -1,13 +1,14 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 16), tras completar el plano de
-administración de plataforma (ADR-007) en tres bloques: flag
-`isPlatformAdmin` en `User` + `PlatformAdminGuard` + gestión de usuarios
-(listar/activar-desactivar), escritura de settings a nivel PLATFORM, y una
-vista de auditoría cross-tenant para eventos sin tenant (login, logout,
-cambios de status). Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
-(reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como
-historial).
+Última actualización: 2026-08-29 (sesión 17), tras implementar el
+mecanismo de inbox/idempotencia de consumidores (ADR-008) que ADR-004
+punto 5 dejaba pendiente desde que se construyó el Event Bus: tabla
+`inbox_messages`, `consumeIdempotently`, verificado contra Postgres real
+incluyendo reclamo concurrente, recuperación de lease, y un escenario de
+punta a punta con el outbox real donde una redelivery manual produce
+exactamente un efecto de consumidor. Modelo de trabajo vigente:
+`docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
+que quedan como historial).
 
 ## Development Ownership
 
@@ -376,8 +377,31 @@ ADR-004 nada se ha construido contra él todavía.
   settings PLATFORM, gracias a su acción de auditoría distinta
   `configuration.platform_setting.changed`). ADR-007 enmendado de nuevo.
   Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 16").
-- 222 tests unitarios pasando (api 198, api-client 8, erp-web 16) + 18 en
-  `@erp/events` + 1 en `@erp/worker` + 13 tests de integración con Postgres
+- **Inbox / idempotencia de consumidores** (`packages/events`, Claude,
+  sesión 17, ADR-008): el mecanismo que ADR-004 punto 5 dejaba
+  deliberadamente diferido desde que se construyó el Event Bus (sesión
+  10). `InboxMessage`/`InboxMessageRepository` (`tryClaim`/
+  `markProcessed`/`markFailed`) y `consumeIdempotently` (helper de
+  aplicación: claim → efecto → marcar, nunca deja que la excepción del
+  efecto llegue a `DomainEventBus.publish`). Decisión clave: solo dos
+  estados (`PROCESSING`/`PROCESSED`, sin `FAILED` separado — un fallo deja
+  la fila reclamable tras vencer su lease, mismo mecanismo ya usado por el
+  outbox) y reclamo atómico vía `SELECT ... FOR UPDATE` + captura de
+  `P2002`, en vez de la transacción compartida literal que
+  `docs/EVENTS.md` §9 sugiere (habría exigido rediseñar cómo cada caso de
+  uso existente recibe su cliente Prisma). **Verificado contra Postgres
+  real**: reclamo concurrente real (`Promise.all`, exactamente un ganador),
+  recuperación de lease vencido real, y un escenario de punta a punta que
+  provisiona un tenant real, despacha el outbox real, y confirma que
+  redisparar manualmente el mismo evento produce exactamente un efecto de
+  consumidor, no dos. Tabla nueva (migración `20260829224906_inbox_idempotency`,
+  **generada y aplicada directamente contra Postgres real**).
+  Deliberadamente **no** incluido: conectar un consumidor de negocio real
+  (Notifications) — requiere primero extraer el módulo a un paquete
+  compartido que `apps/worker` pueda importar, backlog separado. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 17").
+- 231 tests unitarios pasando (api 198, api-client 8, erp-web 16) + 27 en
+  `@erp/events` + 1 en `@erp/worker` + 16 tests de integración con Postgres
   real + **3 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
   Testcontainers, API y worker compilados reales, Vite real), incluyendo
@@ -444,32 +468,32 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (inbox/
-idempotencia de consumidores).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (conectar
+Notifications al Event Bus, lo que primero requiere extraer el módulo a un
+paquete compartido).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: inbox/idempotencia de consumidores
-(requerido antes de registrar cualquier handler del Event Bus con efecto
-secundario no idempotente, incluyendo conectar Notifications a
-`tenancy.tenant.provisioned.v1`) → purga real de storage para archivos
-borrados (`DeleteFileUseCase` hoy solo hace soft-delete de metadata) →
-adapter real de Email para Notifications (proveedor SMTP/transaccional no
-decidido) → `@erp/api-client` generado desde el spec OpenAPI
-(`/api/docs-json` ya existe; herramienta de generación todavía no
+Resumen bajo ownership único de Claude: extraer Notifications a un paquete
+compartido y conectarlo al Event Bus vía `tenancy.tenant.provisioned.v1`
+(el inbox que esto requería ya existe — ADR-008) → purga real de storage
+para archivos borrados (`DeleteFileUseCase` hoy solo hace soft-delete de
+metadata) → adapter real de Email para Notifications (proveedor
+SMTP/transaccional no decidido) → `@erp/api-client` generado desde el spec
+OpenAPI (`/api/docs-json` ya existe; herramienta de generación todavía no
 decidida) → expirar/revocar invitaciones pendientes (`Membership.revoke()`
 ya existe en el dominio, sin TTL ni endpoint todavía) → UI de
 administración de plataforma en erp-web (el backend completo — usuarios,
 settings PLATFORM, auditoría de plataforma — ya existe, falta la pantalla).
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
-(ADR-004, ADR-006 y ADR-007 ya están ratificados). Claude debe completar
-cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI
-de RBAC (incluida la invitación de miembros), el E2E de sesión y la UI de
-Configuración ya están hechas e integradas (ver Completed); la UI de Files
-(subida/listado/descarga), de Notifications (bandeja/badge de no leídas) y
-de Platform Administration (panel de admin en erp-web) todavía no se han
-construido.
+(ADR-004, ADR-006, ADR-007 y ADR-008 ya están ratificados). Claude debe
+completar cualquier UI, SDK y cobertura de pruebas que estos bloques
+necesiten. La UI de RBAC (incluida la invitación de miembros), el E2E de
+sesión y la UI de Configuración ya están hechas e integradas (ver
+Completed); la UI de Files (subida/listado/descarga), de Notifications
+(bandeja/badge de no leídas) y de Platform Administration (panel de admin
+en erp-web) todavía no se han construido.
 
 ## Production Status
 
@@ -643,3 +667,21 @@ reales de sesiones/E2E anteriores) y **ninguna entrada del provisioning
 del tenant real recién creado**, confirmando en runtime que el filtro
 estructural `WHERE tenant_id IS NULL` funciona exactamente como se diseñó.
 Toda la data de prueba fue limpiada al terminar.
+
+**Sesión 17 (2026-08-29, Inbox / idempotencia de consumidores)**: décima
+migración (`20260829224906_inbox_idempotency`) generada directamente
+contra esta misma base real vía `prisma migrate dev` — agrega
+`inbox_messages` con `@@unique([consumerName, messageId])`. Verificado con
+`\d inbox_messages` contra el contenedor real de Docker Compose que la
+estructura coincide exactamente con el schema declarado, y con un
+insert/delete manual que la tabla acepta escrituras reales. La validación
+principal de esta sesión ocurrió contra el Postgres efímero de
+Testcontainers (mismo nivel de realismo que el resto de la suite de
+integración): reclamo concurrente real de un mismo `(consumerName,
+messageId)` con `Promise.all` (exactamente un ganador), recuperación real
+de una fila cuyo lease de 120 segundos había vencido, y un escenario de
+punta a punta que provisiona un tenant real, despacha su fila real del
+outbox, y confirma que redisparar manualmente ese mismo evento produce
+exactamente un efecto de consumidor — no dos. Ningún consumidor de negocio
+real usa este mecanismo todavía; los tests son actualmente su único
+caller.

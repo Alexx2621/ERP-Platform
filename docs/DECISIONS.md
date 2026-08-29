@@ -436,3 +436,122 @@ session's smoke test) that a real tenant's own audit entries
 (`tenant.provisioned`, etc.) never appear in this view, only genuinely
 untenanted ones (login, logout, user status changes, and now PLATFORM
 setting changes).
+
+---
+
+## ADR-008 — Consumer-Side Idempotency (Inbox)
+
+**Status:** Accepted (scope: the inbox mechanism itself — claim/lease
+table, repository, `consumeIdempotently` helper, verified against real
+Postgres including real concurrent claimants and lease recovery; not yet
+wired to a real cross-process business handler, e.g. connecting
+Notifications to `tenancy.tenant.provisioned.v1` — see "Deferred" below)
+
+**Context**
+
+`docs/EVENTS.md` §9 has specified an inbox design since the initial commit:
+"El check de inbox, el efecto del consumer y la marca de procesado ocurren
+en la misma transacción local." ADR-004 point 5 explicitly deferred
+building it until a real cross-process consumer needed it, to avoid
+premature machinery (MASTER_SPEC §59/§93). No `DomainEventBus` handler with
+a non-idempotent side effect has ever been registered — every real producer
+so far (tenant provisioning) only appends to the outbox; nothing consumes
+integration events yet. This ADR builds the mechanism now, ahead of the
+first real handler, because three things converged: the pattern is fully
+specified already, the outbox's own claim/lease design (ADR-004) is a
+proven template to mirror, and the first real consumer (Notifications) is
+next in the backlog and would otherwise need this decision made under time
+pressure alongside a business feature.
+
+**Decision**
+
+1. **Two states only: `PROCESSING` and `PROCESSED` — no separate `FAILED`.**
+   `docs/EVENTS.md`'s own inbox schema doesn't mandate a third state, and
+   collapsing failure into "still PROCESSING, reclaimable once its lease
+   expires" reuses the exact recovery mechanism already built and tested
+   for the outbox (a crashed dispatcher's lease expiring) instead of
+   inventing a second one. A failure is still visible operationally via
+   `attempt_count`/`last_error_code`, both incremented/set on every failed
+   attempt.
+2. **Claim via `tryClaim`, not a shared-transaction check-effect-mark.** The
+   literal EVENTS.md wording (effect and inbox write in the same local
+   transaction) assumes the consumer's effect is a plain SQL write using
+   the same Prisma client as the inbox check. In practice, a use case like
+   `RequestNotificationUseCase` receives its own repository via DI with no
+   guaranteed shared transaction handle with the inbox table. Rather than
+   redesign every existing use case to accept an externally-supplied
+   transaction client, this ADR adopts the same pattern already accepted
+   for the outbox side (`OutboxMessage.markProcessing`/`claimBatch`): claim
+   first (a small, fast, atomic operation using `SELECT ... FOR UPDATE` for
+   an existing row and a unique-constraint race for a brand-new one — see
+   `PrismaInboxMessageRepository.tryClaim`), then run the effect, then mark
+   processed. This narrows, but does not eliminate, the crash window between
+   claim and mark — see "Consequences".
+3. **`consumeIdempotently(inbox, input, effect)` is the one required entry
+   point.** Every future `DomainEventBus.subscribe` handler with a
+   non-idempotent side effect must go through it, mirroring how every
+   outbox producer goes through `appendOutboxMessage`. It never lets an
+   effect's exception propagate back into `DomainEventBus.publish` — it
+   catches it and returns `"failed"` instead, so one consumer's failure
+   never aborts delivery to other handlers subscribed to the same event
+   (`DomainEventBus.publish` already runs handlers sequentially and stops
+   on the first throw; `consumeIdempotently` is what keeps a handler from
+   being that first throw).
+4. **Lease default of 300 seconds**, matching the outbox dispatcher's own
+   default — no separate tuning knob introduced until a real consumer's
+   effect duration shows it needs one.
+5. **`(consumer_name, message_id)` is the only identity that matters**, not
+   the event's own uniqueness. The same event id delivered to two different
+   consumers is two independent claims (verified: `list-platform-audit-entries`
+   style "different consumers are independent" test) — a design requirement
+   from `docs/EVENTS.md` §12 ("El consumer es dueño de su handler, inbox y
+   retry policy").
+
+**Consequences**
+
+- A handler still has a narrow crash window between `tryClaim` succeeding
+  and the effect actually completing (or between the effect completing and
+  `markProcessed` running) where the message is neither reprocessed nor
+  marked done until its lease expires — same accepted risk window already
+  present for the outbox's own `markProcessing`/`markPublished` gap, and
+  for Owner-role seeding not being transactional with provisioning
+  (`docs/SECURITY.md` "Access Control / RBAC"). Not full exactly-once; the
+  goal (per `docs/EVENTS.md` §1) was always exactly-once *effect* under
+  normal operation, not a formal 2PC guarantee.
+- Every future idempotent consumer needs exactly one new line of code
+  routing through `consumeIdempotently` — no new table, no new module.
+- `packages/events`'s `OutboxDispatcherModule` now exports
+  `INBOX_MESSAGE_REPOSITORY` alongside `DomainEventBus`, so a consuming
+  app's own handler registration code can inject both together without
+  additional wiring.
+
+**Deferred**
+
+Connecting a real business handler (Notifications to
+`tenancy.tenant.provisioned.v1`) is **not** part of this ADR's scope. That
+requires extracting at least `RequestNotificationUseCase` and its
+dependencies out of `apps/api/src/core/notifications` into a package
+`apps/worker` can import — `DomainEventBus` only ever receives a published
+event inside the process that runs the outbox dispatcher, which is
+`apps/worker`, and no business module lives outside `apps/api` today. That
+extraction is its own bounded piece of work (the same shape as the
+`apps/worker` extraction itself, ADR-004's amendment) and remains a
+separate backlog item, not bundled into this ADR to keep each change
+independently reviewable.
+
+**Alternatives considered**
+
+- **A single shared Prisma transaction wrapping both the inbox check and
+  the consumer's effect**, exactly as `docs/EVENTS.md` §9 describes:
+  rejected for this pass because it would require changing how every
+  existing use case's repositories receive their Prisma client (accepting
+  an externally supplied transaction client instead of DI-injecting their
+  own), a change with a much larger blast radius than the inbox mechanism
+  itself. Revisit if a future consumer's correctness actually requires the
+  stronger guarantee.
+- **A `FAILED` terminal state with manual replay**, mirroring the outbox's
+  own dead-letter: rejected for now — with zero real consumers registered,
+  there is no operational experience yet to justify a replay UI/endpoint;
+  the outbox's own retry already bounds how many times a failing handler is
+  retried (`OutboxMessage.markFailed`'s `maxAttempts`), so an inbox-level
+  DLQ would be redundant machinery on top of that existing limit.

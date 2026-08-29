@@ -29,3 +29,19 @@ export {
 export { PrismaOutboxMessageRepository } from "./infrastructure/prisma-outbox-message.repository";
 export { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
 export { OutboxDispatcherModule } from "./outbox-dispatcher.module";
+export {
+  InboxMessage,
+  type InboxMessageProps,
+  type InboxMessageStatus,
+} from "./domain/inbox-message.entity";
+export {
+  INBOX_MESSAGE_REPOSITORY,
+  type InboxMessageRepository,
+  type ClaimInboxMessageOptions,
+} from "./domain/inbox-message.repository";
+export {
+  consumeIdempotently,
+  type ConsumeIdempotentlyInput,
+  type ConsumeIdempotentlyOutcome,
+} from "./application/consume-idempotently";
+export { PrismaInboxMessageRepository } from "./infrastructure/prisma-inbox-message.repository";
