@@ -28,6 +28,7 @@ not yet built); this table only knows "who can authenticate."
 | `email` | `varchar(320)` | Unique. Stored pre-normalized (trim + lowercase, `normalizeEmail()`) so the DB unique constraint and application lookups agree on identity without a `citext` dependency. |
 | `display_name` | `varchar(200)` | |
 | `status` | enum `ACTIVE`/`DISABLED` | Gates authentication; checked on every session validation, not just login (ADR-006). |
+| `is_platform_admin` | `boolean` | `DEFAULT false`. Added 2026-08-28 (migration `20260828175413_platform_admin_flag`). Grants access to `/api/v1/platform/*`, gated by `PlatformAdminGuard` — see ADR-007 and `docs/SECURITY.md` §"Platform Administration". Never settable via any public endpoint; `CreateUserUseCase` hardcodes it `false`. |
 | `created_at`, `updated_at` | `timestamptz(6)` | UTC; `updated_at` auto-managed by Prisma's `@updatedAt`. |
 
 ### `user_credentials`

@@ -5,6 +5,8 @@ export interface UserProps {
   email: string;
   displayName: string;
   status: UserStatus;
+  /** Grants access to `/api/v1/platform/*` (docs/DECISIONS.md ADR-007). Never settable at registration. */
+  isPlatformAdmin: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,10 @@ export class User {
 
   get status(): UserStatus {
     return this.props.status;
+  }
+
+  get isPlatformAdmin(): boolean {
+    return this.props.isPlatformAdmin;
   }
 
   get createdAt(): Date {

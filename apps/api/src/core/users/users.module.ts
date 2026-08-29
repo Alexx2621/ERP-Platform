@@ -4,6 +4,7 @@ import { USER_REPOSITORY } from "./domain/user.repository";
 import { PrismaUserRepository } from "./infrastructure/prisma-user.repository";
 import { CreateUserUseCase } from "./application/create-user.use-case";
 import { SetUserStatusUseCase } from "./application/set-user-status.use-case";
+import { ListUsersUseCase } from "./application/list-users.use-case";
 
 @Module({
   imports: [AuditModule],
@@ -11,7 +12,8 @@ import { SetUserStatusUseCase } from "./application/set-user-status.use-case";
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     CreateUserUseCase,
     SetUserStatusUseCase,
+    ListUsersUseCase,
   ],
-  exports: [USER_REPOSITORY, CreateUserUseCase, SetUserStatusUseCase],
+  exports: [USER_REPOSITORY, CreateUserUseCase, SetUserStatusUseCase, ListUsersUseCase],
 })
 export class UsersModule {}

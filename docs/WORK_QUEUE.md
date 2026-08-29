@@ -6,9 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-28 (sesión 15,
-endpoint de invitación de membership + UI de Miembros/Invitaciones
-pendientes). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-28 (sesión 16,
+plano de administración de plataforma — ADR-007, `isPlatformAdmin`,
+`PlatformAdminGuard`, gestión de usuarios). Modelo operativo actualizado:
+2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,46 +22,98 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **System-administration plane** — necesario antes de exponer escritura de
-   settings a nivel `PLATFORM` (hoy solo existe a nivel de dominio, sin
-   endpoint HTTP — ver `docs/SECURITY.md` §"Typed Configuration"). No
-   bloqueado, pero deliberadamente no adelantado sin una decisión de
-   arquitectura explícita sobre credenciales/autorización separadas
-   (`docs/ARCHITECTURE.md` §10).
+1. **Escritura de settings a nivel `PLATFORM`** — el plano de administración
+   ya existe (`PlatformAdminGuard`, sesión 16), así que la decisión de
+   arquitectura que bloqueaba esto ya está resuelta (ADR-007). Falta el
+   endpoint HTTP en sí: `PUT /api/v1/platform/settings/:key` (o similar)
+   sobre `SetSettingValueUseCase`, que hoy solo acepta `TENANT`/`COMPANY`
+   desde `SettingsController` — ver `docs/SECURITY.md` §"Typed
+   Configuration".
 2. **"Mi actividad" / vista de administración de plataforma para eventos no
    tenant-scoped** — login/logout/cambios de status de usuario se auditan
    (`tenantId: null`) pero no son consultables por ningún endpoint todavía
-   (`AuditEntriesController` solo devuelve entradas tenant-scoped). No
-   bloqueado, deliberadamente no construido junto con Audit para no mezclar
-   una superficie de lectura nueva con la matriz de grabación
-   (`docs/SECURITY.md` §"Audit").
-3. **Admin endpoint para `SetUserStatusUseCase`** — el use case y su
-   auditoría (`user.status_changed`) existen y están probados, pero no hay
-   ningún controller que lo invoque todavía. No bloqueado.
-4. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+   (`AuditEntriesController` solo devuelve entradas tenant-scoped). Ya no
+   bloqueado por decisión de arquitectura: puede construirse como
+   `GET /api/v1/platform/audit-entries` detrás de `PlatformAdminGuard`,
+   mismo patrón que `PlatformUsersController`.
+3. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-5. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+4. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-6. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+5. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
-7. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+6. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
    el SDK ya probado en un mismo cambio — refactor de proceso separado.
-8. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
+7. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
    existe en el dominio, pero ningún endpoint lo invoca para una membership
    `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
    §"Membership Invitations".
+
+### Hecho — sesión 16 (Platform Administration plane — ADR-007)
+
+- **ADR-007** (`docs/DECISIONS.md`): documenta la decisión de arquitectura
+  que bloqueaba 3 ítems de esta cola desde hacía varias sesiones — "system
+  administration usa un plano y credenciales separados"
+  (`docs/ARCHITECTURE.md` §10). Decisión: reutilizar el `User`/`Session` ya
+  construido y validado (Argon2id, sesiones opacas), agregando un flag
+  `isPlatformAdmin` en vez de un sistema de credenciales completamente
+  separado — evita duplicar infraestructura de auth ya correcta para una
+  plataforma sin tenants de producción todavía. El usuario eligió
+  explícitamente este enfoque frente a "credenciales completamente
+  separadas" y "diferir la decisión".
+- **`apps/api/src/core/users/`**: `User.isPlatformAdmin: boolean` (nuevo
+  campo de dominio, `false` por defecto, nunca aceptado como input —
+  `CreateUserUseCase` lo fija explícitamente). `UserRepository.findAll(limit)`
+  nuevo — única excepción documentada a "sin queries unscoped de User", para
+  el listado cross-tenant de plataforma. `ListUsersUseCase` nuevo.
+- **`apps/api/src/core/platform-admin/`** (módulo nuevo, sin dependencia de
+  Tenants/AccessControl): `PlatformAdminGuard` (corre tras
+  `SessionAuthGuard`, exige `isPlatformAdmin=true`, falla cerrado con `500`
+  si el guard se aplica sin `SessionAuthGuard` primero — mismo patrón que
+  `PermissionGuard`). `PlatformUsersController`:
+  `GET /api/v1/platform/users` (listar usuarios de toda la plataforma,
+  `limit` opcional, tope 200), `PUT /api/v1/platform/users/:id/status`
+  (primer caller HTTP real de `SetUserStatusUseCase`, que ya existía
+  probado desde antes pero sin ningún endpoint que lo invocara — su
+  auditoría `user.status_changed` tampoco cambió, solo ganó un caller).
+- Migración nueva (`20260828175413_platform_admin_flag`, generada y
+  **aplicada directamente contra Postgres real** vía `prisma migrate dev`):
+  `users.is_platform_admin BOOLEAN NOT NULL DEFAULT false`.
+- Tests: 7 nuevos (3 `ListUsersUseCase`, 3 `PlatformAdminGuard`, 1 wiring de
+  `PlatformAdminModule`) — 193 tests unitarios totales en `apps/api` (antes
+  186), más `app.module.spec.ts` ampliado con las 3 aserciones nuevas del
+  módulo. Todos los `User.create({...})` existentes en tests (7 archivos)
+  actualizados para el campo nuevo requerido.
+- **Panel de avance actualizado** (`development-progress-panel.tsx`,
+  pedido explícito del usuario para mantenerlo sincronizado en cada
+  bloque): próximos hitos corregidos (ya no lista "endpoint de invitación
+  de membresías", completado en sesión 15); Foundation recalculado de 53%
+  a 78% — 6 de los 8 pasos de `docs/ARCHITECTURE.md` §17 completos, con
+  trabajo adicional (Membership Invitations, Platform Admin, Swagger,
+  Workers) más allá de esos 8 pasos; solo faltan un App Registry mínimo y
+  una revisión integral formal de Foundation. Avance total recalculado de
+  11% a 13% (promedio de 13 fases); `onboarding.spec.ts` y
+  `development-progress-panel.spec.tsx` actualizados a los nuevos valores.
+- Documentación actualizada: `docs/DATABASE.md` (columna nueva en
+  `users`), `docs/SECURITY.md` (nueva sección "Platform Administration"
+  con modelo de amenazas y huecos conocidos, incluyendo que no hay
+  auto-protección contra que un admin se deshabilite a sí mismo, y que
+  otorgar el primer platform admin es un paso manual de base de datos, no
+  un endpoint).
+- Validación: `pnpm lint`/`typecheck` limpios, `pnpm test` 193/193 en
+  `apps/api`, 16/16 en `apps/erp-web`.
 
 ### Hecho — sesión 15 (Membership invitation endpoint + UI)
 
@@ -923,21 +976,23 @@ Playwright).
 
 - ~~El flujo de tenant multi-usuario de punta a punta...~~ — cerrado en la
   sesión 15 (endpoint de invitación + UI completa, ver "Hecho — sesión 15").
-- Escritura de settings a nivel PLATFORM depende de un plano de
-  administración de plataforma separado (ítem 1 de la cola Claude) —
-  deliberadamente no adelantado sin esa decisión de arquitectura.
+- ~~Escritura de settings a nivel PLATFORM depende de un plano de
+  administración de plataforma separado...~~ — la decisión de arquitectura
+  se resolvió en la sesión 16 (ADR-007, `PlatformAdminGuard`). Sigue
+  pendiente el endpoint en sí (ítem 1 de la cola Claude), pero ya no
+  bloqueado por nada.
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 4 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 3 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 5 de la cola
+- Una purga real de storage para archivos borrados (ítem 4 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 6 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 5 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 7 de la cola Claude)
+- `@erp/api-client` generado desde OpenAPI (ítem 6 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Expirar/revocar invitaciones pendientes (ítem 8 de la cola Claude) depende
+- Expirar/revocar invitaciones pendientes (ítem 7 de la cola Claude) depende
   de decidir una política de TTL — no bloqueado, no decidido todavía.
 
 ## Integration needed
@@ -952,8 +1007,11 @@ Ninguna pendiente de aprobación en este momento. Decisiones ya registradas:
 abierta sobre almacenamiento de tokens en el cliente quedó resuelta en la
 práctica por `apps/erp-web` (memoria, no persistente); ADR-004 (Event
 Architecture — implementado y ratificado en sesión 10, enmendado en sesión
-13 para reflejar la extracción del dispatcher a `apps/worker`). Pendientes de
-numerar formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
+13 para reflejar la extracción del dispatcher a `apps/worker`); ADR-007
+(Platform Administration Plane — implementado y ratificado en sesión 16,
+`isPlatformAdmin` + `PlatformAdminGuard`, enfoque elegido explícitamente por
+el usuario entre tres alternativas presentadas). Pendientes de numerar
+formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
 `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
 real: manual, integration test, y ahora E2E de navegador), ADR-005 (Plugin

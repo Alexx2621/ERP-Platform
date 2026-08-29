@@ -1,0 +1,52 @@
+import { Global, Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { Test } from "@nestjs/testing";
+import { PrismaService } from "../../shared/prisma/prisma.service";
+import { RedisService } from "../../shared/redis/redis.service";
+import { ListUsersUseCase, SetUserStatusUseCase } from "../users";
+import { PlatformAdminGuard } from "./presentation/platform-admin.guard";
+import { PlatformUsersController } from "./presentation/platform-users.controller";
+import { PlatformAdminModule } from "./platform-admin.module";
+
+// Same pattern as tenants.module.spec.ts: PlatformAdminModule imports
+// AuthModule (for SessionAuthGuard), which needs Redis for its throttler
+// storage — see auth.module.spec.ts for why these are @Global() stubs.
+@Global()
+@Module({
+  providers: [
+    { provide: PrismaService, useValue: {} },
+    { provide: RedisService, useValue: {} },
+  ],
+  exports: [PrismaService, RedisService],
+})
+class StubInfraModule {}
+
+describe("PlatformAdminModule wiring", () => {
+  it("resolves the guard, controller and reused Users use cases", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [
+            () => ({
+              LOGIN_RATE_LIMIT_MAX: 5,
+              LOGIN_RATE_LIMIT_WINDOW_SECONDS: 60,
+              ACCESS_TOKEN_TTL_SECONDS: 900,
+              REFRESH_TOKEN_TTL_SECONDS: 2_592_000,
+            }),
+          ],
+        }),
+        StubInfraModule,
+        PlatformAdminModule,
+      ],
+    }).compile();
+
+    expect(moduleRef.get(PlatformAdminGuard)).toBeInstanceOf(PlatformAdminGuard);
+    expect(moduleRef.get(PlatformUsersController)).toBeInstanceOf(PlatformUsersController);
+    expect(moduleRef.get(ListUsersUseCase)).toBeInstanceOf(ListUsersUseCase);
+    expect(moduleRef.get(SetUserStatusUseCase)).toBeInstanceOf(SetUserStatusUseCase);
+
+    await moduleRef.close();
+  });
+});

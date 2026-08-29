@@ -37,6 +37,8 @@ import {
   ListNotificationsUseCase,
   MarkNotificationReadUseCase,
 } from "./core/notifications";
+import { PlatformAdminGuard, PlatformUsersController } from "./core/platform-admin";
+import { ListUsersUseCase } from "./core/users";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -84,6 +86,9 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(ListNotificationsUseCase)).toBeInstanceOf(ListNotificationsUseCase);
     expect(moduleRef.get(MarkNotificationReadUseCase)).toBeInstanceOf(MarkNotificationReadUseCase);
     expect(moduleRef.get(NotificationsController)).toBeInstanceOf(NotificationsController);
+    expect(moduleRef.get(PlatformAdminGuard)).toBeInstanceOf(PlatformAdminGuard);
+    expect(moduleRef.get(PlatformUsersController)).toBeInstanceOf(PlatformUsersController);
+    expect(moduleRef.get(ListUsersUseCase)).toBeInstanceOf(ListUsersUseCase);
 
     await moduleRef.close();
   });

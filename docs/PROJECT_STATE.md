@@ -1,10 +1,10 @@
 # Project State
 
-Última actualización: 2026-08-28 (sesión 15), tras implementar el endpoint
-de invitación de membership (invitar/listar/aceptar/pendientes) completo —
-backend, SDK y UI — y verificarlo con un E2E de Playwright real que usa dos
-contextos de navegador aislados para simular al owner y al invitado por
-separado. Modelo de trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
+Última actualización: 2026-08-28 (sesión 16), tras implementar el plano de
+administración de plataforma (ADR-007): flag `isPlatformAdmin` en `User`,
+`PlatformAdminGuard`, y el primer caso de uso real detrás de él
+(listar/activar-desactivar usuarios de toda la plataforma). Modelo de
+trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
 `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
 ## Development Ownership
@@ -331,7 +331,30 @@ ADR-004 nada se ha construido contra él todavía.
   invitado, sin compartir tokens): invita → el invitado ve su invitación →
   la acepta → el tenant aparece en su propia lista de espacios. Detalle
   completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 15").
-- 199 tests unitarios pasando (api 186, api-client 8, erp-web 16) + 18 en
+- **Platform Administration** (`apps/api/src/core/platform-admin`, Claude,
+  sesión 16, ADR-007): resuelve la decisión de arquitectura que
+  `docs/ARCHITECTURE.md` §10 dejaba pendiente ("system administration usa un
+  plano y credenciales separados") y que bloqueaba 3 ítems de la cola desde
+  hacía varias sesiones. El usuario eligió explícitamente, entre tres
+  alternativas presentadas, reutilizar el `User`/`Session` ya construido en
+  vez de un sistema de credenciales separado: nuevo campo
+  `User.isPlatformAdmin` (`false` por defecto, nunca aceptado como input —
+  `CreateUserUseCase` lo fija explícitamente; solo otorgable vía operación
+  directa de base de datos), `PlatformAdminGuard` (corre tras
+  `SessionAuthGuard`, mismo patrón fail-closed que `PermissionGuard`),
+  `ListUsersUseCase` (nuevo, único caso de uso con query unscoped de
+  `User`), y `PlatformUsersController` (`GET /api/v1/platform/users`,
+  `PUT /api/v1/platform/users/:id/status` — primer caller HTTP real de
+  `SetUserStatusUseCase`, que ya existía probado desde antes pero sin
+  ningún endpoint que lo invocara). Tabla `users` con columna nueva
+  (migración `20260828175413_platform_admin_flag`, **generada y aplicada
+  directamente contra Postgres real** vía `prisma migrate dev`). Panel de
+  avance del workspace actualizado a pedido explícito del usuario: hitos
+  próximos corregidos y Foundation recalculado de 53% a 78% (6 de 8 pasos
+  de `docs/ARCHITECTURE.md` §17 completos, más trabajo adicional no
+  contemplado ahí). Detalle completo en `docs/WORK_QUEUE.md` ("Hecho —
+  sesión 16").
+- 217 tests unitarios pasando (api 193, api-client 8, erp-web 16) + 18 en
   `@erp/events` + 1 en `@erp/worker` + 12 tests de integración con Postgres
   real + **3 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
@@ -339,10 +362,10 @@ ADR-004 nada se ha construido contra él todavía.
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
   `app.module.spec.ts`, `tenants.module.spec.ts`,
   `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`, `files.module.spec.ts`, `notifications.module.spec.ts`
-  en `apps/api`; `outbox-dispatcher.module.spec.ts` en `@erp/events`;
-  `worker.module.spec.ts` en `@erp/worker`) y pruebas negativas de
-  aislamiento cross-tenant.
+  `audit.module.spec.ts`, `files.module.spec.ts`, `notifications.module.spec.ts`,
+  `platform-admin.module.spec.ts` en `apps/api`; `outbox-dispatcher.module.spec.ts`
+  en `@erp/events`; `worker.module.spec.ts` en `@erp/worker`) y pruebas
+  negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -399,18 +422,18 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (plano de
-administración de plataforma).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (endpoint de
+escritura de settings a nivel PLATFORM, usando el plano de administración
+ya construido).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: plano de administración de
-plataforma (necesario antes de exponer escritura de settings a nivel
-PLATFORM) → vista de "mi actividad"/administración para eventos no
+Resumen bajo ownership único de Claude: endpoint de escritura de settings a
+nivel PLATFORM (el plano de administración ya existe — ADR-007, solo falta
+el endpoint) → vista de "mi actividad"/administración para eventos no
 tenant-scoped (login/logout/cambios de status, hoy grabados pero sin
-endpoint de lectura) → admin endpoint para `SetUserStatusUseCase` (el use
-case y su auditoría existen, pero nada lo invoca todavía) → inbox/
+endpoint de lectura; ya no bloqueado por decisión de arquitectura) → inbox/
 idempotencia de consumidores (requerido antes de registrar cualquier
 handler del Event Bus con efecto secundario no idempotente, incluyendo
 conectar Notifications a `tenancy.tenant.provisioned.v1`) → purga real de
@@ -421,12 +444,13 @@ desde el spec OpenAPI (`/api/docs-json` ya existe; herramienta de
 generación todavía no decidida) → expirar/revocar invitaciones pendientes
 (`Membership.revoke()` ya existe en el dominio, sin TTL ni endpoint todavía).
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
-(ADR-004 y ADR-006 ya están ratificados). Claude debe completar cualquier
-UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI de RBAC
-(incluida la invitación de miembros), el E2E de sesión y la UI de
+(ADR-004, ADR-006 y ADR-007 ya están ratificados). Claude debe completar
+cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI
+de RBAC (incluida la invitación de miembros), el E2E de sesión y la UI de
 Configuración ya están hechas e integradas (ver Completed); la UI de Files
-(subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
-todavía no se han construido.
+(subida/listado/descarga), de Notifications (bandeja/badge de no leídas) y
+de Platform Administration (panel de admin en erp-web) todavía no se han
+construido.
 
 ## Production Status
 
@@ -542,3 +566,26 @@ se había detenido entre la sesión anterior y esta; reiniciado antes de
 correr las pruebas, los contenedores existentes se recuperaron solos
 (`restart: unless-stopped`). Toda la data de prueba fue limpiada al
 terminar.
+
+**Sesión 16 (2026-08-29, Platform Administration)**: novena migración
+(`20260828175413_platform_admin_flag`) generada directamente contra esta
+misma base real vía `prisma migrate dev` — agrega `users.is_platform_admin
+BOOLEAN NOT NULL DEFAULT false`. Flujo HTTP completo repetido con el
+servidor real compilado (`node dist/main.js`): registro de un usuario
+"admin" y uno "target" reales → ambos reciben `403 PLATFORM_ADMIN_REQUIRED`
+en `GET /api/v1/platform/users` antes de tener el flag → flag otorgado al
+admin vía `UPDATE users SET is_platform_admin = true` directo (el proceso
+operativo documentado en ADR-007, no un endpoint) → `GET
+/api/v1/platform/users` ahora devuelve `200` con la lista completa de
+usuarios reales de la plataforma (incluyendo usuarios residuales de
+sesiones anteriores, confirmando que es genuinamente cross-tenant) → `PUT
+/api/v1/platform/users/:id/status` deshabilita al target real → login del
+target rechazado con `403 ACCOUNT_DISABLED` → el access token del target ya
+emitido antes de deshabilitarlo también deja de servir en `GET /auth/me`
+con el mismo código, confirmando en runtime el re-chequeo de estado en
+cada validación de sesión (ADR-006 punto 6) → id inexistente rechazado con
+`404 USER_NOT_FOUND` → reactivación real del target → `SELECT` directo
+sobre `audit_entries` confirma dos entradas `user.status_changed` con
+`user_id` = el id del admin (el actor real), no el del target, y sus
+`previousValues`/`newValues` correctos. Toda la data de prueba fue limpiada
+al terminar.

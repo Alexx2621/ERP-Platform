@@ -45,6 +45,7 @@ async function bootstrap(): Promise<void> {
     .addTag("Configuration")
     .addTag("Files")
     .addTag("Notifications")
+    .addTag("Platform Administration")
     .build();
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup(SWAGGER_PATH, app, swaggerDocument);

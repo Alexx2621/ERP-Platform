@@ -28,6 +28,9 @@ export class CreateUserUseCase {
       email,
       displayName: input.displayName.trim(),
       status: "ACTIVE",
+      // Never accepted as input — platform admin is granted out-of-band
+      // (docs/DECISIONS.md ADR-007), never via public registration.
+      isPlatformAdmin: false,
       createdAt: now,
       updatedAt: now,
     });

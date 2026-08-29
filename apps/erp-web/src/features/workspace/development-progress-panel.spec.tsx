@@ -12,7 +12,7 @@ describe("DevelopmentProgressPanel", () => {
 
     expect(screen.getByRole("heading", { name: "Avance del desarrollo" })).toBeInTheDocument();
     expect(screen.getByText(`${overallDevelopmentProgress}%`)).toBeInTheDocument();
-    expect(screen.getByText("Foundation 53%")).toBeInTheDocument();
+    expect(screen.getByText("Foundation 78%")).toBeInTheDocument();
     expect(screen.getByText(/Promedio simple de las 13 fases/)).toBeInTheDocument();
     expect(screen.getByText(/No representa horas, presupuesto ni fecha/)).toBeInTheDocument();
   });

@@ -7,7 +7,7 @@ import { ListMembershipsUseCase } from "./list-memberships.use-case";
 const now = new Date();
 
 function user(id: string): User {
-  return User.create({ id, email: `${id}@example.com`, displayName: id, status: "ACTIVE", createdAt: now, updatedAt: now });
+  return User.create({ id, email: `${id}@example.com`, displayName: id, status: "ACTIVE", isPlatformAdmin: false, createdAt: now, updatedAt: now });
 }
 
 function membership(id: string, tenantId: string, userId: string): Membership {

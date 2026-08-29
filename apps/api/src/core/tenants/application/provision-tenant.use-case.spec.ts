@@ -17,6 +17,10 @@ class StubUserRepository implements UserRepository {
     return null;
   }
 
+  async findAll(limit: number): Promise<User[]> {
+    return [...this.records.values()].slice(0, limit);
+  }
+
   async save(user: User): Promise<void> {
     this.records.set(user.id, user);
   }
@@ -29,6 +33,7 @@ function activeUser(id: string): User {
     email: `${id}@example.com`,
     displayName: id,
     status: "ACTIVE",
+    isPlatformAdmin: false,
     createdAt: now,
     updatedAt: now,
   });

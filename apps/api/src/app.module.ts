@@ -14,6 +14,7 @@ import { ConfigurationModule } from "./core/configuration";
 import { AuditModule } from "./core/audit";
 import { FilesModule } from "./core/files";
 import { NotificationsModule } from "./core/notifications";
+import { PlatformAdminModule } from "./core/platform-admin";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { NotificationsModule } from "./core/notifications";
     ConfigurationModule,
     FilesModule,
     NotificationsModule,
+    PlatformAdminModule,
   ],
 })
 export class AppModule implements NestModule {

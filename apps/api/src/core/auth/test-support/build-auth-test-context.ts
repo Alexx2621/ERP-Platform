@@ -53,6 +53,7 @@ export function buildAuthTestContext(overrides: AuthTestContextOverrides = {}) {
     email: string;
     password: string;
     displayName?: string;
+    isPlatformAdmin?: boolean;
   }): Promise<User> {
     const now = clock.now();
     const user = User.create({
@@ -60,6 +61,7 @@ export function buildAuthTestContext(overrides: AuthTestContextOverrides = {}) {
       email: input.email.toLowerCase(),
       displayName: input.displayName ?? "Test User",
       status: "ACTIVE",
+      isPlatformAdmin: input.isPlatformAdmin ?? false,
       createdAt: now,
       updatedAt: now,
     });

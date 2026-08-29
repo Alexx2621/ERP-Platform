@@ -574,3 +574,61 @@ accepting on their own, using the `Membership` state machine
   accepted tradeoff as `ListMembershipsUseCase`'s own docstring: Foundation-scale
   tenants have at most a handful of members, so this is not the premature
   optimization MASTER_SPEC §45/§93 warns against yet.
+
+## Platform Administration (2026-08-28)
+
+Scope: `isPlatformAdmin` on `User`, `PlatformAdminGuard`, `ListUsersUseCase`,
+`PlatformUsersController` (`apps/api/src/core/platform-admin`) — the "system
+administration usa un plano ... separado" requirement from
+`docs/ARCHITECTURE.md` §10, unblocking three previously-deferred backlog
+items. Full design rationale in `docs/DECISIONS.md` ADR-007.
+
+### Assets
+
+- The `isPlatformAdmin` flag itself — the actual privilege boundary for
+  every route under `/api/v1/platform/*`. There is no other check.
+- Every user's account status platform-wide, and the ability to change it —
+  a platform admin can disable *any* user's account, in any tenant,
+  regardless of role/permission assignments there.
+- The global user list (`GET /api/v1/platform/users`) — emails and display
+  names across every tenant, information a tenant-scoped role could never
+  see even with every permission granted.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A regular authenticated user reaches `/api/v1/platform/*` | `PlatformAdminGuard` runs after `SessionAuthGuard` and checks `authContext.user.isPlatformAdmin` on every request to this controller; a `false`/missing flag is `403 PLATFORM_ADMIN_REQUIRED`. Verified directly (`platform-admin.guard.spec.ts`: rejects a non-admin, allows an admin) and via `app.module.spec.ts`/`platform-admin.module.spec.ts` confirming the guard is actually wired into the real module graph, not just unit-tested in isolation. |
+| A user self-promotes to platform admin via registration or any other public endpoint | `CreateUserUseCase` hardcodes `isPlatformAdmin: false` for every new account (`POST /auth/register` is the only way to create a `User`); there is no HTTP endpoint anywhere that sets this flag to `true` — it can only be changed by a direct database operation performed by whoever operates the deployment (ADR-007 point 2). |
+| `PlatformAdminGuard` applied without `SessionAuthGuard` running first | Fails closed with a `500` (`PLATFORM_ADMIN_GUARD_REQUIRES_AUTH`) rather than silently treating a missing `authContext` as "not admin, deny" or, worse, crashing in a way that could be misread — same "loud misconfiguration, not silent bypass" pattern as `PermissionGuard`. |
+| A platform admin action on a user bypasses audit trail | `PUT /api/v1/platform/users/:id/status` calls the existing `SetUserStatusUseCase`, which already recorded `user.status_changed` (with `previousValues`/`newValues`) before this controller had any caller — this slice is the first real HTTP path to it, not new audit logic. |
+| Platform-admin capabilities creep beyond what was reviewed | Deliberately minimal in this slice: list users, set status. No tenant suspension, no impersonation, no data export, no `PLATFORM`-scoped settings write yet — each is a separate backlog item requiring its own review before being added under this same guard (ADR-007 point 5). |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No separate credential system, by design.** A platform admin logs in
+  through the exact same `POST /api/v1/auth/login` as any other user — a
+  compromised password/session for that account is a compromised
+  platform-admin session too. Accepted for Foundation (no production
+  tenants, no destructive platform capability exists yet); revisit
+  (mandatory MFA for `isPlatformAdmin=true` accounts, or a genuinely
+  separate credential store) before tenant deletion, impersonation, or data
+  export are ever built behind this guard. See ADR-007's "Alternatives
+  considered".
+- **Granting the first platform admin is an undocumented-by-the-API manual
+  step** — a direct `UPDATE users SET is_platform_admin = true` against the
+  database, not a seed script or CLI command shipped with this slice. No
+  real deployment runbook exists yet to record this against; intentionally
+  not building tooling for an operational need that hasn't materialized
+  (MASTER_SPEC §59/§93).
+- **No self-protection against a platform admin disabling their own
+  account.** `PUT /api/v1/platform/users/:id/status` does not check
+  `id !== auth.user.id` — an admin can lock themselves out via `DISABLED`.
+  Recoverable only via the same manual database step used to grant the
+  flag in the first place. Not a security gap (the actor is already
+  privileged) but worth UX-hardening later.
+- **`GET /api/v1/platform/users` has no search/filter, only a `limit`
+  (default 50, max 200)** — same `DEFAULT_LIMIT`/`MAX_LIMIT` pattern as
+  `ListAuditEntriesUseCase`/`ListNotificationsUseCase`, acceptable at
+  Foundation's current user count, revisit once cursor-based paging or a
+  search endpoint is actually needed.

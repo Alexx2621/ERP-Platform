@@ -13,6 +13,7 @@ function user(id: string, email: string, active = true): User {
     email,
     displayName: id,
     status: active ? "ACTIVE" : "DISABLED",
+    isPlatformAdmin: false,
     createdAt: now,
     updatedAt: now,
   });

@@ -284,3 +284,119 @@ revocation.
 - **HttpOnly cookie sessions:** still a reasonable choice for the first-party
   ERP web app specifically, but rejected as the *only* mechanism because it
   doesn't generalize to POS/mobile/integrations without special-casing.
+
+---
+
+## ADR-007 — Platform Administration Plane V1 (Flag on the Existing User, Not a Separate Identity System)
+
+**Status:** Accepted (scope: a minimal platform-admin plane — `isPlatformAdmin`
+flag, `PlatformAdminGuard`, and one real capability behind it,
+`GET/PUT /api/v1/platform/users`; not the full future scope of a system-
+administration surface, e.g. tenant suspension, PLATFORM-scoped settings
+writes, or platform-wide audit/activity views)
+
+**Context**
+
+`docs/ARCHITECTURE.md` §10 states: "System administration usa un plano y
+credenciales separados; no existe un 'super admin' implícito que salte
+filtros de tenant en endpoints normales." `docs/WORK_QUEUE.md` had this
+listed as blocking three backlog items (writing `PLATFORM`-scoped settings,
+a cross-tenant "my activity" view, and an admin endpoint for
+`SetUserStatusUseCase`) precisely because "plano y credenciales separados"
+was never pinned down to a concrete implementation. This ADR makes that
+decision, scoped to what Foundation needs right now: a way to gate
+genuinely cross-tenant administrative actions behind something stronger
+than "has a session", without inventing infrastructure Foundation doesn't
+need yet (MASTER_SPEC §59/§93).
+
+**Decision**
+
+1. **Platform admin is a boolean flag on the existing `User` entity
+   (`isPlatformAdmin`), not a separate identity/credential system.** The
+   same Argon2id password hashing, opaque session tokens, and
+   `SessionAuthGuard` already built and verified for regular users (ADR-006)
+   are reused as-is. "Plano ... separado" is satisfied by a distinct route
+   prefix (`/api/v1/platform/*`) and a distinct authorization guard
+   (`PlatformAdminGuard`), not by a distinct authentication stack. Building
+   a second, parallel credential system today — before there is a single
+   production tenant, let alone a team of platform operators — would be
+   exactly the premature machinery MASTER_SPEC §59/§93 warns against, and it
+   would duplicate infrastructure (password hashing, session rotation,
+   revocation, rate limiting) that is already correct and tested. Revisit if
+   real operational need appears: a compromised regular-user login flow
+   would, under this model, also be the platform-admin login flow, which is
+   a real trade-off being made consciously, not accidentally.
+2. **`isPlatformAdmin` is never settable through any public endpoint.**
+   `CreateUserUseCase` (used by `POST /auth/register`) hardcodes it to
+   `false`; there is no `PUT /api/v1/platform/users/:id/admin-status` or
+   similar in this slice. The only way to grant it is a direct database
+   operation (`UPDATE users SET is_platform_admin = true WHERE email = ...`)
+   performed out-of-band by whoever operates the deployment — the same
+   trust model already used for the code-owned permission catalog (nothing
+   in the API can create a new `Permission` either). This is a deliberate,
+   documented operational gap, not an oversight: a self-service or
+   API-driven promotion path is a privilege-escalation surface this slice
+   does not need to open yet.
+3. **`PlatformAdminGuard` runs after `SessionAuthGuard` and reads
+   `request.authContext.user.isPlatformAdmin`**, mirroring exactly how
+   `TenantContextGuard`/`PermissionGuard` already layer on top of
+   `SessionAuthGuard` for tenant-scoped routes
+   (`@UseGuards(SessionAuthGuard, PlatformAdminGuard)`). A missing
+   `authContext` (guard misordered) fails closed with a `500`
+   (`PLATFORM_ADMIN_GUARD_REQUIRES_AUTH`), same "loud in development, not a
+   silent bypass in production" pattern as `PermissionGuard`'s own metadata
+   checks.
+4. **First real capability: `GET/PUT /api/v1/platform/users`** (list every
+   user across every tenant; enable/disable a user's account platform-wide).
+   `SetUserStatusUseCase` and its audit trail (`user.status_changed`)
+   already existed and were already tested — this ADR's controller is the
+   first real HTTP caller for a use case that has had no caller since it was
+   built. `ListUsersUseCase` is new but trivial: `UserRepository.findAll`,
+   the one deliberate exception to "no unscoped User queries" documented on
+   that port's own interface.
+5. **No tenant-suspension, no `PLATFORM`-scoped settings write, no
+   platform-wide audit/activity view in this slice.** Those remain separate,
+   still-pending backlog items now unblocked by this ADR, not implicitly
+   granted by it — each needs its own review of what data a platform admin
+   should be able to see/do before being built.
+
+**Consequences**
+
+- Every future platform-admin capability follows the same two-step pattern:
+  add a route under `/api/v1/platform/*`, gate it with
+  `@UseGuards(SessionAuthGuard, PlatformAdminGuard)`. No new guard or module
+  is needed per capability.
+- A compromised platform-admin account has exactly the blast radius of a
+  compromised regular account plus whatever `/platform/*` capabilities
+  exist — there is no additional MFA/step-up requirement in this slice.
+  Acceptable at Foundation scale (no production tenants), but worth
+  revisiting (e.g. mandatory MFA for `isPlatformAdmin=true` accounts) before
+  this plane grows more destructive capabilities (tenant deletion, data
+  export, impersonation).
+- Granting the first platform admin is a manual, undocumented-by-the-API
+  operational step. This must be written down in real deployment runbooks
+  once they exist; today it is simply a direct SQL statement against the
+  Foundation database, consistent with how the permission catalog is
+  code/operator-owned rather than self-service.
+
+**Alternatives considered**
+
+- **A fully separate `PlatformAdmin` identity/credential model** (own table,
+  own login flow, possibly its own database/schema): rejected for this
+  slice as the more "textbook-correct" but premature option — no
+  production tenants exist yet to justify the added surface, and nothing
+  about the current `User`/`Session` model is insufficiently secure for
+  this purpose. Revisit if/when the platform actually has a team of
+  operators distinct from any tenant's own users, or once destructive
+  platform capabilities (tenant deletion, impersonation) are built.
+- **A hardcoded list of admin emails in an environment variable**, checked
+  instead of a database column: rejected because it can't be audited,
+  rotated, or queried through normal tooling, and every deploy would need a
+  config change to add/remove an admin — worse operational ergonomics than
+  a database flag for no real security benefit at this scale.
+- **Reusing `RoleAssignment`/`Permission` (RBAC) for platform-level access**
+  by inventing a synthetic "platform tenant": rejected because RBAC's whole
+  data model (`Role`, `RoleAssignment`, `Membership`) is deliberately
+  tenant-scoped (`docs/MULTITENANCY.md` §9) — forcing a cross-tenant concept
+  through a tenant-scoped system would be a structural misuse, not a reuse,
+  of that module.

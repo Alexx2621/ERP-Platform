@@ -15,6 +15,12 @@ export class InMemoryUserRepository implements UserRepository {
     return null;
   }
 
+  async findAll(limit: number): Promise<User[]> {
+    return [...this.usersById.values()]
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(0, limit);
+  }
+
   async save(user: User): Promise<void> {
     this.usersById.set(user.id, user);
   }

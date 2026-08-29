@@ -18,6 +18,14 @@ export class PrismaUserRepository implements UserRepository {
     return record ? this.toDomain(record) : null;
   }
 
+  async findAll(limit: number): Promise<User[]> {
+    const records = await this.prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   async save(user: User): Promise<void> {
     const props = user.toProps();
     await this.prisma.user.upsert({
@@ -27,11 +35,13 @@ export class PrismaUserRepository implements UserRepository {
         email: props.email,
         displayName: props.displayName,
         status: props.status,
+        isPlatformAdmin: props.isPlatformAdmin,
         createdAt: props.createdAt,
       },
       update: {
         displayName: props.displayName,
         status: props.status,
+        isPlatformAdmin: props.isPlatformAdmin,
       },
     });
   }
@@ -42,6 +52,7 @@ export class PrismaUserRepository implements UserRepository {
       email: record.email,
       displayName: record.displayName,
       status: record.status,
+      isPlatformAdmin: record.isPlatformAdmin,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     });

@@ -59,6 +59,8 @@ import { PrismaNotificationDeliveryRepository } from "../../src/core/notificatio
 import { RequestNotificationUseCase } from "../../src/core/notifications/application/use-cases/request-notification.use-case";
 import { ListNotificationsUseCase } from "../../src/core/notifications/application/use-cases/list-notifications.use-case";
 import { MarkNotificationReadUseCase } from "../../src/core/notifications/application/use-cases/mark-notification-read.use-case";
+import { SetUserStatusUseCase } from "../../src/core/users/application/set-user-status.use-case";
+import { ListUsersUseCase } from "../../src/core/users/application/list-users.use-case";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -72,6 +74,7 @@ function createUser(now: Date, email = "owner@example.com"): User {
     email,
     displayName: "Integration Owner",
     status: "ACTIVE",
+    isPlatformAdmin: false,
     createdAt: now,
     updatedAt: now,
   });
@@ -906,5 +909,41 @@ describe("Prisma repositories against PostgreSQL", () => {
     await expect(memberships.findById(tenantA.id, invited.membership.id)).resolves.toMatchObject({
       status: "ACTIVE",
     });
+  });
+
+  it("persists isPlatformAdmin, lists users across the platform, and lets an admin change another user's status", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const auditEntries = new PrismaAuditEntryRepository(prisma);
+    const recordAuditEntry = new RecordAuditEntryUseCase(auditEntries);
+    const listUsers = new ListUsersUseCase(users);
+    const setUserStatus = new SetUserStatusUseCase(users, recordAuditEntry);
+    const now = new Date("2026-08-28T18:00:00.000Z");
+
+    const admin = createUser(now, "platform-admin@example.com");
+    const target = createUser(now, "platform-target@example.com");
+    await users.save(admin);
+    await users.save(target);
+
+    // isPlatformAdmin defaults to false via User.create/CreateUserUseCase;
+    // granting it is a direct DB write in production (ADR-007) — simulated
+    // here the same way, via Prisma directly, not through any use case.
+    await prisma.user.update({ where: { id: admin.id }, data: { isPlatformAdmin: true } });
+
+    const reloadedAdmin = await users.findById(admin.id);
+    expect(reloadedAdmin?.isPlatformAdmin).toBe(true);
+
+    const allUsers = await listUsers.execute();
+    const listedTarget = allUsers.find((u) => u.id === target.id);
+    expect(listedTarget?.isPlatformAdmin).toBe(false);
+
+    const updated = await setUserStatus.execute({
+      userId: target.id,
+      status: "DISABLED",
+      actorUserId: admin.id,
+      correlationId: "integration-platform-admin-1",
+    });
+    expect(updated.status).toBe("DISABLED");
+    await expect(users.findById(target.id)).resolves.toMatchObject({ status: "DISABLED" });
   });
 });
