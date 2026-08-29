@@ -5,9 +5,11 @@ import { PrismaService } from "../../shared/prisma/prisma.service";
 import { RedisService } from "../../shared/redis/redis.service";
 import { ListUsersUseCase, SetUserStatusUseCase } from "../users";
 import { ListPlatformSettingsUseCase, SetSettingValueUseCase } from "../configuration";
+import { ListPlatformAuditEntriesUseCase } from "../audit";
 import { PlatformAdminGuard } from "./presentation/platform-admin.guard";
 import { PlatformUsersController } from "./presentation/platform-users.controller";
 import { PlatformSettingsController } from "./presentation/platform-settings.controller";
+import { PlatformAuditEntriesController } from "./presentation/platform-audit-entries.controller";
 import { PlatformAdminModule } from "./platform-admin.module";
 
 // Same pattern as tenants.module.spec.ts: PlatformAdminModule imports
@@ -51,6 +53,8 @@ describe("PlatformAdminModule wiring", () => {
     expect(moduleRef.get(PlatformSettingsController)).toBeInstanceOf(PlatformSettingsController);
     expect(moduleRef.get(ListPlatformSettingsUseCase)).toBeInstanceOf(ListPlatformSettingsUseCase);
     expect(moduleRef.get(SetSettingValueUseCase)).toBeInstanceOf(SetSettingValueUseCase);
+    expect(moduleRef.get(PlatformAuditEntriesController)).toBeInstanceOf(PlatformAuditEntriesController);
+    expect(moduleRef.get(ListPlatformAuditEntriesUseCase)).toBeInstanceOf(ListPlatformAuditEntriesUseCase);
 
     await moduleRef.close();
   });

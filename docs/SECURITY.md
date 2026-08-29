@@ -279,19 +279,14 @@ to do it from, and the use case had no other caller/test to disturb.
   exposing an update/delete code path, not by the database refusing one. A
   future hardening step for when this matters operationally, not a gap
   introduced by oversight.
-- **`SetUserStatusUseCase` has no HTTP caller yet**, so `user.status_changed`
-  entries can only be produced by whatever future admin endpoint calls it
-  (which must pass an `actorUserId`) or by a script/seed that omits one
-  (recorded with `userId: null`). The use case itself and its audit call are
-  real and tested; there is simply nothing wired to reach it yet.
-- **Login/logout/user-status entries are not reachable through any read
-  endpoint.** They are recorded with `tenantId: null` (Authentication and
-  User status are not tenant-scoped — `docs/MULTITENANCY.md` §4.8), and
-  `AuditEntriesController` only ever returns tenant-scoped entries. A "my
-  activity" view for a user's own auth history, or a platform-admin view
-  across all untenanted entries, would need a new, deliberately separate
-  endpoint — not built here to avoid scope creep beyond the five action
-  categories this change set out to cover.
+- ~~`SetUserStatusUseCase` has no HTTP caller yet~~ — closed 2026-08-28:
+  `PUT /api/v1/platform/users/:id/status` (docs/DECISIONS.md ADR-007) is now
+  its first real caller.
+- ~~Login/logout/user-status entries are not reachable through any read
+  endpoint...~~ — closed 2026-08-29: `GET /api/v1/platform/audit-entries`
+  (behind `PlatformAdminGuard`) now exists as exactly the deliberately
+  separate, platform-scoped view this limitation called for. See "Platform
+  Administration" below.
 - **No pagination beyond a `limit` query parameter** (default 50, capped at
   200) — matches `docs/ARCHITECTURE.md` §9's pagination guidance in spirit
   (never load unbounded rows) without building full cursor-based pagination
@@ -574,7 +569,8 @@ accepting on their own, using the `Membership` state machine
 
 Scope: `isPlatformAdmin` on `User`, `PlatformAdminGuard`, `ListUsersUseCase`,
 `PlatformUsersController`, `ListPlatformSettingsUseCase`,
-`PlatformSettingsController` (`apps/api/src/core/platform-admin`) — the
+`PlatformSettingsController`, `ListPlatformAuditEntriesUseCase`,
+`PlatformAuditEntriesController` (`apps/api/src/core/platform-admin`) — the
 "system administration usa un plano ... separado" requirement from
 `docs/ARCHITECTURE.md` §10, unblocking three previously-deferred backlog
 items. Full design rationale in `docs/DECISIONS.md` ADR-007.
@@ -594,6 +590,11 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
   without its own TENANT/COMPANY override silently inherits
   (`GetEffectiveSettingUseCase`'s fallback chain), so a bad or malicious
   write here has blast radius across the entire platform, not one tenant.
+- Every login/logout/user-status-change audit entry across the whole
+  platform (`GET /api/v1/platform/audit-entries`) — a genuine security log
+  (who logged in/out, whose account was disabled and by whom) that no
+  tenant-scoped role can ever see, since these entries have no tenant to
+  begin with.
 
 ### Threats considered and controls
 
@@ -606,6 +607,7 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
 | Platform-admin capabilities creep beyond what was reviewed | Minimal by design: list/disable users, and now PLATFORM setting reads/writes (2026-08-29) — each new capability under this guard gets its own threat-model review before being added, not folded in silently. No tenant suspension, no impersonation, no data export yet (ADR-007 point 5). |
 | A `PLATFORM` write reaches a scope the setting's definition doesn't declare (e.g. a hypothetical TENANT-only key) | `PlatformSettingsController` calls the exact same `SetSettingValueUseCase.execute({ scopeType: "PLATFORM", ... })` as any other caller — `definition.allowsScope("PLATFORM")` is checked identically, rejecting with `400 SETTING_SCOPE_NOT_ALLOWED` if the catalog doesn't allow it. No separate/weaker validation path for platform-admin callers. |
 | A `PLATFORM` write with a value of the wrong data type reaches storage | Same `SettingDefinition.assertValidValue` check as `SettingsController`'s own TENANT/COMPANY writes — verified in this session's smoke test (a numeric value against a STRING-typed key was rejected with `400 INVALID_SETTING_VALUE`). |
+| `GET /api/v1/platform/audit-entries` leaks a tenant's own business data to a platform admin who shouldn't need it | Scoped structurally to `tenantId: null` only — `AuditEntryRepository.findPlatformScoped` filters `WHERE tenant_id IS NULL` at the query level, so a tenant's `tenant.provisioned`/`configuration.setting.changed`/etc. entries (all tenant-scoped) can never appear here, verified against real Postgres in the integration suite and in this session's smoke test (a real tenant's provisioning entry was confirmed absent from the platform view). |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
@@ -637,10 +639,11 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
   search endpoint is actually needed.
 - **PLATFORM setting changes use a distinct audit action
   (`configuration.platform_setting.changed`) from tenant-scoped changes
-  (`configuration.setting.changed`)**, deliberately, so a future "my
-  activity"/platform-audit view (still-pending backlog item) can tell them
-  apart without inspecting `tenantId`. Not yet queryable by any endpoint —
-  same limitation as the rest of this section.
+  (`configuration.setting.changed`)**, deliberately, so `GET
+  /api/v1/platform/audit-entries` can tell them apart without inspecting
+  `tenantId` — but they are recorded with `tenantId: null` like every other
+  platform-scoped action, so they appear in that view, not a dedicated
+  "settings history" endpoint.
 - **No confirmation/dry-run before a PLATFORM write.** Unlike a TENANT/
   COMPANY write, which only affects the caller's own tenant, a PLATFORM
   write silently changes the fallback every tenant on the platform inherits
@@ -648,3 +651,9 @@ items. Full design rationale in `docs/DECISIONS.md` ADR-007.
   confirmation step. Acceptable at Foundation scale (no production
   tenants); revisit before this endpoint is used against a populated
   platform.
+- **`GET /api/v1/platform/audit-entries` has no search/filter beyond
+  `limit`** (default 50, max 200) and mixes every action type (auth
+  success/failure, status changes, PLATFORM setting writes) in one
+  chronological list with no `action`/date-range filter — same accepted
+  tradeoff as `ListAuditEntriesUseCase`, revisit once real volume needs
+  cursor-based paging or filtering.

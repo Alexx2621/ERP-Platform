@@ -38,6 +38,15 @@ export class PrismaAuditEntryRepository implements AuditEntryRepository {
     return records.map((record) => this.toDomain(record));
   }
 
+  async findPlatformScoped(limit: number): Promise<AuditEntry[]> {
+    const records = await this.prisma.auditEntry.findMany({
+      where: { tenantId: null },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   private toDomain(record: PrismaAuditEntry): AuditEntry {
     return AuditEntry.create({
       id: record.id,

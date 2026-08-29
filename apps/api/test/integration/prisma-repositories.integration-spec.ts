@@ -32,6 +32,7 @@ import { CompanyNotFoundInTenantError } from "../../src/core/configuration/appli
 import { PrismaAuditEntryRepository } from "../../src/core/audit/infrastructure/prisma-audit-entry.repository";
 import { RecordAuditEntryUseCase } from "../../src/core/audit/application/use-cases/record-audit-entry.use-case";
 import { ListAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-audit-entries.use-case";
+import { ListPlatformAuditEntriesUseCase } from "../../src/core/audit/application/use-cases/list-platform-audit-entries.use-case";
 import { PrismaTenantProvisioningRepository } from "../../src/core/tenants/infrastructure/prisma-tenant-provisioning.repository";
 import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provision-tenant.use-case";
 import { ListPlatformSettingsUseCase } from "../../src/core/configuration/application/use-cases/list-platform-settings.use-case";
@@ -460,6 +461,7 @@ describe("Prisma repositories against PostgreSQL", () => {
     const auditEntries = new PrismaAuditEntryRepository(prisma);
     const recordAuditEntry = new RecordAuditEntryUseCase(auditEntries);
     const listAuditEntries = new ListAuditEntriesUseCase(auditEntries);
+    const listPlatformAuditEntries = new ListPlatformAuditEntriesUseCase(auditEntries);
     const now = new Date("2026-08-27T20:00:00.000Z");
 
     const actor = createUser(now, "audit-actor@example.com");
@@ -509,6 +511,17 @@ describe("Prisma repositories against PostgreSQL", () => {
     const entriesForB = await listAuditEntries.execute({ tenantId: tenantB.id });
     expect(entriesForB).toHaveLength(1);
     expect(entriesForB[0].tenantId).toBe(tenantB.id);
+
+    // The platform-scoped view (ListPlatformAuditEntriesUseCase, behind
+    // PlatformAdminGuard) sees exactly the entry neither tenant-scoped view
+    // can: the null-tenant auth event, and only that one.
+    const platformEntries = await listPlatformAuditEntries.execute();
+    expect(platformEntries).toHaveLength(1);
+    expect(platformEntries[0]).toMatchObject({
+      tenantId: null,
+      action: "auth.login.succeeded",
+      userId: actor.id,
+    });
 
     // Writing an entry against a userId that does not exist is rejected by
     // the real FK, not silently accepted — audit integrity is DB-enforced.

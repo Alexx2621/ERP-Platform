@@ -55,6 +55,7 @@ describe("RecordAuditEntryUseCase", () => {
     const failingRepository: AuditEntryRepository = {
       record: jest.fn().mockRejectedValue(new Error("database unavailable")),
       findByTenant: jest.fn().mockResolvedValue([]),
+      findPlatformScoped: jest.fn().mockResolvedValue([]),
     };
     const useCase = new RecordAuditEntryUseCase(failingRepository);
 

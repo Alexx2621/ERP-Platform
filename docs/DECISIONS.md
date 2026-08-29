@@ -420,3 +420,19 @@ controller under the existing guard, nothing else. Verified end-to-end
 against real Postgres: a `PLATFORM` write is confirmed to become the
 effective value for a real tenant with no TENANT/COMPANY override of its
 own, not just readable back from the PLATFORM row itself.
+
+**Amendment (2026-08-29) — Platform-scoped audit view**
+
+The other capability this ADR unblocked — a "my activity"/platform-admin
+view for `tenantId: null` audit entries, called out as a pending backlog
+item in `docs/SECURITY.md`'s original Audit section — is now built too:
+`GET /api/v1/platform/audit-entries`, same guard pair, same two-step
+pattern again. `ListPlatformAuditEntriesUseCase` mirrors `ListAuditEntriesUseCase`
+exactly, swapping `findByTenant` for a new `findPlatformScoped` method on
+`AuditEntryRepository` that filters `WHERE tenant_id IS NULL` — the query
+boundary is structural, not an application-level filter that could be
+forgotten. Verified against real Postgres (integration suite and this
+session's smoke test) that a real tenant's own audit entries
+(`tenant.provisioned`, etc.) never appear in this view, only genuinely
+untenanted ones (login, logout, user status changes, and now PLATFORM
+setting changes).

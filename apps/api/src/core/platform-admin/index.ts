@@ -5,6 +5,7 @@
 export { PlatformAdminGuard } from "./presentation/platform-admin.guard";
 export { PlatformUsersController } from "./presentation/platform-users.controller";
 export { PlatformSettingsController } from "./presentation/platform-settings.controller";
+export { PlatformAuditEntriesController } from "./presentation/platform-audit-entries.controller";
 export { PlatformUserResponseDto } from "./presentation/dto/platform-user-response.dto";
 export {
   PlatformSettingResponseDto,

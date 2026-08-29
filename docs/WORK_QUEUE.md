@@ -6,10 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-28 (sesión 16,
-plano de administración de plataforma — ADR-007, `isPlatformAdmin`,
-`PlatformAdminGuard`, gestión de usuarios). Modelo operativo actualizado:
-2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 16,
+plano de administración de plataforma completo — ADR-007: `isPlatformAdmin`/
+`PlatformAdminGuard`, gestión de usuarios, escritura de settings PLATFORM y
+vista de auditoría de plataforma). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,37 +22,35 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **"Mi actividad" / vista de administración de plataforma para eventos no
-   tenant-scoped** — login/logout/cambios de status de usuario se auditan
-   (`tenantId: null`) pero no son consultables por ningún endpoint todavía
-   (`AuditEntriesController` solo devuelve entradas tenant-scoped). Ya no
-   bloqueado por decisión de arquitectura: puede construirse como
-   `GET /api/v1/platform/audit-entries` detrás de `PlatformAdminGuard`,
-   mismo patrón que `PlatformUsersController`/`PlatformSettingsController`.
-2. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
+1. **Inbox / idempotencia de consumidores** (`docs/EVENTS.md` §9) —
    deliberadamente no construido junto con el Event Bus porque hoy no existe
    ningún handler cross-proceso que lo necesite (ver ADR-004, punto 5).
    Requerido antes de registrar cualquier `DomainEventBus` handler con un
    efecto secundario no idempotente — incluyendo conectar Notifications al
    Event Bus (hoy se invoca directamente desde `TenantsController`, no vía
    `tenancy.tenant.provisioned.v1`, ver `docs/SECURITY.md` §"Notifications").
-3. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+2. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-4. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+3. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
-5. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+4. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
    el SDK ya probado en un mismo cambio — refactor de proceso separado.
-6. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
+5. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
    existe en el dominio, pero ningún endpoint lo invoca para una membership
    `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
    §"Membership Invitations".
+6. **UI de administración de plataforma en erp-web** — el backend completo
+   (usuarios, settings PLATFORM, auditoría de plataforma) ya existe detrás
+   de `PlatformAdminGuard`, pero no hay ninguna pantalla que lo consuma
+   todavía. No bloqueado, deliberadamente no construido junto con cada
+   endpoint individual para revisar el conjunto completo de una vez.
 
 ### Hecho — sesión 16 (Platform Administration plane — ADR-007)
 
@@ -171,6 +169,53 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
   amenazas de la escritura de settings).
 - Validación completa: `pnpm lint`/`typecheck` limpios, `pnpm test`
   (195/195 `apps/api`), `pnpm build` (7 paquetes/apps),
+  `pnpm --filter @erp/api test:integration` (13/13 contra Postgres real),
+  `pnpm --filter @erp/e2e test:e2e` (3/3 Playwright) — todo verde.
+
+**Tercer bloque de la misma sesión — Vista de auditoría de plataforma
+(cierra el ítem 2 original de esta cola — "mi actividad"/eventos no
+tenant-scoped)**:
+
+- **`apps/api/src/core/audit/`**: `AuditEntryRepository.findPlatformScoped(limit)`
+  nuevo — filtro `WHERE tenant_id IS NULL` a nivel de query, estructural,
+  no un filtro de aplicación que se pudiera olvidar (implementado en
+  `PrismaAuditEntryRepository` e `InMemoryAuditEntryRepository`).
+  `ListPlatformAuditEntriesUseCase` nuevo, mismo patrón que
+  `ListAuditEntriesUseCase` (límite 50/tope 200).
+- **`apps/api/src/core/platform-admin/`**: `PlatformAuditEntriesController`
+  nuevo (`GET /api/v1/platform/audit-entries`), mismo patrón de guard que
+  los otros dos controllers de plataforma. Reusa `AuditEntryResponseDto`/
+  `ListAuditEntriesDto` ya existentes del barrel de `audit` — mismo shape
+  de respuesta que el endpoint tenant-scoped, sin duplicar DTOs.
+- **Sin migración nueva** — reutiliza `audit_entries` ya existente; la
+  columna `tenant_id` ya era nullable desde que se construyó Audit.
+- Tests: 3 nuevos (`ListPlatformAuditEntriesUseCase`) + 3 nuevas aserciones
+  de wiring (`audit.module.spec.ts`, `platform-admin.module.spec.ts`,
+  `app.module.spec.ts`) — 198 tests unitarios totales en `apps/api` (antes
+  195). El escenario de integración ya existente de Audit se amplió (no se
+  agregó uno nuevo) para verificar que la vista de plataforma ve
+  exactamente la entrada `auth.login.succeeded` (`tenantId: null`) y
+  ninguna de las dos entradas `tenant.provisioned` de los tenants reales
+  creados en el mismo test.
+- Smoke test manual contra Docker real: registro de un admin real, un
+  login fallido real, un segundo usuario real que provisiona un tenant
+  real → `admin` sin flag rechazado con `403` en `/platform/audit-entries`
+  → flag otorgado vía `UPDATE` directo → el listado real muestra
+  exactamente las entradas `tenantId: null` (registros, logins
+  exitosos/fallidos) de toda la plataforma (incluyendo residuos de
+  sesiones/E2E anteriores, confirmando que es genuinamente cross-tenant) y
+  **ninguna entrada del provisioning del tenant real recién creado**,
+  confirmando en runtime que el filtro estructural funciona. Datos de
+  prueba limpiados después.
+- Documentación actualizada: `docs/DECISIONS.md` (ADR-007, segunda sección
+  "Amendment (2026-08-29)"), `docs/SECURITY.md` (sección "Audit" — dos
+  huecos ya documentados cerrados con tachado: `SetUserStatusUseCase` sin
+  caller HTTP, y entradas no tenant-scoped sin endpoint de lectura; sección
+  "Platform Administration" ampliada con el asset y la amenaza del nuevo
+  endpoint; corregido un hueco que ya no aplicaba sobre auditoría de
+  settings PLATFORM no consultable).
+- Validación completa: `pnpm lint`/`typecheck` limpios, `pnpm test`
+  (198/198 `apps/api`), `pnpm build` (7 paquetes/apps),
   `pnpm --filter @erp/api test:integration` (13/13 contra Postgres real),
   `pnpm --filter @erp/e2e test:e2e` (3/3 Playwright) — todo verde.
 
@@ -1039,19 +1084,26 @@ Playwright).
   administración de plataforma separado...~~ — cerrado en la sesión 16: el
   plano (ADR-007) y el endpoint en sí (`PUT /api/v1/platform/settings/:key`)
   ya existen. Ver "Hecho — sesión 16" (segundo bloque).
+- ~~"Mi actividad"/vista de administración de plataforma para eventos no
+  tenant-scoped depende de un plano de administración de plataforma...~~ —
+  cerrado en la sesión 16 (tercer bloque): `GET /api/v1/platform/audit-entries`
+  ya existe. Ver "Hecho — sesión 16" (tercer bloque).
 - Un `DomainEventBus` handler con efecto secundario no idempotente depende
-  de construir primero `inbox_messages` (ítem 2 de la cola Claude, ver
+  de construir primero `inbox_messages` (ítem 1 de la cola Claude, ver
   ADR-004 punto 5) — esto incluye conectar Notifications al Event Bus.
-- Una purga real de storage para archivos borrados (ítem 3 de la cola
+- Una purga real de storage para archivos borrados (ítem 2 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 4 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 3 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 5 de la cola Claude)
+- `@erp/api-client` generado desde OpenAPI (ítem 4 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Expirar/revocar invitaciones pendientes (ítem 6 de la cola Claude) depende
+- Expirar/revocar invitaciones pendientes (ítem 5 de la cola Claude) depende
   de decidir una política de TTL — no bloqueado, no decidido todavía.
+- Una UI de administración de plataforma en erp-web (ítem 6 de la cola
+  Claude) no depende de nada técnico — el backend completo ya existe; es
+  simplemente el siguiente bloque de frontend a construir.
 
 ## Integration needed
 

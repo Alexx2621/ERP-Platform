@@ -3,6 +3,7 @@ import { AUDIT_ENTRY_REPOSITORY } from "./domain/audit-entry.repository";
 import { PrismaAuditEntryRepository } from "./infrastructure/prisma-audit-entry.repository";
 import { RecordAuditEntryUseCase } from "./application/use-cases/record-audit-entry.use-case";
 import { ListAuditEntriesUseCase } from "./application/use-cases/list-audit-entries.use-case";
+import { ListPlatformAuditEntriesUseCase } from "./application/use-cases/list-platform-audit-entries.use-case";
 
 /**
  * Deliberately has ZERO dependency on any other core module — the same
@@ -22,7 +23,8 @@ import { ListAuditEntriesUseCase } from "./application/use-cases/list-audit-entr
     { provide: AUDIT_ENTRY_REPOSITORY, useClass: PrismaAuditEntryRepository },
     RecordAuditEntryUseCase,
     ListAuditEntriesUseCase,
+    ListPlatformAuditEntriesUseCase,
   ],
-  exports: [RecordAuditEntryUseCase, ListAuditEntriesUseCase],
+  exports: [RecordAuditEntryUseCase, ListAuditEntriesUseCase, ListPlatformAuditEntriesUseCase],
 })
 export class AuditModule {}

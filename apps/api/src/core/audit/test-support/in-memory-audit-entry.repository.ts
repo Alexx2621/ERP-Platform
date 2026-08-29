@@ -14,4 +14,11 @@ export class InMemoryAuditEntryRepository implements AuditEntryRepository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, query.limit);
   }
+
+  async findPlatformScoped(limit: number): Promise<AuditEntry[]> {
+    return this.entries
+      .filter((entry) => entry.tenantId === null)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
 }

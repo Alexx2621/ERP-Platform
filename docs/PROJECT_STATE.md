@@ -1,11 +1,13 @@
 # Project State
 
-Última actualización: 2026-08-28 (sesión 16), tras implementar el plano de
-administración de plataforma (ADR-007): flag `isPlatformAdmin` en `User`,
-`PlatformAdminGuard`, y el primer caso de uso real detrás de él
-(listar/activar-desactivar usuarios de toda la plataforma). Modelo de
-trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
-`docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
+Última actualización: 2026-08-29 (sesión 16), tras completar el plano de
+administración de plataforma (ADR-007) en tres bloques: flag
+`isPlatformAdmin` en `User` + `PlatformAdminGuard` + gestión de usuarios
+(listar/activar-desactivar), escritura de settings a nivel PLATFORM, y una
+vista de auditoría cross-tenant para eventos sin tenant (login, logout,
+cambios de status). Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
+(reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como
+historial).
 
 ## Development Ownership
 
@@ -362,9 +364,19 @@ ADR-004 nada se ha construido contra él todavía.
   seguro. **Verificado contra Postgres real que la propagación funciona de
   punta a punta**: un tenant real sin override propio pasa de ver el
   default de la definición a heredar el valor PLATFORM recién escrito, sin
-  tocar nada de su lado. ADR-007 enmendado con esta extensión. Detalle
-  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 16").
-- 219 tests unitarios pasando (api 195, api-client 8, erp-web 16) + 18 en
+  tocar nada de su lado. ADR-007 enmendado con esta extensión. Tercer
+  bloque de la misma sesión: vista de auditoría de plataforma
+  (`GET /api/v1/platform/audit-entries`), cierra el hueco de "mi
+  actividad"/eventos no tenant-scoped documentado desde que Audit se
+  construyó. `AuditEntryRepository.findPlatformScoped` filtra
+  `WHERE tenant_id IS NULL` a nivel de query (estructural, no un filtro de
+  aplicación olvidable). **Verificado contra Postgres real que un tenant
+  real recién provisionado nunca aparece en esta vista**, solo eventos
+  genuinamente sin tenant (registros, logins, y ahora también cambios de
+  settings PLATFORM, gracias a su acción de auditoría distinta
+  `configuration.platform_setting.changed`). ADR-007 enmendado de nuevo.
+  Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 16").
+- 222 tests unitarios pasando (api 198, api-client 8, erp-web 16) + 18 en
   `@erp/events` + 1 en `@erp/worker` + 13 tests de integración con Postgres
   real + **3 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
@@ -432,35 +444,31 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (vista de
-"mi actividad"/administración de plataforma para eventos no tenant-scoped).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (inbox/
+idempotencia de consumidores).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: vista de "mi actividad"/
-administración de plataforma para eventos no tenant-scoped
-(login/logout/cambios de status, hoy grabados pero sin endpoint de
-lectura; ya no bloqueado por decisión de arquitectura — puede construirse
-como `GET /api/v1/platform/audit-entries` detrás de `PlatformAdminGuard`,
-mismo patrón que `PlatformUsersController`/`PlatformSettingsController`) →
-inbox/idempotencia de consumidores (requerido antes de registrar cualquier
-handler del Event Bus con efecto secundario no idempotente, incluyendo
-conectar Notifications a `tenancy.tenant.provisioned.v1`) → purga real de
-storage para archivos borrados (`DeleteFileUseCase` hoy solo hace
-soft-delete de metadata) → adapter real de Email para Notifications
-(proveedor SMTP/transaccional no decidido) → `@erp/api-client` generado
-desde el spec OpenAPI (`/api/docs-json` ya existe; herramienta de
-generación todavía no decidida) → expirar/revocar invitaciones pendientes
-(`Membership.revoke()` ya existe en el dominio, sin TTL ni endpoint todavía).
+Resumen bajo ownership único de Claude: inbox/idempotencia de consumidores
+(requerido antes de registrar cualquier handler del Event Bus con efecto
+secundario no idempotente, incluyendo conectar Notifications a
+`tenancy.tenant.provisioned.v1`) → purga real de storage para archivos
+borrados (`DeleteFileUseCase` hoy solo hace soft-delete de metadata) →
+adapter real de Email para Notifications (proveedor SMTP/transaccional no
+decidido) → `@erp/api-client` generado desde el spec OpenAPI
+(`/api/docs-json` ya existe; herramienta de generación todavía no
+decidida) → expirar/revocar invitaciones pendientes (`Membership.revoke()`
+ya existe en el dominio, sin TTL ni endpoint todavía) → UI de
+administración de plataforma en erp-web (el backend completo — usuarios,
+settings PLATFORM, auditoría de plataforma — ya existe, falta la pantalla).
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
 (ADR-004, ADR-006 y ADR-007 ya están ratificados). Claude debe completar
 cualquier UI, SDK y cobertura de pruebas que estos bloques necesiten. La UI
 de RBAC (incluida la invitación de miembros), el E2E de sesión y la UI de
 Configuración ya están hechas e integradas (ver Completed); la UI de Files
 (subida/listado/descarga), de Notifications (bandeja/badge de no leídas) y
-de Platform Administration (panel de admin en erp-web, incluyendo la
-escritura de settings PLATFORM ya expuesta por API) todavía no se han
+de Platform Administration (panel de admin en erp-web) todavía no se han
 construido.
 
 ## Production Status
@@ -622,3 +630,16 @@ sobre `audit_entries` confirma la entrada real `configuration.platform_setting.c
 con el actor correcto y `previousValues`/`newValues` reales. Toda la data
 de prueba (incluida una notificación automática de provisioning, cuya FK
 había que borrar antes que el tenant) fue limpiada al terminar.
+
+Tercer bloque de la misma sesión (vista de auditoría de plataforma), sin
+migración nueva — reutiliza `audit_entries` ya existente. Flujo HTTP
+completo repetido con el servidor real compilado: registro de un admin
+real, un login fallido real, un segundo usuario real que provisiona un
+tenant real → `admin` sin flag rechazado con `403` en
+`/platform/audit-entries` → flag otorgado vía `UPDATE` directo → el
+listado real muestra exactamente las entradas `tenantId: null` de toda la
+plataforma (registros, logins exitosos/fallidos, incluyendo residuos
+reales de sesiones/E2E anteriores) y **ninguna entrada del provisioning
+del tenant real recién creado**, confirmando en runtime que el filtro
+estructural `WHERE tenant_id IS NULL` funciona exactamente como se diseñó.
+Toda la data de prueba fue limpiada al terminar.
