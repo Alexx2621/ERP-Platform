@@ -2,6 +2,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   displayName: string;
+  isPlatformAdmin: boolean;
 }
 
 export interface SessionResponse {
@@ -171,6 +172,55 @@ export interface InviteMembershipInput {
 
 export interface AcceptMembershipInvitationInput {
   tenantSlug: string;
+}
+
+export type UserStatus = "ACTIVE" | "DISABLED";
+
+export interface PlatformUserResponse {
+  id: string;
+  email: string;
+  displayName: string;
+  status: UserStatus;
+  isPlatformAdmin: boolean;
+  createdAt: string;
+}
+
+export interface SetPlatformUserStatusInput {
+  status: UserStatus;
+}
+
+export type PlatformSettingSource = "PLATFORM" | "DEFAULT";
+
+export interface PlatformSettingResponse {
+  key: string;
+  value: unknown;
+  source: PlatformSettingSource;
+}
+
+export interface SetPlatformSettingValueInput {
+  value: unknown;
+}
+
+export interface PlatformSettingValueResponse {
+  key: string;
+  value: unknown;
+  updatedAt: string;
+}
+
+export interface AuditEntryResponse {
+  id: string;
+  userId: string | null;
+  tenantId: string | null;
+  companyId: string | null;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  previousValues: unknown;
+  newValues: unknown;
+  ipAddress: string | null;
+  userAgent: string | null;
+  correlationId: string;
+  createdAt: string;
 }
 
 export interface ApiErrorEnvelope {

@@ -2,6 +2,7 @@ import type {
   AcceptMembershipInvitationInput,
   AssignRoleInput,
   ApiErrorEnvelope,
+  AuditEntryResponse,
   AuthenticatedUser,
   CreateRoleInput,
   EffectiveSettingResponse,
@@ -11,11 +12,16 @@ import type {
   MembershipWithUserResponse,
   PendingInvitationResponse,
   PermissionResponse,
+  PlatformSettingResponse,
+  PlatformSettingValueResponse,
+  PlatformUserResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
+  SetPlatformSettingValueInput,
+  SetPlatformUserStatusInput,
   SetSettingValueInput,
   SessionResponse,
   SettingDefinitionResponse,
@@ -276,6 +282,75 @@ export class ApiClient {
         body: input,
       },
     );
+  }
+
+  async listPlatformUsers(
+    accessToken: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<PlatformUserResponse[]> {
+    const query = limit ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return this.request<PlatformUserResponse[]>(`/platform/users${query}`, { accessToken, signal });
+  }
+
+  async setPlatformUserStatus(
+    accessToken: string,
+    userId: string,
+    input: SetPlatformUserStatusInput,
+  ): Promise<PlatformUserResponse> {
+    return this.request<PlatformUserResponse>(`/platform/users/${encodeURIComponent(userId)}/status`, {
+      method: "PUT",
+      accessToken,
+      body: input,
+    });
+  }
+
+  async listPlatformSettingDefinitions(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<SettingDefinitionResponse[]> {
+    return this.request<SettingDefinitionResponse[]>("/platform/settings/definitions", {
+      accessToken,
+      signal,
+    });
+  }
+
+  async listPlatformSettings(
+    accessToken: string,
+    signal?: AbortSignal,
+  ): Promise<PlatformSettingResponse[]> {
+    return this.request<PlatformSettingResponse[]>("/platform/settings", { accessToken, signal });
+  }
+
+  async setPlatformSettingValue(
+    accessToken: string,
+    key: string,
+    input: SetPlatformSettingValueInput,
+  ): Promise<PlatformSettingValueResponse> {
+    return this.request<PlatformSettingValueResponse>(`/platform/settings/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      accessToken,
+      body: input,
+    });
+  }
+
+  async listPlatformAuditEntries(
+    accessToken: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<AuditEntryResponse[]> {
+    const query = limit ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return this.request<AuditEntryResponse[]>(`/platform/audit-entries${query}`, { accessToken, signal });
+  }
+
+  async listAuditEntries(
+    accessToken: string,
+    tenantSlug: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<AuditEntryResponse[]> {
+    const query = limit ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return this.request<AuditEntryResponse[]>(`/audit-entries${query}`, { accessToken, tenantSlug, signal });
   }
 
   async listUserPreferences(

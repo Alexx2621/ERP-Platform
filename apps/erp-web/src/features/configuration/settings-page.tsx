@@ -22,8 +22,10 @@ import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
+import { formatDateTime } from "../../shared/format/date";
 import { Button } from "../../shared/ui/button";
 import { FormField } from "../../shared/ui/form-field";
+import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
@@ -38,6 +40,14 @@ import {
   TableRow,
 } from "../../shared/ui/table";
 import { Tabs } from "../../shared/ui/tabs";
+import {
+  ValueEditor,
+  formatValue,
+  inferValueType,
+  parseValue,
+  serializeValue,
+  typeLabel,
+} from "../../shared/ui/value-editor";
 
 interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -58,58 +68,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function serializeValue(value: unknown, dataType?: SettingDataType): string {
-  if (dataType === "STRING" || typeof value === "string") {
-    return typeof value === "string" ? value : String(value ?? "");
-  }
-  if (dataType === "JSON" || (typeof value === "object" && value !== null)) {
-    return JSON.stringify(value, null, 2);
-  }
-  return String(value ?? "");
-}
-
-function inferValueType(value: unknown): PreferenceValueType {
-  if (typeof value === "number") return "NUMBER";
-  if (typeof value === "boolean") return "BOOLEAN";
-  if (typeof value === "object" && value !== null) return "JSON";
-  return "STRING";
-}
-
-function parseValue(
-  rawValue: string,
-  dataType: SettingDataType,
-): { value?: unknown; error?: string } {
-  if (dataType === "STRING") {
-    return { value: rawValue };
-  }
-  if (dataType === "NUMBER") {
-    const value = Number(rawValue);
-    return rawValue.trim() && Number.isFinite(value)
-      ? { value }
-      : { error: "Ingresa un número válido." };
-  }
-  if (dataType === "BOOLEAN") {
-    return { value: rawValue === "true" };
-  }
-  try {
-    return { value: JSON.parse(rawValue) as unknown };
-  } catch {
-    return { error: "Ingresa JSON válido." };
-  }
-}
-
-function formatValue(value: unknown): string {
-  if (typeof value === "string") return value || "Cadena vacía";
-  return JSON.stringify(value);
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("es-GT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 function sourceLabel(source: EffectiveSettingResponse["source"]): string {
   return {
     COMPANY: "Empresa",
@@ -117,97 +75,6 @@ function sourceLabel(source: EffectiveSettingResponse["source"]): string {
     PLATFORM: "Plataforma",
     DEFAULT: "Predeterminado",
   }[source];
-}
-
-function typeLabel(dataType: SettingDataType): string {
-  return {
-    STRING: "Texto",
-    NUMBER: "Número",
-    BOOLEAN: "Sí / No",
-    JSON: "JSON",
-  }[dataType];
-}
-
-function LoadingRows({ columns }: { columns: number }) {
-  return Array.from({ length: 3 }, (_, rowIndex) => (
-    <TableRow key={rowIndex} aria-hidden="true">
-      {Array.from({ length: columns }, (_, columnIndex) => (
-        <TableCell key={columnIndex}>
-          <span className="block h-3.5 max-w-40 animate-pulse rounded bg-[var(--line)]" />
-        </TableCell>
-      ))}
-    </TableRow>
-  ));
-}
-
-interface ValueEditorProps {
-  id: string;
-  dataType: SettingDataType;
-  value: string;
-  error?: string;
-  onChange: (value: string) => void;
-  autoFocus?: boolean;
-}
-
-function ValueEditor({ id, dataType, value, error, onChange, autoFocus }: ValueEditorProps) {
-  if (dataType === "BOOLEAN") {
-    return (
-      <Select
-        id={id}
-        name={id}
-        label="Valor"
-        value={value}
-        error={error}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="true">Sí</option>
-        <option value="false">No</option>
-      </Select>
-    );
-  }
-
-  if (dataType === "JSON") {
-    return (
-      <label className="grid gap-2 text-[13px] font-bold text-[var(--ink)]" htmlFor={id}>
-        Valor
-        <textarea
-          id={id}
-          name={id}
-          rows={8}
-          value={value}
-          autoFocus={autoFocus}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-error` : `${id}-hint`}
-          onChange={(event) => onChange(event.target.value)}
-          className="w-full resize-y rounded-[10px] border border-[var(--line-strong)] bg-[var(--field)] px-3.5 py-3 font-mono text-[12px] font-medium leading-5 text-[var(--ink)] outline-none focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-soft)]"
-        />
-        {error ? (
-          <span id={`${id}-error`} role="alert" className="text-[12px] text-[var(--danger)]">
-            {error}
-          </span>
-        ) : (
-          <span id={`${id}-hint`} className="text-[12px] font-medium text-[var(--muted)]">
-            Usa sintaxis JSON válida para objetos, listas o valores nulos.
-          </span>
-        )}
-      </label>
-    );
-  }
-
-  return (
-    <FormField
-      id={id}
-      name={id}
-      label="Valor"
-      type={dataType === "NUMBER" ? "number" : "text"}
-      step={dataType === "NUMBER" ? "any" : undefined}
-      value={value}
-      autoFocus={autoFocus}
-      error={error}
-      hint={dataType === "NUMBER" ? "Se guardará como número, no como texto." : undefined}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  );
 }
 
 interface SettingModalProps {
@@ -783,7 +650,7 @@ export function SettingsPage({ selection, navigate }: SettingsPageProps) {
                     </span>
                   </TableCell>
                   <TableCell className="text-[11px] font-medium text-[var(--muted-strong)]">
-                    {formatDate(preference.updatedAt)}
+                    {formatDateTime(preference.updatedAt)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -811,6 +678,7 @@ export function SettingsPage({ selection, navigate }: SettingsPageProps) {
       eyebrow={`Tenant / ${selection.slug}`}
       title="Ajustes"
       description="Consulta la configuración efectiva, administra overrides permitidos y conserva tus preferencias personales."
+      navigate={navigate}
       action={
         <Button type="button" variant="secondary" onClick={() => navigate("/workspace")}>
           <ArrowLeft size={17} weight="bold" aria-hidden="true" />

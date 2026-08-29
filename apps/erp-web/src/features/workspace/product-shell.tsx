@@ -1,6 +1,7 @@
-import { SignOut, UserCircle } from "@phosphor-icons/react";
+import { ShieldCheck, SignOut, UserCircle } from "@phosphor-icons/react";
 import type { PropsWithChildren, ReactNode } from "react";
 import { useAuth } from "../../shared/auth/auth-context";
+import type { AppPath } from "../../shared/navigation/router";
 import { BrandMark } from "../../shared/ui/brand-mark";
 import { Button } from "../../shared/ui/button";
 
@@ -9,6 +10,8 @@ interface ProductShellProps {
   title: string;
   description?: string;
   action?: ReactNode;
+  /** When provided and the current user is a platform admin, shows a persistent link to /platform-admin. */
+  navigate?: (path: AppPath, replace?: boolean) => void;
 }
 
 export function ProductShell({
@@ -16,6 +19,7 @@ export function ProductShell({
   title,
   description,
   action,
+  navigate,
   children,
 }: PropsWithChildren<ProductShellProps>) {
   const { session, logout } = useAuth();
@@ -26,6 +30,17 @@ export function ProductShell({
         <div className="mx-auto flex h-17 max-w-[1240px] items-center justify-between px-5 sm:px-8">
           <BrandMark />
           <div className="flex items-center gap-2 sm:gap-4">
+            {navigate && session?.user.isPlatformAdmin ? (
+              <Button
+                type="button"
+                variant="quiet"
+                className="h-10 gap-1.5 px-3"
+                onClick={() => navigate("/platform-admin")}
+              >
+                <ShieldCheck size={17} weight="duotone" aria-hidden="true" />
+                <span className="hidden sm:inline">Plataforma</span>
+              </Button>
+            ) : null}
             <div className="hidden items-center gap-2.5 text-right sm:flex">
               <UserCircle
                 size={20}

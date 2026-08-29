@@ -9,6 +9,7 @@ import { TenantListPage } from "../features/tenants/tenant-list-page";
 import { WorkspacePage } from "../features/workspace/workspace-page";
 import { RolesPermissionsPage } from "../features/access-control/roles-permissions-page";
 import { SettingsPage } from "../features/configuration/settings-page";
+import { PlatformAdminPage } from "../features/platform-admin/platform-admin-page";
 
 interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -36,6 +37,9 @@ export function App() {
     ) {
       navigate("/tenants", true);
     }
+    if (session && path === "/platform-admin" && !session.user.isPlatformAdmin) {
+      navigate("/tenants", true);
+    }
   }, [isAuthPath, navigate, path, selection, session]);
 
   if (!session) {
@@ -60,6 +64,10 @@ export function App() {
 
   if (path === "/settings" && selection) {
     return <SettingsPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/platform-admin" && session.user.isPlatformAdmin) {
+    return <PlatformAdminPage navigate={navigate} />;
   }
 
   return <TenantListPage navigate={navigate} onSelect={setSelection} />;

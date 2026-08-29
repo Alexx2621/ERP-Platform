@@ -1,12 +1,11 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 17), tras implementar el
-mecanismo de inbox/idempotencia de consumidores (ADR-008) que ADR-004
-punto 5 dejaba pendiente desde que se construyó el Event Bus: tabla
-`inbox_messages`, `consumeIdempotently`, verificado contra Postgres real
-incluyendo reclamo concurrente, recuperación de lease, y un escenario de
-punta a punta con el outbox real donde una redelivery manual produce
-exactamente un efecto de consumidor. Modelo de trabajo vigente:
+Última actualización: 2026-08-29 (sesión 18), tras construir la UI de
+administración de plataforma en `apps/erp-web` (Usuarios/Ajustes/Actividad)
+y exponer `isPlatformAdmin` en todo el flujo de autenticación
+(login/refresh/`me`) para que el frontend pueda mostrar el acceso solo a
+quien corresponde — cierra el último hueco que dejó pendiente la sesión 16
+(backend de Platform Administration, ADR-007). Modelo de trabajo vigente:
 `docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
 que quedan como historial).
 
@@ -400,9 +399,43 @@ ADR-004 nada se ha construido contra él todavía.
   (Notifications) — requiere primero extraer el módulo a un paquete
   compartido que `apps/worker` pueda importar, backlog separado. Detalle
   completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 17").
-- 231 tests unitarios pasando (api 198, api-client 8, erp-web 16) + 27 en
+- **UI de administración de plataforma + `isPlatformAdmin` en el flujo de
+  auth** (`apps/erp-web/src/features/platform-admin`, Claude, sesión 18):
+  el backend de la sesión 16 (usuarios, settings PLATFORM, auditoría de
+  plataforma) tenía cero superficie de frontend hasta este bloque.
+  `isPlatformAdmin` ahora viaja en la respuesta de `login`/`refresh`/`me`
+  (antes solo vivía en el dominio); `@erp/api-client` gana los 6 métodos
+  del contrato de `platform-admin` más `listAuditEntries` (el endpoint
+  tenant-scoped de la sesión 9, sin cobertura de SDK hasta ahora).
+  `platform-admin-page.tsx` (pestañas Usuarios/Ajustes/Actividad) vive en
+  la ruta nueva `/platform-admin`, protegida por guardia de redirección y
+  por verificación en el punto de render; enlace persistente "Plataforma"
+  en `ProductShell`, visible solo si `session.user.isPlatformAdmin`.
+  **Bug real encontrado durante la propia verificación E2E**: `Tabs`
+  mantiene los tres paneles montados permanentemente (solo alterna
+  `hidden`), así que la pestaña "Actividad" solo pedía datos una vez al
+  montar la página completa — deshabilitar un usuario o cambiar un ajuste
+  PLATFORM en otra pestaña nunca aparecía ahí sin recargar. Corregido
+  subiendo el estado de pestaña activa al componente padre y haciendo que
+  el panel de auditoría vuelva a pedir datos cada vez que se activa, no
+  solo al montar. **E2E real nuevo**
+  (`apps/e2e/tests/platform-admin.spec.ts`): login como platform admin →
+  deshabilitar un usuario objetivo → su siguiente login real es rechazado
+  (`403 ACCOUNT_DISABLED`) → reactivar → editar `localization.currency` a
+  nivel PLATFORM → confirmar el origen `PLATFORM` en la tabla → revisar
+  "Actividad" y confirmar ambas acciones como filas nuevas.
+  `isPlatformAdmin` no tiene endpoint de otorgamiento por diseño
+  (ADR-007), así que el test lo otorga con una escritura directa a
+  Postgres vía `pg` — el mismo mecanismo sancionado que cualquier smoke
+  test manual de este proyecto; `apps/e2e/src/global-setup.ts` expone
+  ahora `process.env.E2E_DATABASE_URL` para que los test files puedan
+  abrir esa conexión (Playwright hereda `process.env` del proceso
+  principal al bifurcar los workers — patrón documentado de la propia
+  herramienta). Detalle completo en `docs/WORK_QUEUE.md`
+  ("Hecho — sesión 18").
+- 231 tests unitarios pasando (api 198, api-client 9, erp-web 16) + 27 en
   `@erp/events` + 1 en `@erp/worker` + 16 tests de integración con Postgres
-  real + **3 tests E2E de Playwright pasando contra infraestructura real
+  real + **4 tests E2E de Playwright pasando contra infraestructura real
   completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
   Testcontainers, API y worker compilados reales, Vite real), incluyendo
   pruebas de wiring real de NestJS (`auth.module.spec.ts`,
@@ -483,17 +516,15 @@ metadata) → adapter real de Email para Notifications (proveedor
 SMTP/transaccional no decidido) → `@erp/api-client` generado desde el spec
 OpenAPI (`/api/docs-json` ya existe; herramienta de generación todavía no
 decidida) → expirar/revocar invitaciones pendientes (`Membership.revoke()`
-ya existe en el dominio, sin TTL ni endpoint todavía) → UI de
-administración de plataforma en erp-web (el backend completo — usuarios,
-settings PLATFORM, auditoría de plataforma — ya existe, falta la pantalla).
+ya existe en el dominio, sin TTL ni endpoint todavía).
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
 (ADR-004, ADR-006, ADR-007 y ADR-008 ya están ratificados). Claude debe
 completar cualquier UI, SDK y cobertura de pruebas que estos bloques
 necesiten. La UI de RBAC (incluida la invitación de miembros), el E2E de
-sesión y la UI de Configuración ya están hechas e integradas (ver
-Completed); la UI de Files (subida/listado/descarga), de Notifications
-(bandeja/badge de no leídas) y de Platform Administration (panel de admin
-en erp-web) todavía no se han construido.
+sesión, la UI de Configuración y la UI de Platform Administration (panel de
+admin en erp-web, sesión 18) ya están hechas e integradas (ver Completed);
+la UI de Files (subida/listado/descarga) y de Notifications (bandeja/badge
+de no leídas) todavía no se han construido.
 
 ## Production Status
 
@@ -685,3 +716,26 @@ outbox, y confirma que redisparar manualmente ese mismo evento produce
 exactamente un efecto de consumidor — no dos. Ningún consumidor de negocio
 real usa este mecanismo todavía; los tests son actualmente su único
 caller.
+
+**Sesión 18 (2026-08-29, UI de administración de plataforma)**: sin
+migración nueva — reutiliza `users.is_platform_admin` (sesión 16) y las
+tablas de `configuration`/`audit` ya existentes. Flujo HTTP completo
+repetido con el servidor real compilado tras el rebuild de esta sesión:
+registro de dos usuarios reales → `isPlatformAdmin: false` confirmado en la
+respuesta real de `POST /auth/register` (campo nuevo en el DTO, antes
+ausente) → flag otorgado vía `UPDATE` directo → `POST /auth/login` real
+confirma `isPlatformAdmin: true` → `GET /platform/users` real lista los
+tres usuarios de la base persistente → deshabilitar al usuario objetivo →
+su login real es rechazado con `403 ACCOUNT_DISABLED` → reactivar →
+`PUT /platform/settings/localization.currency` con `GTQ` real → `GET
+/platform/settings` confirma `GTQ`/`PLATFORM` → revertido a `USD` →
+`GET /platform/audit-entries` confirma ambas auditorías
+(`user.status_changed`, `configuration.platform_setting.changed`) con el
+actor y los valores previo/nuevo correctos. Los usuarios de prueba de esta
+sesión (y de las sesiones anteriores) permanecen en la base a propósito:
+`audit_entries.user_id` usa `onDelete: Restrict`, así que ningún usuario
+que haya generado alguna entrada de auditoría — toda cuenta registrada
+genera `user.registered` — puede eliminarse sin violar la garantía de
+MASTER_SPEC §10 de que los logs de auditoría no deben poder modificarse
+fácilmente; es la razón por la que esta base de desarrollo acumula cuentas
+de pruebas de sesiones anteriores en vez de quedar vacía entre sesiones.

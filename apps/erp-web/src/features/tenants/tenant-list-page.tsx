@@ -98,6 +98,7 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
       eyebrow="Contexto empresarial"
       title="Tus espacios"
       description="Selecciona el tenant donde quieres trabajar. La plataforma validará tu membresía antes de entrar."
+      navigate={navigate}
       action={
         <Button type="button" onClick={() => navigate("/onboarding")}>
           <Plus size={17} weight="bold" aria-hidden="true" />

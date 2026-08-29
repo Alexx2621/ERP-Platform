@@ -25,6 +25,7 @@ import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
 import { FormField } from "../../shared/ui/form-field";
+import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
@@ -81,18 +82,6 @@ function compareRoles(left: RoleResponse, right: RoleResponse): number {
     return left.isSystem ? -1 : 1;
   }
   return left.name.localeCompare(right.name, "es", { sensitivity: "base" });
-}
-
-function LoadingRows({ columns }: { columns: number }) {
-  return Array.from({ length: 3 }, (_, rowIndex) => (
-    <TableRow key={rowIndex} aria-hidden="true">
-      {Array.from({ length: columns }, (_, columnIndex) => (
-        <TableCell key={columnIndex}>
-          <span className="block h-3.5 max-w-40 animate-pulse rounded bg-[var(--line)]" />
-        </TableCell>
-      ))}
-    </TableRow>
-  ));
 }
 
 function CreateRoleModal({
@@ -824,6 +813,7 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
       eyebrow={`Tenant / ${selection.slug}`}
       title="Roles y permisos"
       description="Administra roles del tenant, consulta el catálogo de permisos y asigna acceso a membresías existentes."
+      navigate={navigate}
       action={
         <Button type="button" variant="secondary" onClick={() => navigate("/workspace")}>
           <ArrowLeft size={17} weight="bold" aria-hidden="true" />

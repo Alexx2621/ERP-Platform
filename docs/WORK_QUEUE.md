@@ -6,11 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 17,
-inbox/idempotencia de consumidores — ADR-008: `InboxMessage`,
-`consumeIdempotently`, verificado contra Postgres real incluyendo reclamo
-concurrente y recuperación de lease). Modelo operativo actualizado:
-2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 18,
+UI de administración de plataforma en erp-web + `isPlatformAdmin` expuesto en
+todo el flujo de auth — cierra el ítem 6 que dejó pendiente la sesión 16).
+Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -47,11 +46,118 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
    existe en el dominio, pero ningún endpoint lo invoca para una membership
    `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
    §"Membership Invitations".
-6. **UI de administración de plataforma en erp-web** — el backend completo
-   (usuarios, settings PLATFORM, auditoría de plataforma) ya existe detrás
-   de `PlatformAdminGuard`, pero no hay ninguna pantalla que lo consuma
-   todavía. No bloqueado, deliberadamente no construido junto con cada
-   endpoint individual para revisar el conjunto completo de una vez.
+
+### Hecho — sesión 18 (UI de administración de plataforma + `isPlatformAdmin` en el flujo de auth)
+
+- **`isPlatformAdmin` expuesto por primera vez fuera del dominio**: hasta
+  este bloque el flag vivía en `User` (sesión 16) pero ningún DTO de
+  Auth lo devolvía — el frontend no tenía forma de saber si la sesión
+  actual pertenecía a un platform admin. `AuthenticatedSessionResult`
+  (`apps/api/src/core/auth/application/`), `LoginUseCase`,
+  `RefreshSessionUseCase`, `SessionUserDto`/`SessionResponseDto` y
+  `AuthController.me()` ahora incluyen `isPlatformAdmin: boolean` en su
+  `user`. Sin cambio de comportamiento — el valor ya existía, solo se
+  propaga; los 198 tests de `apps/api` pasan sin modificar ninguna
+  aserción de negocio, solo los mocks de `User` que ya requerían el campo
+  desde la sesión 16.
+- **`@erp/api-client`**: `AuthenticatedUser.isPlatformAdmin` nuevo. Tipos y
+  métodos nuevos para el contrato HTTP completo de `platform-admin`
+  (sesión 16), sin cobertura de SDK hasta ahora: `PlatformUserResponse`,
+  `SetPlatformUserStatusInput`, `PlatformSettingResponse`,
+  `SetPlatformSettingValueInput`, `PlatformSettingValueResponse`,
+  `AuditEntryResponse` + `listPlatformUsers`, `setPlatformUserStatus`,
+  `listPlatformSettingDefinitions`, `listPlatformSettings`,
+  `setPlatformSettingValue`, `listPlatformAuditEntries`. De paso,
+  `listAuditEntries` (el endpoint tenant-scoped `GET /api/v1/audit-entries`
+  de la sesión 9) también se cubrió — nunca había tenido método de SDK pese
+  a llevar 9 sesiones implementado. 9/9 tests en `@erp/api-client` (antes 8).
+- **`apps/erp-web/src/features/platform-admin/platform-admin-page.tsx`**
+  (nuevo): pantalla con pestañas Usuarios/Ajustes/Actividad, ruta
+  `/platform-admin` nueva en el router propio (`AppPath`/`VALID_PATHS`),
+  protegida en `app.tsx` con guardia de redirección (`!session.user.isPlatformAdmin`
+  → `/tenants`) además de la verificación en el punto de render. Usuarios:
+  lista cross-tenant con acción deshabilitar/reactivar
+  (`PUT /platform/users/:id/status`). Ajustes: solo las claves con
+  `PLATFORM` en `allowedScopes`, edición vía el mismo `ValueEditor` que ya
+  usaba "Ajustes" de tenant. Actividad: `GET /platform/audit-entries` con
+  traducción de `action` a español (`actionLabel`). Enlace persistente
+  "Plataforma" en `ProductShell` (visible solo si
+  `session.user.isPlatformAdmin`, mismo patrón que el resto del header),
+  añadido a las 4 páginas que ya pasaban `navigate` a su shell (Tenants,
+  Roles y permisos, Workspace, Ajustes).
+- **Deduplicación de UI compartida**: `LoadingRows` y el bloque completo de
+  `ValueEditor`/`serializeValue`/`parseValue`/`formatValue`/`typeLabel`
+  vivían solo dentro de `settings-page.tsx`; se extrajeron a
+  `shared/ui/loading-rows.tsx` y `shared/ui/value-editor.tsx` (más
+  `shared/format/date.ts` para `formatDateTime`, antes `formatDate` local)
+  para que `platform-admin-page.tsx` y `roles-permissions-page.tsx` los
+  reutilicen sin triplicar la misma lógica de edición de valor tipado.
+- **Bug real encontrado durante la propia verificación E2E, no simulado**:
+  `Tabs` (`shared/ui/tabs.tsx`) mantiene los tres paneles montados
+  permanentemente y solo alterna el atributo `hidden` — nunca desmonta ni
+  remonta el panel inactivo. El `useEffect` original de `AuditPanel` corría
+  una sola vez al montar la página completa, así que deshabilitar un
+  usuario o cambiar un setting PLATFORM en otra pestaña nunca aparecía en
+  "Actividad" sin recargar la página entera. Corregido subiendo el estado
+  `activeTab` a `PlatformAdminPage` (`Tabs` ahora es controlado vía
+  `value`/`onValueChange`) y haciendo que `AuditPanel` reciba `active` y
+  vuelva a pedir datos cada vez que la pestaña se activa, no solo en el
+  montaje inicial.
+- **E2E real** (`apps/e2e/tests/platform-admin.spec.ts`, Chromium vía
+  Testcontainers): cubre login como platform admin (confirmando
+  `isPlatformAdmin: true` en la respuesta real de `POST /auth/login`),
+  deshabilitar un usuario objetivo desde la UI, confirmar que su siguiente
+  intento de login real es rechazado (`403 ACCOUNT_DISABLED`),
+  reactivarlo, editar `localization.currency` a nivel PLATFORM desde la UI
+  y confirmar que la fila pasa a mostrar `PLATFORM` como origen, y revisar
+  la pestaña Actividad confirmando que tanto el cambio de setting como el
+  cambio de estado de usuario aparecen como filas nuevas. `isPlatformAdmin`
+  no tiene endpoint de otorgamiento por diseño (ADR-007) — el test lo
+  otorga con una escritura directa a Postgres vía `pg`, el mismo mecanismo
+  sancionado que cualquier smoke test manual de este proyecto.
+  `apps/e2e/src/global-setup.ts` ahora expone
+  `process.env.E2E_DATABASE_URL` (la URL de conexión efímera de
+  Testcontainers) para que los archivos de test puedan abrir su propia
+  conexión — Playwright hereda `process.env` del proceso principal al
+  bifurcar los workers, patrón documentado de la propia herramienta, no un
+  hack. `pg`/`@types/pg` añadidos como devDependencies de `apps/e2e`
+  (ya eran dependencia real de `@erp/database`, no una librería nueva en el
+  monorepo).
+- **Nota operativa, no un bug de código**: la primera corrida de este E2E
+  falló con `EADDRINUSE :::3000` — los servidores persistentes de
+  `apps/api`/`apps/worker`/`apps/erp-web` que se mantienen corriendo entre
+  sesiones (para que el usuario vea el progreso en vivo) ocupaban
+  exactamente los puertos 3000/3001/5173 que el arnés E2E necesita para sus
+  propios procesos efímeros — las dos primeras pruebas pasaron igual,
+  porque terminaron ejecutándose contra el servidor persistente en vez del
+  efímero (coincidencia inofensiva ya que ambos comparten esquema), pero la
+  prueba nueva falló al no encontrar en la base efímera al usuario que
+  `grantPlatformAdmin` acababa de promover en la base persistente. Detenidos
+  los tres procesos persistentes antes de correr el E2E y reiniciados con
+  build fresco al terminar — a documentar como paso explícito antes de
+  correr `test:e2e` en cualquier sesión futura mientras existan servidores
+  persistentes activos.
+- Validación completa: `pnpm lint`/`typecheck` limpios en los 7
+  paquetes/apps, `pnpm test` (198/198 `apps/api`, 9/9 `@erp/api-client`,
+  16/16 `apps/erp-web`), `pnpm build` (7 paquetes/apps),
+  `pnpm --filter @erp/api test:integration` (16/16 contra Postgres real),
+  `pnpm --filter @erp/e2e test:e2e` (4/4 Playwright, incluyendo el test
+  nuevo) — todo verde. Smoke test manual adicional contra la infraestructura
+  Docker real (servidores persistentes reconstruidos y reiniciados):
+  registro de dos usuarios reales, flag otorgado vía `UPDATE` directo,
+  login real confirma `isPlatformAdmin: true`, listado de usuarios de
+  plataforma real, deshabilitar → login real rechazado con
+  `403 ACCOUNT_DISABLED` → reactivar, escritura real de
+  `localization.currency=GTQ` a nivel PLATFORM → confirmado en el listado →
+  revertido a `USD` → `GET /platform/audit-entries` confirma las auditorías
+  reales de ambas acciones con el actor y los valores previo/nuevo
+  correctos. Datos de prueba no eliminados de `users`/`audit_entries` por
+  diseño — `audit_entries.user_id` usa `onDelete: Restrict`
+  (MASTER_SPEC §10, los logs de auditoría no deben poder modificarse
+  fácilmente), así que ningún usuario que haya generado una entrada de
+  auditoría (toda cuenta registrada genera `user.registered`) puede
+  eliminarse sin violar esa garantía; es el mismo motivo por el que esta
+  base de desarrollo acumula usuarios de pruebas de sesiones anteriores.
 
 ### Hecho — sesión 17 (Inbox / idempotencia de consumidores — ADR-008)
 
@@ -1169,9 +1275,9 @@ Playwright).
   `openapi-typescript`) — no decidido todavía, no bloqueado.
 - Expirar/revocar invitaciones pendientes (ítem 5 de la cola Claude) depende
   de decidir una política de TTL — no bloqueado, no decidido todavía.
-- Una UI de administración de plataforma en erp-web (ítem 6 de la cola
-  Claude) no depende de nada técnico — el backend completo ya existe; es
-  simplemente el siguiente bloque de frontend a construir.
+- ~~Una UI de administración de plataforma en erp-web...~~ — cerrado en la
+  sesión 18: `platform-admin-page.tsx` (Usuarios/Ajustes/Actividad) ya
+  existe y está cubierto por E2E real. Ver "Hecho — sesión 18".
 
 ## Integration needed
 

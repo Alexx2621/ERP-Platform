@@ -9,7 +9,7 @@ const session = {
   refreshToken: "refresh-token",
   accessExpiresAt: "2099-01-01T00:00:00.000Z",
   refreshExpiresAt: "2099-01-02T00:00:00.000Z",
-  user: { id: "user-1", email: "ana@example.com", displayName: "Ana" },
+  user: { id: "user-1", email: "ana@example.com", displayName: "Ana", isPlatformAdmin: false },
 };
 
 describe("LoginPage", () => {

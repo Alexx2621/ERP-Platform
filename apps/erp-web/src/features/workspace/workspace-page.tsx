@@ -36,6 +36,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
       eyebrow={`Tenant / ${selection.slug}`}
       title={selection.name}
       description="El contexto empresarial está listo. Los módulos operativos aparecerán cuando sus permisos y contratos HTTP estén disponibles."
+      navigate={navigate}
       action={
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => navigate("/roles")}>

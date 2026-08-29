@@ -69,7 +69,7 @@ export class RefreshSessionUseCase {
       refreshToken: issued.refreshToken,
       accessExpiresAt: issued.accessExpiresAt,
       refreshExpiresAt: issued.refreshExpiresAt,
-      user: { id: user.id, email: user.email, displayName: user.displayName },
+      user: { id: user.id, email: user.email, displayName: user.displayName, isPlatformAdmin: user.isPlatformAdmin },
     };
   }
 }

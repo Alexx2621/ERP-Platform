@@ -4,5 +4,5 @@ export interface AuthenticatedSession {
   refreshToken: string;
   accessExpiresAt: Date;
   refreshExpiresAt: Date;
-  user: { id: string; email: string; displayName: string };
+  user: { id: string; email: string; displayName: string; isPlatformAdmin: boolean };
 }

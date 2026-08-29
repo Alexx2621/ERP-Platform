@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type AppPath =
-  "/login" | "/register" | "/tenants" | "/onboarding" | "/workspace" | "/roles" | "/settings";
+  | "/login"
+  | "/register"
+  | "/tenants"
+  | "/onboarding"
+  | "/workspace"
+  | "/roles"
+  | "/settings"
+  | "/platform-admin";
 
 const VALID_PATHS = new Set<AppPath>([
   "/login",
@@ -11,6 +18,7 @@ const VALID_PATHS = new Set<AppPath>([
   "/workspace",
   "/roles",
   "/settings",
+  "/platform-admin",
 ]);
 
 function readPath(): AppPath {

@@ -177,7 +177,14 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   @ApiBearerAuth("session")
   @ApiOperation({ summary: "The identity behind the current bearer token." })
-  me(@CurrentAuth() auth: AuthContext): { id: string; email: string; displayName: string } {
-    return { id: auth.user.id, email: auth.user.email, displayName: auth.user.displayName };
+  me(
+    @CurrentAuth() auth: AuthContext,
+  ): { id: string; email: string; displayName: string; isPlatformAdmin: boolean } {
+    return {
+      id: auth.user.id,
+      email: auth.user.email,
+      displayName: auth.user.displayName,
+      isPlatformAdmin: auth.user.isPlatformAdmin,
+    };
   }
 }

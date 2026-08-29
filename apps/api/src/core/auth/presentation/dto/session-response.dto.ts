@@ -10,6 +10,9 @@ class SessionUserDto {
 
   @ApiProperty()
   displayName!: string;
+
+  @ApiProperty({ description: "Grants access to /api/v1/platform/* — see docs/DECISIONS.md ADR-007." })
+  isPlatformAdmin!: boolean;
 }
 
 export class SessionResponseDto {

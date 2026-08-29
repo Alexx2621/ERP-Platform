@@ -6,7 +6,7 @@ const session = {
   refreshToken: "refresh-token",
   accessExpiresAt: "2099-01-01T00:00:00.000Z",
   refreshExpiresAt: "2099-01-02T00:00:00.000Z",
-  user: { id: "user-1", email: "ana@example.com", displayName: "Ana" },
+  user: { id: "user-1", email: "ana@example.com", displayName: "Ana", isPlatformAdmin: false },
 };
 
 describe("ApiClient", () => {
@@ -264,6 +264,92 @@ describe("ApiClient", () => {
         body: JSON.stringify({ tenantSlug: "grupo-aurora" }),
       }),
     );
+  });
+
+  it("uses the documented platform-administration endpoints", async () => {
+    const platformUser = {
+      id: "user-2",
+      email: "target@example.com",
+      displayName: "Target",
+      status: "ACTIVE",
+      isPlatformAdmin: false,
+      createdAt: "2026-08-29T12:00:00.000Z",
+    };
+    const disabledUser = { ...platformUser, status: "DISABLED" };
+    const definition = {
+      key: "localization.currency",
+      dataType: "STRING",
+      description: "x",
+      defaultValue: "USD",
+      allowedScopes: ["PLATFORM", "TENANT", "COMPANY"],
+    };
+    const platformSetting = { key: "localization.currency", value: "USD", source: "DEFAULT" };
+    const platformSettingValue = {
+      key: "localization.currency",
+      value: "EUR",
+      updatedAt: "2026-08-29T12:00:00.000Z",
+    };
+    const auditEntry = {
+      id: "entry-1",
+      userId: "user-1",
+      tenantId: null,
+      companyId: null,
+      action: "auth.login.succeeded",
+      resource: "Session",
+      resourceId: null,
+      previousValues: null,
+      newValues: null,
+      ipAddress: null,
+      userAgent: null,
+      correlationId: "corr-1",
+      createdAt: "2026-08-29T12:00:00.000Z",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([platformUser]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(disabledUser), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([definition]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([platformSetting]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(platformSettingValue), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([auditEntry]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([auditEntry]), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listPlatformUsers("access-token", 10);
+    await client.setPlatformUserStatus("access-token", "user-2", { status: "DISABLED" });
+    await client.listPlatformSettingDefinitions("access-token");
+    await client.listPlatformSettings("access-token");
+    await client.setPlatformSettingValue("access-token", "localization.currency", { value: "EUR" });
+    await client.listPlatformAuditEntries("access-token");
+    await client.listAuditEntries("access-token", "grupo-aurora");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/platform/users?limit=10",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/platform/users/user-2/status",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ status: "DISABLED" }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/platform/settings/localization.currency",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ value: "EUR" }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "/api/v1/platform/audit-entries",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "/api/v1/audit-entries",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(new Headers(fetchMock.mock.calls[6]?.[1]?.headers).get("X-Tenant-Slug")).toBe("grupo-aurora");
+    expect(new Headers(fetchMock.mock.calls[5]?.[1]?.headers).get("X-Tenant-Slug")).toBeNull();
   });
 
   it("preserves the backend error envelope", async () => {

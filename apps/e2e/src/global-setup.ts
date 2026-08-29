@@ -134,6 +134,11 @@ export default async function globalSetup(_config: FullConfig): Promise<() => Pr
     const databaseUrl = runtime.postgres.getConnectionUri();
     await deployMigrations(databaseUrl);
 
+    // Exposed for test files that need a direct database connection — e.g.
+    // granting `isPlatformAdmin` for the platform-admin E2E, which has no
+    // API endpoint by design (see docs/DECISIONS.md ADR-007).
+    process.env.E2E_DATABASE_URL = databaseUrl;
+
     runtime.api = startNodeProcess("api", path.join(repoRoot, "apps/api/dist/main.js"), [], {
       ...process.env,
       NODE_ENV: "test",
