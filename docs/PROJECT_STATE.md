@@ -1,14 +1,13 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 19), tras conectar Notifications al
-Event Bus: `RequestNotificationUseCase` y el resto del módulo se extrajeron
-a un paquete compartido nuevo (`@erp/notifications`, mismo patrón que
-`@erp/events` en la sesión 13), y `apps/worker` registra el primer
-consumidor de negocio real de `DomainEventBus`
-(`TenantProvisionedNotificationHandler`), idempotente vía el inbox de
-ADR-008. `TenantsController.provision()` ya no llama a Notifications
-directamente — cierra el ítem 1 que dejaba pendiente `docs/WORK_QUEUE.md`
-desde que se construyó el inbox (sesión 17). Modelo de trabajo vigente:
+Última actualización: 2026-08-29 (sesión 20), tras cerrar tres ítems de la
+cola en un solo bloque: purga real de storage para archivos borrados
+(`FilePurgeScheduler`, nuevo estado `PURGED`), un adapter real de Email vía
+SMTP para Notifications (`SmtpEmailDispatcher`, genérico por proveedor), y
+expirar/revocar/reinvitar invitaciones de membership
+(`MEMBERSHIP_INVITATION_TTL_SECONDS`, `RevokeMembershipInvitationUseCase`).
+Los tres verificados con smoke tests reales contra Docker/Postgres/MinIO.
+Modelo de trabajo vigente:
 `docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
 que quedan como historial).
 
@@ -477,9 +476,39 @@ ADR-004 nada se ha construido contra él todavía.
   con el contenido correcto, creada enteramente por el proceso worker sin
   que `apps/api` ejecutara código de notificaciones. Detalle completo en
   `docs/WORK_QUEUE.md` ("Hecho — sesión 19").
-- 256 tests unitarios pasando (api 169, api-client 9, erp-web 16) + 27 en
-  `@erp/events` + 29 en `@erp/notifications` + 6 en `@erp/worker` + 17
-  tests de integración con Postgres real + **4 tests E2E de Playwright
+- **Purga de archivos + Email vía SMTP + expirar/revocar/reinvitar
+  invitaciones** (sesión 20): tres ítems de la cola cerrados de una vez.
+  `FileObject` gana un tercer estado `PURGED` (+ columna `purged_at`,
+  migración `20260830004924_file_purge_and_membership_expiry` aplicada
+  contra Postgres real) y `FilePurgeScheduler` (`apps/api`, mismo patrón
+  que `OutboxDispatcherScheduler`) borra de verdad el objeto S3/MinIO de
+  un archivo `DELETED` pasada su ventana de retención antes de marcarlo
+  `PURGED` — la fila nunca se borra físicamente. `@erp/notifications` gana
+  `SmtpEmailDispatcher` (SMTP genérico, cualquier proveedor) detrás de un
+  `EMAIL_DISPATCHER` opcional; `apps/api` lo provee globalmente vía
+  `EmailModule` solo si `EMAIL_SMTP_HOST` está configurado — si no, el
+  canal `EMAIL` falla cerrado con una razón explícita, nunca simula un
+  envío. `MembershipsController.invite()` es el primer productor real que
+  pasa `recipientEmail` y pide el canal `EMAIL`. `Membership` gana
+  `isExpiredInvitation`/`reinvite` (usa `updatedAt`, sin columna nueva) y
+  `MEMBERSHIP_INVITATION_TTL_SECONDS` (default 7 días);
+  `RevokeMembershipInvitationUseCase` nuevo
+  (`DELETE /api/v1/tenants/memberships/:id`) restringido a invitaciones
+  `INVITED`; `InviteMembershipUseCase` ahora reabre una membership
+  `REVOKED` o `INVITED`-vencida en vez de bloquear para siempre. **Bug real
+  encontrado en la propia verificación E2E**: la UI duplicaba la fila del
+  miembro al reinvitar después de revocar (el callback de "invitado"
+  siempre agregaba, nunca actualizaba) — corregido con un upsert por id.
+  **Smoke tests manuales contra Docker/Postgres/MinIO reales**: un archivo
+  real subido, borrado y con `deleted_at` adelantado vía `UPDATE` directo
+  fue purgado de verdad por el scheduler real; una invitación real
+  confirmó en `notification_deliveries` real
+  `EMAIL`/`FAILED`/`"No email adapter configured."` junto a
+  `IN_APP`/`SENT`. Detalle completo en `docs/WORK_QUEUE.md`
+  ("Hecho — sesión 20").
+- 289 tests unitarios pasando (api 198, api-client 9, erp-web 16) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 20
+  tests de integración con Postgres real + **5 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
@@ -547,19 +576,18 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (purga real
-de storage para archivos borrados).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (`@erp/api-client`
+generado desde OpenAPI, o el App Registry mínimo si se prefiere adelantar
+la Fase 2).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: purga real de storage para
-archivos borrados (`DeleteFileUseCase` hoy solo hace soft-delete de
-metadata) → adapter real de Email para Notifications (proveedor
-SMTP/transaccional no decidido) → `@erp/api-client` generado desde el spec
-OpenAPI (`/api/docs-json` ya existe; herramienta de generación todavía no
-decidida) → expirar/revocar invitaciones pendientes (`Membership.revoke()`
-ya existe en el dominio, sin TTL ni endpoint todavía).
+Resumen bajo ownership único de Claude: `@erp/api-client` generado desde el
+spec OpenAPI (`/api/docs-json` ya existe; herramienta de generación
+todavía no decidida) → App Registry mínimo (deliberadamente diferido hasta
+que exista un módulo de negocio real que registrar, ver
+`docs/WORK_QUEUE.md`).
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
 (ADR-004, ADR-006, ADR-007 y ADR-008 ya están ratificados). Claude debe
 completar cualquier UI, SDK y cobertura de pruebas que estos bloques
@@ -800,3 +828,29 @@ que la extracción y el nuevo consumidor funcionan de punta a punta contra
 infraestructura real, no solo en tests. Datos de prueba (usuario/tenant)
 no eliminados por el mismo motivo `onDelete: Restrict` ya documentado
 arriba.
+
+**Sesión 20 (2026-08-29/30, purga de archivos + Email + invitaciones)**:
+migración `20260830004924_file_purge_and_membership_expiry` (agrega
+`PURGED` al enum `FileObjectStatus`, la columna `file_objects.purged_at` y
+el índice `(status, deleted_at)`) generada y **aplicada directamente
+contra Postgres real** vía `prisma migrate dev` — sin cambios de schema
+para invitaciones (`isExpiredInvitation`/`reinvite` usan `updatedAt`, ya
+existente) ni para Notifications (el canal EMAIL es enteramente lógica de
+aplicación). Verificado con el servidor real reconstruido, arrancado
+temporalmente con `FILES_PURGE_RETENTION_DAYS=1`/`FILES_PURGE_INTERVAL_MS=5000`
+solo para esta comprobación: subida real de un archivo → soft-delete real
+→ `deleted_at` adelantado 2 días vía `UPDATE` directo → el scheduler real
+lo purgó en su siguiente tick (`File purge: purged=1 failed=0`, log real)
+→ `SELECT` directo confirma `status: PURGED` con `purged_at` poblado.
+Confirmado también que el objeto real fue removido de MinIO (el propio
+código solo incrementa `purged` tras un `deleteObject` exitoso — un
+`failed=0` en el log es la prueba). Por separado, una invitación real de
+membership confirmó en `notification_deliveries` real
+`EMAIL`/`FAILED`/`"No email adapter configured."` junto a `IN_APP`/`SENT`,
+la ruta de fallo controlado del adapter de Email funcionando de punta a
+punta sin credenciales SMTP configuradas en este entorno (el estado real,
+no simulado). Servidores persistentes reiniciados con configuración normal
+(`FILES_PURGE_RETENTION_DAYS=30`, intervalo de 1h) al terminar. Nota
+operativa: Docker Desktop se había detenido entre el bloque anterior de
+esta sesión y este (mismo patrón ya documentado en sesiones previas);
+reiniciado antes de correr `test:integration`/`test:e2e`.

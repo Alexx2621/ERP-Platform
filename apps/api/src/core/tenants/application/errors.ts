@@ -76,3 +76,26 @@ export class MembershipNotFoundForUserError extends Error {
     this.name = "MembershipNotFoundForUserError";
   }
 }
+
+export class InvitationExpiredError extends Error {
+  constructor() {
+    super("This invitation has expired. Ask the tenant admin to send a new one.");
+    this.name = "InvitationExpiredError";
+  }
+}
+
+/** Thrown when trying to revoke a membership that is not a pending invitation (docs/SECURITY.md "Membership Invitations"). */
+export class MembershipNotInvitedError extends Error {
+  constructor() {
+    super("Only a pending invitation (status INVITED) can be revoked through this endpoint.");
+    this.name = "MembershipNotInvitedError";
+  }
+}
+
+/** Tenant-scoped "no such membership" — distinct from MembershipNotFoundForUserError, which is specifically the self-service accept flow's IDOR-resistant message. */
+export class MembershipInvitationNotFoundError extends Error {
+  constructor() {
+    super("No such membership invitation was found in this tenant.");
+    this.name = "MembershipInvitationNotFoundError";
+  }
+}

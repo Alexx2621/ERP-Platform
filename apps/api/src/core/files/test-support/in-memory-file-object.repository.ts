@@ -20,6 +20,13 @@ export class InMemoryFileObjectRepository implements FileObjectRepository {
       .slice(0, query.limit);
   }
 
+  async findDeletedBefore(cutoff: Date, limit: number): Promise<FileObject[]> {
+    return [...this.rows.values()]
+      .filter((file) => file.status === "DELETED" && (file.deletedAt?.getTime() ?? 0) <= cutoff.getTime())
+      .sort((a, b) => (a.deletedAt?.getTime() ?? 0) - (b.deletedAt?.getTime() ?? 0))
+      .slice(0, limit);
+  }
+
   seed(file: FileObject): void {
     this.rows.set(file.id, file);
   }

@@ -15,6 +15,7 @@ function makeFile(id: string, overrides: Partial<Parameters<typeof FileObject.cr
     status: "ACTIVE",
     createdAt: new Date("2026-08-27T00:00:00.000Z"),
     deletedAt: null,
+    purgedAt: null,
     ...overrides,
   });
 }

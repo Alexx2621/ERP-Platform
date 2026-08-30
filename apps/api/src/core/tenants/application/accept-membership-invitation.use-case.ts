@@ -4,6 +4,7 @@ import { MEMBERSHIP_REPOSITORY, type MembershipRepository } from "../domain/memb
 import { TENANT_REPOSITORY, type TenantRepository } from "../domain/tenant.repository";
 import { normalizeTenantSlug } from "../domain/normalize-tenant-slug";
 import {
+  InvitationExpiredError,
   MembershipNotFoundForUserError,
   TenantContextInactiveError,
   TenantContextNotFoundError,
@@ -13,6 +14,8 @@ export interface AcceptMembershipInvitationInput {
   tenantSlug: string;
   membershipId: string;
   userId: string;
+  /** Same TTL InviteMembershipUseCase enforces — a stale invitation cannot be accepted (docs/SECURITY.md). */
+  invitationTtlSeconds: number;
 }
 
 /**
@@ -39,6 +42,9 @@ export class AcceptMembershipInvitationUseCase {
     const membership = await this.memberships.findById(tenant.id, input.membershipId);
     if (!membership || membership.userId !== input.userId) {
       throw new MembershipNotFoundForUserError();
+    }
+    if (membership.isExpiredInvitation(new Date(), input.invitationTtlSeconds)) {
+      throw new InvitationExpiredError();
     }
 
     membership.activate();

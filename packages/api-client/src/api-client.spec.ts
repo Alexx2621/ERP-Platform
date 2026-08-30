@@ -216,6 +216,7 @@ describe("ApiClient", () => {
       status: "INVITED",
       createdAt: "2026-08-28T12:00:00.000Z",
       updatedAt: "2026-08-28T12:00:00.000Z",
+      expiresAt: "2026-09-04T12:00:00.000Z",
       email: "nuevo@example.com",
       displayName: "Nuevo",
     };
@@ -224,20 +225,23 @@ describe("ApiClient", () => {
       tenantSlug: "grupo-aurora",
       tenantName: "Grupo Aurora",
       createdAt: "2026-08-28T12:00:00.000Z",
+      expiresAt: "2026-09-04T12:00:00.000Z",
     };
-    const accepted = { ...invited, status: "ACTIVE" };
+    const accepted = { ...invited, status: "ACTIVE", expiresAt: null };
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify(invited), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([invited]), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([pending]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(accepted), { status: 201 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify(accepted), { status: 201 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new ApiClient({ fetch: fetchMock });
 
     await client.inviteMembership("access-token", "grupo-aurora", { email: "nuevo@example.com" });
     await client.listMemberships("access-token", "grupo-aurora");
     await client.listPendingInvitations("access-token");
     await client.acceptMembershipInvitation("access-token", "membership-2", { tenantSlug: "grupo-aurora" });
+    await client.revokeMembershipInvitation("access-token", "grupo-aurora", "membership-1");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -264,6 +268,13 @@ describe("ApiClient", () => {
         body: JSON.stringify({ tenantSlug: "grupo-aurora" }),
       }),
     );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/tenants/memberships/membership-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(new Headers(fetchMock.mock.calls[4]?.[1]?.headers).get("X-Tenant-Slug")).toBe("grupo-aurora");
   });
 
   it("uses the documented platform-administration endpoints", async () => {

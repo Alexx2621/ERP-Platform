@@ -23,10 +23,14 @@ export class ListPendingInvitationsUseCase {
     @Inject(TENANT_REPOSITORY) private readonly tenants: TenantRepository,
   ) {}
 
-  async execute(userId: string): Promise<PendingInvitation[]> {
+  async execute(userId: string, invitationTtlSeconds: number): Promise<PendingInvitation[]> {
     const pending = await this.memberships.findPendingByUserId(userId);
+    const now = new Date();
     const results: PendingInvitation[] = [];
     for (const membership of pending) {
+      // A stale invitation cannot be accepted (AcceptMembershipInvitationUseCase
+      // rejects it), so it has no business showing up as "pending" either.
+      if (membership.isExpiredInvitation(now, invitationTtlSeconds)) continue;
       const tenant = await this.tenants.findById(membership.tenantId);
       if (tenant) results.push({ membership, tenantSlug: tenant.slug, tenantName: tenant.name });
     }

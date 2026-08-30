@@ -5,6 +5,7 @@ import {
   Key,
   LockKey,
   Plus,
+  Prohibit,
   ShieldCheck,
   UserPlus,
   Users,
@@ -23,6 +24,7 @@ import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
+import { formatDateTime } from "../../shared/format/date";
 import { Button } from "../../shared/ui/button";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
@@ -481,6 +483,64 @@ function InviteMemberModal({ open, tenantSlug, onOpenChange, onInvited }: Invite
   );
 }
 
+interface RevokeInvitationModalProps {
+  member: MembershipWithUserResponse | null;
+  tenantSlug: string;
+  onOpenChange: (open: boolean) => void;
+  onRevoked: (membershipId: string) => void;
+}
+
+function RevokeInvitationModal({ member, tenantSlug, onOpenChange, onRevoked }: RevokeInvitationModalProps) {
+  const { getAccessToken } = useAuth();
+  const [requestError, setRequestError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!member) return;
+    setRequestError(undefined);
+    setBusy(false);
+  }, [member]);
+
+  if (!member) return null;
+
+  const handleRevoke = async () => {
+    setBusy(true);
+    setRequestError(undefined);
+    try {
+      const accessToken = await getAccessToken();
+      await apiClient.revokeMembershipInvitation(accessToken, tenantSlug, member.id);
+      onRevoked(member.id);
+      onOpenChange(false);
+    } catch (error) {
+      setRequestError(getErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={Boolean(member)}
+      onOpenChange={(open) => !busy && onOpenChange(open)}
+      title={`Revocar invitación de ${member.displayName}`}
+      description="La invitación quedará cancelada. Puedes invitar de nuevo a esta persona más adelante si lo necesitas."
+      footer={
+        <>
+          <Button type="button" variant="quiet" disabled={busy} onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" busy={busy} onClick={() => void handleRevoke()}>
+            Revocar invitación
+          </Button>
+        </>
+      }
+    >
+      {requestError ? <ErrorNotice message={requestError} /> : null}
+      <p className="text-[13px] font-medium leading-6 text-[var(--muted-strong)]">{member.email}</p>
+    </Modal>
+  );
+}
+
 export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPageProps) {
   const { getAccessToken } = useAuth();
   const [roles, setRoles] = useState<RoleResponse[] | null>(null);
@@ -492,6 +552,7 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
   const [createOpen, setCreateOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [assignmentRole, setAssignmentRole] = useState<RoleResponse | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<MembershipWithUserResponse | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>();
 
   const loadCatalogs = useCallback(
@@ -764,15 +825,18 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
               <TableHead scope="col">Nombre</TableHead>
               <TableHead scope="col">Correo</TableHead>
               <TableHead scope="col">Estado</TableHead>
+              <TableHead scope="col" className="text-right">
+                Acciones
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {members === null ? (
-              <LoadingRows columns={3} />
+              <LoadingRows columns={4} />
             ) : members.length === 0 ? (
               <TableRow>
                 <TableEmpty
-                  colSpan={3}
+                  colSpan={4}
                   title="No hay miembros"
                   description="Invita a la primera persona para que se una a este tenant."
                 />
@@ -798,6 +862,25 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
                     <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
                       {member.status}
                     </span>
+                    {member.status === "INVITED" && member.expiresAt ? (
+                      <span className="mt-1 block text-[11px] font-medium text-[var(--muted)]">
+                        Expira el {formatDateTime(member.expiresAt)}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {member.status === "INVITED" ? (
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        className="h-9 px-3"
+                        aria-label={`Revocar invitación de ${member.displayName}`}
+                        onClick={() => setRevokeTarget(member)}
+                      >
+                        <Prohibit size={16} weight="bold" aria-hidden="true" />
+                        Revocar
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))
@@ -805,6 +888,18 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
           </TableBody>
         </Table>
       )}
+
+      <RevokeInvitationModal
+        member={revokeTarget}
+        tenantSlug={selection.slug}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        onRevoked={(membershipId) => {
+          setMembers((current) =>
+            (current ?? []).map((m) => (m.id === membershipId ? { ...m, status: "REVOKED" as const } : m)),
+          );
+          setStatusMessage("La invitación fue revocada.");
+        }}
+      />
     </section>
   );
 
@@ -894,7 +989,17 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
         tenantSlug={selection.slug}
         onOpenChange={setInviteOpen}
         onInvited={(membership) => {
-          setMembers((current) => [...(current ?? []), membership]);
+          // Inviting someone whose earlier invitation was REVOKED or expired
+          // reopens that exact same row (docs/WORK_QUEUE.md) instead of
+          // creating a new one — replace it in place rather than appending,
+          // or the member would show up twice.
+          setMembers((current) => {
+            const existing = current ?? [];
+            const alreadyListed = existing.some((m) => m.id === membership.id);
+            return alreadyListed
+              ? existing.map((m) => (m.id === membership.id ? membership : m))
+              : [...existing, membership];
+          });
           setStatusMessage(`Se invitó a ${membership.email}. Queda pendiente de aceptación.`);
         }}
       />

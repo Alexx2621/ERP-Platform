@@ -6,10 +6,11 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 19,
-Notifications conectado al Event Bus — extraído a `@erp/notifications`,
-consumido por `apps/worker` vía el inbox de ADR-008 — cierra el ítem 1 de
-esta cola). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 20,
+tres bloques cerrados de una vez: purga real de storage para archivos
+borrados, adapter real de Email vía SMTP para Notifications, y
+expirar/revocar/reinvitar invitaciones pendientes de membership — cierra
+los ítems 1, 2 y 4 de esta cola). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,23 +23,161 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
-   solo marca `DELETED` en metadata; el objeto real permanece en el bucket
-   indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
-   futuro, no bloqueado pero deliberadamente no construido junto con Files.
-2. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
-   implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
-   reservados que producen un delivery `FAILED` explícito. Requiere elegir
-   un proveedor SMTP/transaccional (no decidido todavía).
-3. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+1. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
-   el SDK ya probado en un mismo cambio — refactor de proceso separado.
-4. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
-   existe en el dominio, pero ningún endpoint lo invoca para una membership
-   `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
-   §"Membership Invitations".
+   el SDK ya probado en un mismo cambio — refactor de proceso separado. El
+   único ítem restante de esta lista: los otros tres se cerraron en la
+   sesión 20.
+2. **App Registry mínimo** — el último paso pendiente de
+   `docs/ARCHITECTURE.md` §17 antes de poder cerrar formalmente Foundation
+   (`AppDefinition`/`TenantApp`/`AppConfiguration`, diseño completo en
+   `docs/PLUGINS.md`). Deliberadamente no adelantado todavía: no existe
+   ningún módulo de negocio real más allá del Core para registrar, y
+   construir el mecanismo sin nada que registrar en él sería exactamente la
+   sobrearquitectura que MASTER_SPEC §59/§93 advierte evitar. Revisar
+   cuando la Fase 2 (Master Data) esté por comenzar.
+
+### Hecho — sesión 20 (purga de archivos + adapter de Email + expirar/revocar invitaciones)
+
+Tres ítems de la cola cerrados en un solo bloque, cada uno end-to-end
+(backend + SDK + UI donde aplica + tests + smoke test real).
+
+**Purga real de storage para archivos borrados (cierra el ítem 1 original)**
+
+- `FileObjectStatus` gana un tercer valor, `PURGED` (migración
+  `20260830004924_file_purge_and_membership_expiry`, generada y **aplicada
+  directamente contra Postgres real**), más una columna `purged_at` y un
+  índice `(status, deleted_at)`. `FileObject.markPurged(now)` exige que el
+  archivo esté `DELETED` (lanza `FileNotDeletedError` si no); la fila nunca
+  se borra físicamente, solo cambia de estado, para que una entrada de
+  auditoría que referencia su id siga resolviendo.
+- `FileObjectRepository.findDeletedBefore(cutoff, limit)` (nuevo, Prisma +
+  fake in-memory) + `PurgeDeletedFilesUseCase` (nuevo): por cada candidato,
+  llama al `FileStoragePort.deleteObject` real y solo entonces marca
+  `PURGED`; un fallo de storage en un archivo se loguea y no aborta el
+  resto del lote (la fila sigue `DELETED` y se reintenta en el siguiente
+  tick).
+- `FilePurgeScheduler` (nuevo, `apps/api/src/core/files/application/`):
+  mismo patrón exacto que `OutboxDispatcherScheduler` (`setInterval` +
+  ciclo de vida de Nest) — corre dentro de `apps/api`, no `apps/worker`,
+  deliberadamente: es el mismo punto de partida evolutivo que el propio
+  dispatcher del outbox tuvo antes de su extracción (ADR-004 enmendado,
+  sesión 13). `FILES_PURGE_RETENTION_DAYS` (default 30),
+  `FILES_PURGE_INTERVAL_MS` (default 1h) y `FILES_PURGE_BATCH_SIZE`
+  (default 100) nuevos en `EnvironmentVariables`.
+- **Smoke test manual contra Docker + MinIO reales**: subida real de un
+  archivo → soft-delete real vía la API → `deleted_at` adelantado 2 días
+  vía `UPDATE` directo en Postgres (mismo mecanismo sancionado que
+  cualquier smoke test de este proyecto) → el scheduler real (arrancado
+  con `FILES_PURGE_RETENTION_DAYS=1`/`FILES_PURGE_INTERVAL_MS=5000` solo
+  para esta verificación) purgó el archivo en su siguiente tick
+  (`File purge: purged=1 failed=0`) → confirmado en Postgres real
+  `status: PURGED` con `purged_at` poblado.
+
+**Adapter real de Email para Notifications vía SMTP (cierra el ítem 2 original)**
+
+- Nuevo puerto `EmailDispatcherPort` + `SmtpEmailDispatcher` en
+  `@erp/notifications` (usa `nodemailer`, protocolo SMTP genérico — funciona
+  con cualquier proveedor compatible: Gmail, SendGrid, Mailgun, Postmark,
+  la interfaz SMTP de AWS SES, o un Mailhog/Mailpit local — este paquete
+  nunca elige un SDK de proveedor específico, mismo razonamiento que
+  Files/S3). `RequestNotificationUseCase` ahora inyecta
+  `@Optional() EMAIL_DISPATCHER` y gana un campo `recipientEmail?` en su
+  input — **deliberadamente no resuelve el email del destinatario por su
+  cuenta** (el paquete sigue sin depender de Users): el llamador, que ya
+  tiene el `User` en mano, lo pasa explícitamente.
+- `apps/api/src/shared/email/email.module.ts` (nuevo, `@Global()`, mismo
+  patrón que `PrismaModule`): provee `EMAIL_DISPATCHER` vía una factory que
+  construye un `SmtpEmailDispatcher` real si `EMAIL_SMTP_HOST` está
+  configurado, o `undefined` si no — el canal `EMAIL` falla cerrado con una
+  razón explícita en vez de simular un envío exitoso (MASTER_SPEC §90).
+  6 variables nuevas y opcionales en `EnvironmentVariables`
+  (`EMAIL_SMTP_HOST/PORT/SECURE/USER/PASSWORD`, `EMAIL_FROM_ADDRESS`) — sin
+  romper ningún `.env` existente.
+- `MembershipsController.invite()` ahora pasa `recipientEmail` y agrega
+  `EMAIL` a los canales solicitados — la invitación de membership es el
+  primer productor real que se beneficia de un email de verdad, no solo
+  IN_APP. `apps/worker`'s `TenantProvisionedNotificationHandler` se queda
+  deliberadamente en solo `IN_APP` (resolver el email del owner cruzando el
+  límite de proceso queda fuera de alcance de este bloque).
+- Tests: 4 nuevos en `request-notification.use-case.spec.ts` (sin
+  dispatcher configurado, sin `recipientEmail`, envío real vía un
+  dispatcher fake, y fallo del dispatcher propagado como `failureReason`) —
+  33 tests totales en `@erp/notifications` (antes 29).
+- **Smoke test manual contra Docker real** (sin credenciales SMTP reales
+  disponibles en este entorno — exactamente el estado real de
+  `EMAIL_SMTP_HOST` sin configurar): invitación real a un segundo usuario
+  real → `SELECT` directo sobre `notification_deliveries` confirma
+  `IN_APP`/`SENT` y `EMAIL`/`FAILED` con `failure_reason: "No email adapter
+  configured."` — la ruta de fallo controlado funciona de punta a punta
+  contra la app real, no solo en el test unitario.
+
+**Expirar/revocar/reinvitar invitaciones pendientes (cierra el ítem 4 original)**
+
+- `Membership.isExpiredInvitation(now, ttlSeconds)` (usa `updatedAt` como
+  "invitado en", sin columna nueva) y `Membership.reinvite()` (reabre desde
+  `REVOKED` o desde `INVITED`-y-vencida, reseteando el reloj de expiración
+  vía el mismo `transitionTo` que ya usan `activate`/`suspend`/`revoke`).
+  `MEMBERSHIP_INVITATION_TTL_SECONDS` nuevo en `EnvironmentVariables`
+  (default 7 días).
+- `AcceptMembershipInvitationUseCase` rechaza una invitación vencida con
+  `InvitationExpiredError` (`410 INVITATION_EXPIRED`);
+  `ListPendingInvitationsUseCase` filtra las vencidas de la lista de "mis
+  invitaciones pendientes" del propio invitado.
+- `InviteMembershipUseCase`: una membership existente `REVOKED`, o
+  `INVITED`-pero-vencida, ya no bloquea permanentemente con
+  `MembershipAlreadyExistsError` — se reabre la misma fila vía `reinvite()`
+  en su lugar. Cierra un hueco real que la propia sesión 15 dejó
+  documentado ("no re-invitación de un `REVOKED`").
+- `RevokeMembershipInvitationUseCase` (nuevo):
+  `DELETE /api/v1/tenants/memberships/:id`, mismo permiso
+  `tenants.memberships.manage` que invitar. Deliberadamente restringido a
+  `status === "INVITED"` (nuevo error `MembershipNotInvitedError`,
+  `409 MEMBERSHIP_NOT_INVITED`) aunque `Membership.revoke()` en el dominio
+  acepta cualquier estado no-`REVOKED` — "revocar una invitación" y
+  "remover un miembro activo" siguen siendo operaciones distintas, y solo
+  la primera está expuesta hoy.
+- `@erp/api-client`: `MembershipResponse`/`PendingInvitationResponse` ganan
+  `expiresAt`; nuevo método `revokeMembershipInvitation`.
+- **UI** (`roles-permissions-page.tsx`): columna "Expira el ..." en la
+  pestaña Miembros para invitaciones pendientes, botón "Revocar" con modal
+  de confirmación (`RevokeInvitationModal`, mismo patrón que
+  `StatusConfirmModal` de platform-admin). **Bug real encontrado durante la
+  propia verificación E2E**: el callback `onInvited` siempre hacía
+  `[...current, membership]` — al reabrir una fila revocada, la UI mostraba
+  la misma membership duplicada (una fila `REVOKED` y otra `INVITED`) en
+  vez de actualizar la existente. Corregido con un upsert por id.
+- Tests: 12 nuevos en la entidad `Membership` (spec nuevo, no existía
+  antes), 3 nuevos en `InviteMembershipUseCase`, 1 en
+  `AcceptMembershipInvitationUseCase`, 1 en `ListPendingInvitationsUseCase`,
+  4 en `RevokeMembershipInvitationUseCase` (spec nuevo) — 198 tests
+  unitarios totales en `apps/api`. Suite de integración ampliada con 3
+  escenarios reales contra Postgres: revocar → rechazar aceptar/re-revocar/
+  revocar-id-inexistente → reinvitar reabre la misma fila → aceptar de
+  verdad; una invitación realmente vencida rechazada en accept y ausente de
+  "pendientes"; purga de archivos (ver arriba) — 20 tests de integración
+  totales (antes 17). **E2E real nuevo**
+  (`apps/e2e/tests/membership-invitations.spec.ts`, segundo test en el
+  archivo): invita → revoca desde la UI → confirma `REVOKED` y sin botón →
+  reinvita → confirma que la fila se reabre (no se duplica) → un segundo
+  contexto de navegador (el invitado) acepta la invitación reabierta de
+  verdad.
+- Documentación actualizada: `docs/SECURITY.md` (secciones "Files",
+  "Notifications" y "Membership Invitations" — huecos cerrados con
+  tachado, filas de amenaza nuevas), `docs/DATABASE.md` (columna/índice
+  nuevos en `file_objects`).
+- Validación completa: `pnpm lint`/`typecheck` limpios en los 8
+  paquetes/apps, `pnpm test` (198/198 `apps/api`, 33/33
+  `@erp/notifications`, 9/9 `@erp/api-client`, 16/16 `apps/erp-web`, 6/6
+  `@erp/worker`), `pnpm build` (8 paquetes/apps),
+  `pnpm --filter @erp/api test:integration` (20/20 contra Postgres real),
+  `pnpm --filter @erp/e2e test:e2e` (5/5 Playwright, incluyendo el test
+  nuevo de revocar/reinvitar) — todo verde. Nota operativa: Docker Desktop
+  se había detenido entre el bloque anterior de esta sesión y este
+  (mismo patrón ya documentado en sesiones previas); reiniciado antes de
+  correr `test:integration`/`test:e2e`.
 
 ### Hecho — sesión 19 (Notifications conectado al Event Bus)
 
@@ -1327,16 +1466,25 @@ Playwright).
 - ~~Conectar Notifications al Event Bus depende de extraer el módulo a un
   paquete compartido...~~ — cerrado en la sesión 19: `@erp/notifications`
   ya existe y `apps/worker` lo consume. Ver "Hecho — sesión 19".
-- Una purga real de storage para archivos borrados (ítem 1 de la cola
-  Claude) depende de definir una ventana de retención — no bloqueado, solo
-  pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 2 de la cola Claude)
-  depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 3 de la cola Claude)
+- ~~Una purga real de storage para archivos borrados depende de definir una
+  ventana de retención...~~ — cerrado en la sesión 20:
+  `FILES_PURGE_RETENTION_DAYS` (default 30 días) y `FilePurgeScheduler` ya
+  existen. Ver "Hecho — sesión 20".
+- ~~Un adapter real de Email para Notifications depende de elegir un
+  proveedor SMTP/transaccional...~~ — cerrado en la sesión 20:
+  `SmtpEmailDispatcher` es genérico vía SMTP, no atado a un proveedor
+  específico. Ver "Hecho — sesión 20".
+- ~~Expirar/revocar invitaciones pendientes depende de decidir una política
+  de TTL...~~ — cerrado en la sesión 20: `MEMBERSHIP_INVITATION_TTL_SECONDS`
+  (default 7 días) ya existe, junto con revocar y reinvitar. Ver "Hecho —
+  sesión 20".
+- `@erp/api-client` generado desde OpenAPI (ítem 1 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Expirar/revocar invitaciones pendientes (ítem 4 de la cola Claude) depende
-  de decidir una política de TTL — no bloqueado, no decidido todavía.
+- Un App Registry mínimo (ítem 2 de la cola Claude) no depende de ninguna
+  decisión de arquitectura pendiente — deliberadamente no adelantado
+  porque no existe todavía ningún módulo de negocio real más allá del Core
+  para registrar en él (ver el ítem mismo en "Próximo").
 - ~~Una UI de administración de plataforma en erp-web...~~ — cerrado en la
   sesión 18: `platform-admin-page.tsx` (Usuarios/Ajustes/Actividad) ya
   existe y está cubierto por E2E real. Ver "Hecho — sesión 18".

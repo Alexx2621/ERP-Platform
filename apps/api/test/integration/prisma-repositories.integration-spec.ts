@@ -38,11 +38,16 @@ import { ProvisionTenantUseCase } from "../../src/core/tenants/application/provi
 import { ListPlatformSettingsUseCase } from "../../src/core/configuration/application/use-cases/list-platform-settings.use-case";
 import { InviteMembershipUseCase } from "../../src/core/tenants/application/invite-membership.use-case";
 import { AcceptMembershipInvitationUseCase } from "../../src/core/tenants/application/accept-membership-invitation.use-case";
+import { RevokeMembershipInvitationUseCase } from "../../src/core/tenants/application/revoke-membership-invitation.use-case";
 import { ListMembershipsUseCase } from "../../src/core/tenants/application/list-memberships.use-case";
+import { ListPendingInvitationsUseCase } from "../../src/core/tenants/application/list-pending-invitations.use-case";
 import {
+  InvitationExpiredError,
   InvitedUserNotFoundError,
   MembershipAlreadyExistsError,
+  MembershipInvitationNotFoundError,
   MembershipNotFoundForUserError,
+  MembershipNotInvitedError,
 } from "../../src/core/tenants/application/errors";
 import {
   PrismaOutboxMessageRepository,
@@ -57,6 +62,7 @@ import { PrismaFileObjectRepository } from "../../src/core/files/infrastructure/
 import { UploadFileUseCase } from "../../src/core/files/application/use-cases/upload-file.use-case";
 import { GetFileDownloadUrlUseCase } from "../../src/core/files/application/use-cases/get-file-download-url.use-case";
 import { DeleteFileUseCase } from "../../src/core/files/application/use-cases/delete-file.use-case";
+import { PurgeDeletedFilesUseCase } from "../../src/core/files/application/use-cases/purge-deleted-files.use-case";
 import { FakeFileStorageAdapter } from "../../src/core/files/test-support/fake-file-storage.adapter";
 import { FileObject } from "../../src/core/files/domain/file-object.entity";
 import {
@@ -772,6 +778,7 @@ describe("Prisma repositories against PostgreSQL", () => {
       status: "ACTIVE",
       createdAt: now,
       deletedAt: null,
+      purgedAt: null,
     });
     await expect(files.save(crossTenantFile)).rejects.toThrow();
   });
@@ -888,18 +895,23 @@ describe("Prisma repositories against PostgreSQL", () => {
       }),
     );
 
-    const invited = await inviteMembership.execute({ tenantId: tenantA.id, email: invitee.email });
+    const invitationTtlSeconds = 7 * 24 * 60 * 60;
+    const invited = await inviteMembership.execute({
+      tenantId: tenantA.id,
+      email: invitee.email,
+      invitationTtlSeconds,
+    });
     expect(invited.membership.status).toBe("INVITED");
 
     // Real FK: inviting an email with no matching user is a genuine 404, not
     // a deferred/passwordless account creation (MASTER_SPEC §90).
     await expect(
-      inviteMembership.execute({ tenantId: tenantA.id, email: "no-such-user@example.com" }),
+      inviteMembership.execute({ tenantId: tenantA.id, email: "no-such-user@example.com", invitationTtlSeconds }),
     ).rejects.toThrow(InvitedUserNotFoundError);
 
     // Duplicate invitation to the same user in the same tenant is rejected.
     await expect(
-      inviteMembership.execute({ tenantId: tenantA.id, email: invitee.email }),
+      inviteMembership.execute({ tenantId: tenantA.id, email: invitee.email, invitationTtlSeconds }),
     ).rejects.toThrow(MembershipAlreadyExistsError);
 
     // Tenant-scoped listing: tenant B never sees tenant A's memberships,
@@ -916,6 +928,7 @@ describe("Prisma repositories against PostgreSQL", () => {
         tenantSlug: tenantA.slug,
         membershipId: invited.membership.id,
         userId: stranger.id,
+        invitationTtlSeconds,
       }),
     ).rejects.toThrow(MembershipNotFoundForUserError);
 
@@ -923,11 +936,157 @@ describe("Prisma repositories against PostgreSQL", () => {
       tenantSlug: tenantA.slug,
       membershipId: invited.membership.id,
       userId: invitee.id,
+      invitationTtlSeconds,
     });
     expect(accepted.status).toBe("ACTIVE");
     await expect(memberships.findById(tenantA.id, invited.membership.id)).resolves.toMatchObject({
       status: "ACTIVE",
     });
+  });
+
+  it("revokes a pending invitation, rejects revoking anything else, and lets a fresh invite reopen it", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const memberships = new PrismaMembershipRepository(prisma);
+    const inviteMembership = new InviteMembershipUseCase(memberships, users);
+    const revokeInvitation = new RevokeMembershipInvitationUseCase(memberships);
+    const acceptInvitation = new AcceptMembershipInvitationUseCase(tenants, memberships);
+    const now = new Date("2026-08-29T10:00:00.000Z");
+    const invitationTtlSeconds = 7 * 24 * 60 * 60;
+
+    const invitee = createUser(now, "revoke-invitee@example.com");
+    await users.save(invitee);
+    const tenant = createTenant(now, "revoke-tenant");
+    await tenants.save(tenant);
+
+    const invited = await inviteMembership.execute({ tenantId: tenant.id, email: invitee.email, invitationTtlSeconds });
+    const revoked = await revokeInvitation.execute({ tenantId: tenant.id, membershipId: invited.membership.id });
+    expect(revoked.status).toBe("REVOKED");
+
+    // A revoked invitation can no longer be accepted...
+    await expect(
+      acceptInvitation.execute({
+        tenantSlug: tenant.slug,
+        membershipId: invited.membership.id,
+        userId: invitee.id,
+        invitationTtlSeconds,
+      }),
+    ).rejects.toThrow();
+
+    // ...revoking it again is rejected (not INVITED anymore)...
+    await expect(
+      revokeInvitation.execute({ tenantId: tenant.id, membershipId: invited.membership.id }),
+    ).rejects.toThrow(MembershipNotInvitedError);
+
+    // ...revoking an unknown id in this tenant is a real 404...
+    await expect(
+      revokeInvitation.execute({ tenantId: tenant.id, membershipId: newId() }),
+    ).rejects.toThrow(MembershipInvitationNotFoundError);
+
+    // ...but a fresh invite reopens the exact same row rather than staying blocked forever.
+    const reinvited = await inviteMembership.execute({ tenantId: tenant.id, email: invitee.email, invitationTtlSeconds });
+    expect(reinvited.membership.id).toBe(invited.membership.id);
+    expect(reinvited.membership.status).toBe("INVITED");
+
+    const accepted = await acceptInvitation.execute({
+      tenantSlug: tenant.slug,
+      membershipId: reinvited.membership.id,
+      userId: invitee.id,
+      invitationTtlSeconds,
+    });
+    expect(accepted.status).toBe("ACTIVE");
+  });
+
+  it("rejects accepting and hides from the pending list an invitation past its real TTL", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const memberships = new PrismaMembershipRepository(prisma);
+    const acceptInvitation = new AcceptMembershipInvitationUseCase(tenants, memberships);
+    const listPendingInvitations = new ListPendingInvitationsUseCase(memberships, tenants);
+    const past = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    const invitationTtlSeconds = 7 * 24 * 60 * 60;
+
+    const invitee = createUser(past, "expired-invitee@example.com");
+    await users.save(invitee);
+    const tenant = createTenant(past, "expired-tenant");
+    await tenants.save(tenant);
+    const staleMembership = Membership.create({
+      id: newId(),
+      tenantId: tenant.id,
+      userId: invitee.id,
+      status: "INVITED",
+      createdAt: past,
+      updatedAt: past,
+    });
+    await memberships.save(staleMembership);
+
+    await expect(listPendingInvitations.execute(invitee.id, invitationTtlSeconds)).resolves.toEqual([]);
+    await expect(
+      acceptInvitation.execute({
+        tenantSlug: tenant.slug,
+        membershipId: staleMembership.id,
+        userId: invitee.id,
+        invitationTtlSeconds,
+      }),
+    ).rejects.toThrow(InvitationExpiredError);
+  });
+
+  it("purges a real DELETED file's storage object past its retention window, leaving a fresh one untouched", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const files = new PrismaFileObjectRepository(prisma);
+    const storage = new FakeFileStorageAdapter();
+    const purgeDeletedFiles = new PurgeDeletedFilesUseCase(files, storage);
+    const now = new Date("2026-09-01T00:00:00.000Z");
+
+    const owner = createUser(now, "purge-owner@example.com");
+    await users.save(owner);
+    const tenant = createTenant(now, "purge-tenant");
+    await tenants.save(tenant);
+
+    const stale = FileObject.create({
+      id: newId(),
+      tenantId: tenant.id,
+      companyId: null,
+      ownerUserId: owner.id,
+      storageKey: `tenants/${tenant.id}/files/stale.pdf`,
+      originalFilename: "stale.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 10n,
+      status: "DELETED",
+      createdAt: now,
+      deletedAt: new Date("2026-07-01T00:00:00.000Z"),
+      purgedAt: null,
+    });
+    const fresh = FileObject.create({
+      id: newId(),
+      tenantId: tenant.id,
+      companyId: null,
+      ownerUserId: owner.id,
+      storageKey: `tenants/${tenant.id}/files/fresh.pdf`,
+      originalFilename: "fresh.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 10n,
+      status: "DELETED",
+      createdAt: now,
+      deletedAt: new Date("2026-08-28T00:00:00.000Z"),
+      purgedAt: null,
+    });
+    await storage.putObject({ key: stale.storageKey, body: Buffer.from("x"), contentType: "application/pdf" });
+    await storage.putObject({ key: fresh.storageKey, body: Buffer.from("x"), contentType: "application/pdf" });
+    await files.save(stale);
+    await files.save(fresh);
+
+    const result = await purgeDeletedFiles.execute({ retentionDays: 30, batchSize: 100, now });
+
+    expect(result).toEqual({ purged: 1, failed: 0 });
+    expect(storage.has(stale.storageKey)).toBe(false);
+    expect(storage.has(fresh.storageKey)).toBe(true);
+    await expect(files.findById(stale.id)).resolves.toMatchObject({ status: "PURGED" });
+    await expect(files.findById(fresh.id)).resolves.toMatchObject({ status: "DELETED" });
   });
 
   it("persists isPlatformAdmin, lists users across the platform, and lets an admin change another user's status", async () => {

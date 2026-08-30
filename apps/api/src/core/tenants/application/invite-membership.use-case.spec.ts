@@ -6,6 +6,7 @@ import { InviteMembershipUseCase } from "./invite-membership.use-case";
 import { InvitedUserDisabledError, InvitedUserNotFoundError, MembershipAlreadyExistsError } from "./errors";
 
 const now = new Date();
+const TTL_SECONDS = 7 * 24 * 60 * 60;
 
 function user(id: string, email: string, active = true): User {
   return User.create({
@@ -26,7 +27,11 @@ describe("InviteMembershipUseCase", () => {
     await users.save(user("user-1", "invitee@example.com"));
     const useCase = new InviteMembershipUseCase(memberships, users);
 
-    const result = await useCase.execute({ tenantId: "tenant-1", email: "Invitee@Example.com" });
+    const result = await useCase.execute({
+      tenantId: "tenant-1",
+      email: "Invitee@Example.com",
+      invitationTtlSeconds: TTL_SECONDS,
+    });
 
     expect(result.membership.status).toBe("INVITED");
     expect(result.membership.userId).toBe("user-1");
@@ -41,7 +46,7 @@ describe("InviteMembershipUseCase", () => {
     const useCase = new InviteMembershipUseCase(memberships, users);
 
     await expect(
-      useCase.execute({ tenantId: "tenant-1", email: "nobody@example.com" }),
+      useCase.execute({ tenantId: "tenant-1", email: "nobody@example.com", invitationTtlSeconds: TTL_SECONDS }),
     ).rejects.toThrow(InvitedUserNotFoundError);
   });
 
@@ -52,11 +57,11 @@ describe("InviteMembershipUseCase", () => {
     const useCase = new InviteMembershipUseCase(memberships, users);
 
     await expect(
-      useCase.execute({ tenantId: "tenant-1", email: "disabled@example.com" }),
+      useCase.execute({ tenantId: "tenant-1", email: "disabled@example.com", invitationTtlSeconds: TTL_SECONDS }),
     ).rejects.toThrow(InvitedUserDisabledError);
   });
 
-  it("rejects a user who already has a membership in the tenant", async () => {
+  it("rejects a user who already has an active membership in the tenant", async () => {
     const users = new InMemoryUserRepository();
     const memberships = new InMemoryMembershipRepository();
     await users.save(user("user-1", "existing@example.com"));
@@ -73,7 +78,82 @@ describe("InviteMembershipUseCase", () => {
     const useCase = new InviteMembershipUseCase(memberships, users);
 
     await expect(
-      useCase.execute({ tenantId: "tenant-1", email: "existing@example.com" }),
+      useCase.execute({ tenantId: "tenant-1", email: "existing@example.com", invitationTtlSeconds: TTL_SECONDS }),
     ).rejects.toThrow(MembershipAlreadyExistsError);
+  });
+
+  it("rejects a user with an already-pending, non-expired invitation", async () => {
+    const users = new InMemoryUserRepository();
+    const memberships = new InMemoryMembershipRepository();
+    await users.save(user("user-1", "pending@example.com"));
+    await memberships.save(
+      Membership.create({
+        id: "membership-1",
+        tenantId: "tenant-1",
+        userId: "user-1",
+        status: "INVITED",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    const useCase = new InviteMembershipUseCase(memberships, users);
+
+    await expect(
+      useCase.execute({ tenantId: "tenant-1", email: "pending@example.com", invitationTtlSeconds: TTL_SECONDS }),
+    ).rejects.toThrow(MembershipAlreadyExistsError);
+  });
+
+  it("reissues a REVOKED membership as a fresh invitation instead of blocking it", async () => {
+    const users = new InMemoryUserRepository();
+    const memberships = new InMemoryMembershipRepository();
+    await users.save(user("user-1", "revoked@example.com"));
+    await memberships.save(
+      Membership.create({
+        id: "membership-1",
+        tenantId: "tenant-1",
+        userId: "user-1",
+        status: "REVOKED",
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    const useCase = new InviteMembershipUseCase(memberships, users);
+
+    const result = await useCase.execute({
+      tenantId: "tenant-1",
+      email: "revoked@example.com",
+      invitationTtlSeconds: TTL_SECONDS,
+    });
+
+    expect(result.membership.id).toBe("membership-1");
+    expect(result.membership.status).toBe("INVITED");
+  });
+
+  it("reissues a stale, past-TTL INVITED membership as a fresh invitation", async () => {
+    const users = new InMemoryUserRepository();
+    const memberships = new InMemoryMembershipRepository();
+    await users.save(user("user-1", "stale@example.com"));
+    const staleInvitedAt = new Date(Date.now() - (TTL_SECONDS + 60) * 1000);
+    await memberships.save(
+      Membership.create({
+        id: "membership-1",
+        tenantId: "tenant-1",
+        userId: "user-1",
+        status: "INVITED",
+        createdAt: staleInvitedAt,
+        updatedAt: staleInvitedAt,
+      }),
+    );
+    const useCase = new InviteMembershipUseCase(memberships, users);
+
+    const result = await useCase.execute({
+      tenantId: "tenant-1",
+      email: "stale@example.com",
+      invitationTtlSeconds: TTL_SECONDS,
+    });
+
+    expect(result.membership.id).toBe("membership-1");
+    expect(result.membership.status).toBe("INVITED");
+    expect(result.membership.updatedAt.getTime()).toBeGreaterThan(staleInvitedAt.getTime());
   });
 });

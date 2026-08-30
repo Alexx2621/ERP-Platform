@@ -12,6 +12,8 @@ import {
 export interface InviteMembershipInput {
   tenantId: string;
   email: string;
+  /** How long an invitation stays acceptable before it can be freely reissued (docs/SECURITY.md "Membership Invitations"). */
+  invitationTtlSeconds: number;
 }
 
 export interface InvitedMembership {
@@ -40,10 +42,20 @@ export class InviteMembershipUseCase {
     if (!user) throw new InvitedUserNotFoundError();
     if (!user.isActive()) throw new InvitedUserDisabledError();
 
-    const existing = await this.memberships.findByUserId(input.tenantId, user.id);
-    if (existing) throw new MembershipAlreadyExistsError();
-
     const now = new Date();
+    const existing = await this.memberships.findByUserId(input.tenantId, user.id);
+    if (existing) {
+      // A REVOKED membership, or a stale INVITED one past its TTL, gives way
+      // to a fresh invitation instead of permanently blocking re-invitation
+      // (docs/WORK_QUEUE.md — closing the gap where revoke() had no way back).
+      const reinvitable =
+        existing.status === "REVOKED" || existing.isExpiredInvitation(now, input.invitationTtlSeconds);
+      if (!reinvitable) throw new MembershipAlreadyExistsError();
+      existing.reinvite();
+      await this.memberships.save(existing);
+      return { membership: existing, user };
+    }
+
     const membership = Membership.create({
       id: newId(),
       tenantId: input.tenantId,

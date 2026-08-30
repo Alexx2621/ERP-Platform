@@ -24,10 +24,12 @@ export class PrismaFileObjectRepository implements FileObjectRepository {
         status: props.status,
         createdAt: props.createdAt,
         deletedAt: props.deletedAt,
+        purgedAt: props.purgedAt,
       },
       update: {
         status: props.status,
         deletedAt: props.deletedAt,
+        purgedAt: props.purgedAt,
       },
     });
   }
@@ -50,6 +52,15 @@ export class PrismaFileObjectRepository implements FileObjectRepository {
     return records.map((record) => this.toDomain(record));
   }
 
+  async findDeletedBefore(cutoff: Date, limit: number): Promise<FileObject[]> {
+    const records = await this.prisma.fileObject.findMany({
+      where: { status: "DELETED", deletedAt: { lte: cutoff } },
+      orderBy: { deletedAt: "asc" },
+      take: limit,
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   private toDomain(record: PrismaFileObject): FileObject {
     return FileObject.create({
       id: record.id,
@@ -63,6 +74,7 @@ export class PrismaFileObjectRepository implements FileObjectRepository {
       status: record.status,
       createdAt: record.createdAt,
       deletedAt: record.deletedAt,
+      purgedAt: record.purgedAt,
     });
   }
 }

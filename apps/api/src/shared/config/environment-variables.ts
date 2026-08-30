@@ -1,5 +1,5 @@
 import { plainToInstance } from "class-transformer";
-import { IsIn, IsInt, IsString, Min, validateSync } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Min, validateSync } from "class-validator";
 
 export class EnvironmentVariables {
   @IsIn(["development", "test", "production"])
@@ -62,6 +62,60 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(60)
   FILES_DOWNLOAD_URL_TTL_SECONDS: number = 300;
+
+  /** How long a pending membership invitation stays acceptable before it can be freely reissued. Default 7 days. */
+  @IsInt()
+  @Min(60)
+  MEMBERSHIP_INVITATION_TTL_SECONDS: number = 604_800;
+
+  /** Retention window before a soft-deleted file's storage object is purged for real (docs/SECURITY.md "Files"). Default 30 days. */
+  @IsInt()
+  @Min(1)
+  FILES_PURGE_RETENTION_DAYS: number = 30;
+
+  /** How often the purge scheduler ticks. Default 1 hour. */
+  @IsInt()
+  @Min(1000)
+  FILES_PURGE_INTERVAL_MS: number = 3_600_000;
+
+  /** Max deleted files purged per tick, to bound one batch's blast radius. */
+  @IsInt()
+  @Min(1)
+  FILES_PURGE_BATCH_SIZE: number = 100;
+
+  /**
+   * SMTP transport for the Notifications EMAIL channel (`@erp/notifications`'s
+   * `SmtpEmailDispatcher`). All optional: when `EMAIL_SMTP_HOST` is unset,
+   * the EMAIL channel fails closed with an explanatory reason instead of
+   * throwing — same "known limitation, not silently faked" pattern already
+   * used for Files/S3. Works with any SMTP-compatible provider (Gmail,
+   * SendGrid, Mailgun, Postmark, AWS SES's SMTP interface, a local
+   * Mailhog/Mailpit for dev) — this app never picks a vendor SDK.
+   */
+  @IsOptional()
+  @IsString()
+  EMAIL_SMTP_HOST?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  EMAIL_SMTP_PORT: number = 587;
+
+  @IsOptional()
+  @IsIn(["true", "false"])
+  EMAIL_SMTP_SECURE: string = "false";
+
+  @IsOptional()
+  @IsString()
+  EMAIL_SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  EMAIL_SMTP_PASSWORD?: string;
+
+  @IsOptional()
+  @IsString()
+  EMAIL_FROM_ADDRESS?: string;
 }
 
 /**

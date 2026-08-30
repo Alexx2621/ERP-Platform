@@ -1,8 +1,15 @@
 export type NotificationChannel = "IN_APP" | "EMAIL" | "SMS" | "WHATSAPP" | "PUSH";
 export type NotificationDeliveryStatus = "SENT" | "FAILED";
 
-/** Channels with a real adapter in V1 — see InAppNotificationDispatcher. */
-export const IMPLEMENTED_NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["IN_APP"];
+/**
+ * Channels `RequestNotificationUseCase` has real dispatch code for. IN_APP
+ * always succeeds (persisting the row is the delivery). EMAIL succeeds only
+ * when both an `EmailDispatcherPort` is configured (`SmtpEmailDispatcher`,
+ * gated by `EMAIL_SMTP_HOST` — apps/worker never configures one today) and
+ * the caller supplied `recipientEmail` — otherwise it still produces a
+ * `FAILED` row with an explanatory reason, same as SMS/WHATSAPP/PUSH.
+ */
+export const IMPLEMENTED_NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["IN_APP", "EMAIL"];
 
 export interface NotificationDeliveryProps {
   id: string;

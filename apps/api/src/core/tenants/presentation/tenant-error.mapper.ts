@@ -3,11 +3,14 @@ import { AppException } from "../../../shared/errors/app.exception";
 import { InvalidMembershipTransitionError } from "../domain/membership.entity";
 import {
   CompanyContextUnavailableError,
+  InvitationExpiredError,
   InvitedUserDisabledError,
   InvitedUserNotFoundError,
   MembershipAlreadyExistsError,
   MembershipContextInactiveError,
+  MembershipInvitationNotFoundError,
   MembershipNotFoundForUserError,
+  MembershipNotInvitedError,
   ProvisioningUserUnavailableError,
   TenantContextInactiveError,
   TenantContextNotFoundError,
@@ -48,6 +51,15 @@ export function handleTenantError(error: unknown): never {
   }
   if (error instanceof InvalidMembershipTransitionError) {
     throw new AppException("MEMBERSHIP_INVALID_TRANSITION", error.message, HttpStatus.CONFLICT);
+  }
+  if (error instanceof InvitationExpiredError) {
+    throw new AppException("INVITATION_EXPIRED", error.message, HttpStatus.GONE);
+  }
+  if (error instanceof MembershipInvitationNotFoundError) {
+    throw new AppException("MEMBERSHIP_NOT_FOUND", error.message, HttpStatus.NOT_FOUND);
+  }
+  if (error instanceof MembershipNotInvitedError) {
+    throw new AppException("MEMBERSHIP_NOT_INVITED", error.message, HttpStatus.CONFLICT);
   }
   throw error;
 }

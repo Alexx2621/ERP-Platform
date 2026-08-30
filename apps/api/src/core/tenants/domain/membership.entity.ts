@@ -68,6 +68,31 @@ export class Membership {
     this.transitionTo("REVOKED");
   }
 
+  /**
+   * An invitation "expires" without ever changing status — `updatedAt` is
+   * the "became INVITED at" timestamp (set by `create`, and refreshed by
+   * `reinvite` below), so no separate `expiresAt` column is needed. Only
+   * meaningful while still INVITED; anything else is simply not an open
+   * invitation to expire.
+   */
+  isExpiredInvitation(now: Date, ttlSeconds: number): boolean {
+    if (this.props.status !== "INVITED") return false;
+    return now.getTime() - this.props.updatedAt.getTime() > ttlSeconds * 1000;
+  }
+
+  /**
+   * Re-opens an invitation that was REVOKED, or one that is still INVITED
+   * but past its TTL (a stale invite naturally gives way to a fresh one
+   * without requiring an explicit revoke first). Resets the expiry clock by
+   * bumping `updatedAt` via `transitionTo`, same as every other transition.
+   */
+  reinvite(): void {
+    if (this.props.status !== "REVOKED" && this.props.status !== "INVITED") {
+      throw new InvalidMembershipTransitionError(this.props.status, "INVITED");
+    }
+    this.transitionTo("INVITED");
+  }
+
   toProps(): Readonly<MembershipProps> {
     return { ...this.props };
   }

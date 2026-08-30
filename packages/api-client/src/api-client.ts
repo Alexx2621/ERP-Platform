@@ -34,7 +34,7 @@ import type {
 const DEFAULT_API_BASE_URL = "/api/v1";
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   accessToken?: string;
   tenantSlug?: string;
@@ -266,6 +266,14 @@ export class ApiClient {
     return this.request<PendingInvitationResponse[]>("/tenants/memberships/pending", {
       accessToken,
       signal,
+    });
+  }
+
+  async revokeMembershipInvitation(accessToken: string, tenantSlug: string, membershipId: string): Promise<void> {
+    await this.request<void>(`/tenants/memberships/${encodeURIComponent(membershipId)}`, {
+      method: "DELETE",
+      accessToken,
+      tenantSlug,
     });
   }
 

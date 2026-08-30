@@ -9,6 +9,7 @@ import { ResolveTenantContextUseCase } from "./application/resolve-tenant-contex
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
 import { InviteMembershipUseCase } from "./application/invite-membership.use-case";
 import { AcceptMembershipInvitationUseCase } from "./application/accept-membership-invitation.use-case";
+import { RevokeMembershipInvitationUseCase } from "./application/revoke-membership-invitation.use-case";
 import { ListMembershipsUseCase } from "./application/list-memberships.use-case";
 import { ListPendingInvitationsUseCase } from "./application/list-pending-invitations.use-case";
 import { TenantContextGuard } from "./presentation/tenant-context.guard";
@@ -53,6 +54,7 @@ describe("TenantsModule wiring", () => {
               LOGIN_RATE_LIMIT_WINDOW_SECONDS: 60,
               ACCESS_TOKEN_TTL_SECONDS: 900,
               REFRESH_TOKEN_TTL_SECONDS: 2_592_000,
+              MEMBERSHIP_INVITATION_TTL_SECONDS: 604_800,
             }),
           ],
         }),
@@ -72,6 +74,7 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(ListAuditEntriesUseCase)).toBeInstanceOf(ListAuditEntriesUseCase);
     expect(moduleRef.get(AuditEntriesController)).toBeInstanceOf(AuditEntriesController);
     expect(moduleRef.get(RequestNotificationUseCase)).toBeInstanceOf(RequestNotificationUseCase);
+    expect(moduleRef.get(RevokeMembershipInvitationUseCase)).toBeInstanceOf(RevokeMembershipInvitationUseCase);
     expect(moduleRef.get(ListNotificationsUseCase)).toBeInstanceOf(ListNotificationsUseCase);
     expect(moduleRef.get(MarkNotificationReadUseCase)).toBeInstanceOf(MarkNotificationReadUseCase);
     expect(moduleRef.get(NotificationsController)).toBeInstanceOf(NotificationsController);

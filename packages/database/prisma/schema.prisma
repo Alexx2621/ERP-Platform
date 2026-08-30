@@ -479,6 +479,7 @@ enum InboxMessageStatus {
 enum FileObjectStatus {
   ACTIVE
   DELETED
+  PURGED
 }
 
 /// File metadata + ownership record for objects held in S3-compatible
@@ -488,8 +489,11 @@ enum FileObjectStatus {
 /// through short-lived signed download URLs issued after a tenant/ownership
 /// check (docs/ARCHITECTURE.md §10, see FilesController). `status` is a
 /// deliberate soft-delete: deleting a FileObject here does not synchronously
-/// delete the underlying storage object (see docs/SECURITY.md "Files" for
-/// the retention gap that leaves).
+/// delete the underlying storage object. `PurgeDeletedFilesUseCase`
+/// (FilePurgeScheduler) later deletes the real object past the retention
+/// window and transitions the row to PURGED — the metadata row itself is
+/// kept, never hard-deleted, so audit entries referencing this id keep
+/// resolving.
 model FileObject {
   id               String           @id @db.Uuid
   tenantId         String           @map("tenant_id") @db.Uuid
@@ -502,12 +506,14 @@ model FileObject {
   status           FileObjectStatus @default(ACTIVE)
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  purgedAt         DateTime?        @map("purged_at") @db.Timestamptz(6)
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company? @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
   owner   User     @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, companyId])
+  @@index([status, deletedAt])
   @@map("file_objects")
 }
 

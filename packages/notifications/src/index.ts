@@ -14,6 +14,12 @@ export {
   type RequestNotificationResult,
 } from "./application/use-cases/request-notification.use-case";
 export {
+  EMAIL_DISPATCHER,
+  type EmailDispatcherPort,
+  type SendEmailInput,
+} from "./application/ports/email-dispatcher.port";
+export { SmtpEmailDispatcher, type SmtpConfig } from "./infrastructure/smtp-email-dispatcher";
+export {
   ListNotificationsUseCase,
   type ListNotificationsInput,
 } from "./application/use-cases/list-notifications.use-case";

@@ -152,6 +152,8 @@ export interface MembershipResponse {
   status: MembershipStatus;
   createdAt: string;
   updatedAt: string;
+  /** Only set while status is INVITED — when this invitation stops being acceptable. */
+  expiresAt: string | null;
 }
 
 export interface MembershipWithUserResponse extends MembershipResponse {
@@ -164,6 +166,7 @@ export interface PendingInvitationResponse {
   tenantSlug: string;
   tenantName: string;
   createdAt: string;
+  expiresAt: string;
 }
 
 export interface InviteMembershipInput {

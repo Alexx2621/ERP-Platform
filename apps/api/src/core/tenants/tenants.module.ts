@@ -10,6 +10,7 @@ import { ResolveTenantContextUseCase } from "./application/resolve-tenant-contex
 import { ListMyTenantsUseCase } from "./application/list-my-tenants.use-case";
 import { InviteMembershipUseCase } from "./application/invite-membership.use-case";
 import { AcceptMembershipInvitationUseCase } from "./application/accept-membership-invitation.use-case";
+import { RevokeMembershipInvitationUseCase } from "./application/revoke-membership-invitation.use-case";
 import { ListMembershipsUseCase } from "./application/list-memberships.use-case";
 import { ListPendingInvitationsUseCase } from "./application/list-pending-invitations.use-case";
 import { TENANT_PROVISIONING_REPOSITORY } from "./application/ports/tenant-provisioning.repository";
@@ -61,6 +62,7 @@ import { TenantContextGuard } from "./presentation/tenant-context.guard";
     ListMyTenantsUseCase,
     InviteMembershipUseCase,
     AcceptMembershipInvitationUseCase,
+    RevokeMembershipInvitationUseCase,
     ListMembershipsUseCase,
     ListPendingInvitationsUseCase,
     TenantContextGuard,

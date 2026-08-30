@@ -368,15 +368,15 @@ claims/publishes/marks outbox rows. See ADR-004's amendment
   still correctly marks the row `PUBLISHED` — see `docs/WORK_QUEUE.md`), so
   there is nothing to set `causation_id` to yet.
 
-## Files (2026-08-27)
+## Files (2026-08-27, real storage purge added 2026-08-29)
 
 Scope: `FileObject`, `UploadFileUseCase`, `GetFileDownloadUrlUseCase`,
-`ListFilesUseCase`, `DeleteFileUseCase`, `S3FileStorageAdapter`,
-`S3BucketBootstrapper` (`apps/api/src/core/files`) — implements
-MASTER_SPEC §22 ("Storage compatible con S3... Nunca depender del
-almacenamiento local del servidor"). `FilesController` exposes
-`POST/GET /api/v1/files`, `GET /api/v1/files/:id/download-url`,
-`DELETE /api/v1/files/:id`.
+`ListFilesUseCase`, `DeleteFileUseCase`, `PurgeDeletedFilesUseCase`,
+`FilePurgeScheduler`, `S3FileStorageAdapter`, `S3BucketBootstrapper`
+(`apps/api/src/core/files`) — implements MASTER_SPEC §22 ("Storage
+compatible con S3... Nunca depender del almacenamiento local del
+servidor"). `FilesController` exposes `POST/GET /api/v1/files`,
+`GET /api/v1/files/:id/download-url`, `DELETE /api/v1/files/:id`.
 
 ### Assets
 
@@ -401,18 +401,21 @@ almacenamiento local del servidor"). `FilesController` exposes
 | A storage-key collision lets one tenant's upload silently overwrite another tenant's object | `storage_key` is `tenants/{tenantId}/files/{id}` where `id` is a fresh UUIDv7 generated per upload — never derived from the original filename — and `file_objects.storage_key` carries a database-level `UNIQUE` constraint, so a collision is structurally impossible, not merely astronomically unlikely. |
 | The original filename is used to build a path and enables path traversal (`../../etc/passwd`) | `original_filename` is stored purely as display metadata and never concatenated into `storage_key` or any filesystem path — the storage key is always `tenants/{tenantId}/files/{id}`, independent of anything the client supplied. |
 | A request with no `file` field (or a malformed multipart body) crashes the handler and leaks an internal error | **Found in this session's own manual smoke test**: the initial implementation read `file.originalname` without checking `file` was defined, producing an uncaught `TypeError` that the global exception filter turned into a bare `500 INTERNAL_ERROR` — not a security leak (no stack trace reached the client) but a correctness gap inconsistent with MASTER_SPEC §61. Fixed by an explicit `if (!file)` check in `FilesController.upload` that throws a proper `400 FILE_REQUIRED` through the standard envelope. Re-verified against the real running server after the fix. |
-| A tenant admin deletes a file, and the caller assumes the bytes are gone immediately for compliance/legal purposes | `DELETE /files/:id` is a soft-delete only (`FileObject.markDeleted` — MASTER_SPEC §33): the row moves to `DELETED` and disappears from listings/downloads, but `S3FileStorageAdapter.deleteObject` is never called by `DeleteFileUseCase`. See "Known limitations" below — this is a deliberate scope cut, not an oversight, but it means "deleted" today means "no longer reachable through the API," not "erased from storage." |
+| A tenant admin deletes a file, and the caller assumes the bytes are gone immediately for compliance/legal purposes | `DELETE /files/:id` is a soft-delete only (`FileObject.markDeleted` — MASTER_SPEC §33): the row moves to `DELETED` and disappears from listings/downloads immediately. The real bytes are deleted later, once `FilePurgeScheduler` reaches the row (see the closed limitation below) — "deleted" means "no longer reachable through the API" right away, and "erased from storage" after the retention window, not instantly. |
+| ~~A `DELETED` file's storage object is never actually removed, so storage grows unbounded~~ | **Closed 2026-08-29.** `FilePurgeScheduler` polls every `FILES_PURGE_INTERVAL_MS` (default 1h) and `PurgeDeletedFilesUseCase` finds `DELETED` rows past `FILES_PURGE_RETENTION_DAYS` (default 30), calls the real `S3FileStoragePort.deleteObject` for each, and only then transitions the row to a new terminal `PURGED` status (`purged_at` set) — the metadata row itself is never hard-deleted, so it stays resolvable by anything (e.g. an audit entry) that references its id. A single file's storage failure is logged and skipped, not fatal to the batch — the row stays `DELETED` and is retried on the next tick, same "isolate one failure from the rest" reasoning as `DomainEventBus.publish`. Verified against real Postgres (integration test, real repos + fake storage) and against a real MinIO object in this session's manual smoke test: a real uploaded-then-deleted file, backdated past retention via a direct DB write (the same sanctioned mechanism as every other manual smoke test in this project), was actually removed from the real bucket by the real running scheduler. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
-- **Deleting a file's metadata does not delete the storage object.**
-  `DeleteFileUseCase` only calls `FileObject.markDeleted` — the real bytes
-  remain in the bucket under their `storage_key` indefinitely. This was a
-  deliberate choice (MASTER_SPEC §33: don't destroy critical data
-  immediately) rather than an oversight, but it means there is currently no
-  path to actually reclaim storage or fully purge a file for a legal/GDPR
-  deletion request. A real purge job (soft-deleted past a retention window
-  → `deleteObject` → hard-delete the row) is future work, not built yet.
+- **The purge scheduler runs in-process inside `apps/api`, not `apps/worker`.**
+  Same starting shape the outbox dispatcher itself once had before its own
+  extraction (ADR-004's amendment) — a deliberate, precedented choice to
+  avoid paying the cost of a shared-package extraction before there is a
+  real need for `FilePurgeScheduler` to scale independently. Revisit only if
+  purge volume ever needs it.
+- **Retention is a single global setting (`FILES_PURGE_RETENTION_DAYS`),
+  not configurable per tenant or per file.** Fine for Foundation; a future
+  compliance requirement (e.g. a tenant needing a shorter/longer legal hold)
+  would need a per-tenant or per-file override this slice does not have.
 - **No per-file access control beyond tenant scope.** Any membership with
   `files.read` in the tenant can download *any* file in that tenant,
   including ones uploaded by a different user or scoped to a different
@@ -474,16 +477,32 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
 | A user marks another user's (or another tenant's) notification as read, or discovers whether it exists, via `PUT /:id/read` | `MarkNotificationReadUseCase` loads the notification first and requires both `tenantId` and `recipientUserId` to match before touching anything — a mismatch on either and a genuinely missing id both surface as the identical `404 NOTIFICATION_NOT_FOUND` (same IDOR-resistant shape as `GetFileDownloadUrlUseCase`). Verified against real Postgres: a second real tenant received `404` attempting to mark the first tenant's real notification read. |
 | ~~A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications~~ | **Closed 2026-08-29.** `apps/worker`'s `TenantProvisionedNotificationHandler` subscribes to `tenancy.tenant.provisioned.v1` and wraps the `RequestNotificationUseCase` call in `consumeIdempotently` (ADR-008's inbox, `consumerName: "notifications.tenant-provisioned"`) — a redelivered outbox row is a no-op the second time, verified against real Postgres (new integration test) and a real manual smoke test (provision a real tenant, confirm exactly one `Notification` row created by the worker process, not `apps/api`). |
 | Sensitive data (passwords, tokens, full entities) ends up in `data` and later gets logged or exposed | `RequestNotificationUseCase` does not enforce a payload schema for `data` — this is an application-layer discipline each caller must follow, not something the infrastructure verifies structurally. The producers built so far (tenant provisioning, membership invitation) only include ids/slugs — no credentials. |
+| SMTP credentials (`EMAIL_SMTP_USER`/`EMAIL_SMTP_PASSWORD`) leak via logs or error messages | `SmtpEmailDispatcher` never logs its own config; a send failure's `Error.message` (surfaced as `NotificationDelivery.failureReason`) comes from `nodemailer`/the SMTP server, not from this code echoing the credentials back — same "don't log secrets" discipline as `docs/ARCHITECTURE.md` §11. Credentials live only in `EnvironmentVariables`/process env, never in the database. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
-- **Only `IN_APP` has a real adapter.** `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` are
-  reserved `NotificationChannel` values (MASTER_SPEC §48 lists all five) with
-  no delivery mechanism built — requesting one produces a `FAILED` delivery
-  row with an explanatory `failure_reason`, not a thrown error, so a caller
-  requesting multiple channels still gets the ones that work. Building a
-  real Email adapter needs an SMTP/provider integration that does not exist
-  in this codebase yet.
+- ~~**Only `IN_APP` has a real adapter.**~~ **Partially closed 2026-08-29:**
+  `EMAIL` now has a real `SmtpEmailDispatcher` (works with any
+  SMTP-compatible provider — Gmail, SendGrid, Mailgun, Postmark, AWS SES's
+  SMTP interface, a local Mailhog/Mailpit for dev — this app never picks a
+  vendor SDK, same reasoning as Files/S3). It is provided globally via
+  `apps/api`'s `EmailModule`, but only actually dispatches when both
+  `EMAIL_SMTP_HOST` is configured **and** the caller supplied
+  `recipientEmail` — `RequestNotificationUseCase` deliberately has no
+  dependency on Users/a lookup port to resolve an email address itself, so
+  the caller (already holding the `User` it just looked up, e.g.
+  `MembershipsController.invite()`) must pass it explicitly. Neither
+  condition being met still produces a `FAILED` delivery with an
+  explanatory reason, not a thrown error — verified for real in this
+  session's manual smoke test (`EMAIL_SMTP_HOST` unset in this environment:
+  a real invite produced a real `FAILED` delivery, `failureReason: "No
+  email adapter configured."`). `apps/worker`'s
+  `TenantProvisionedNotificationHandler` does not supply `EMAIL` at all yet
+  (it would need its own way to resolve the tenant owner's email —
+  deliberately out of scope for this block, same "don't extract a User
+  lookup path across the process boundary before something needs it"
+  reasoning `docs/DECISIONS.md` ADR-008 used for its own deferred item).
+  `SMS`/`WHATSAPP`/`PUSH` remain reserved with no adapter at all.
 - **Two producers today.** `tenancy.tenant_provisioned` (event-driven, from
   `apps/worker`) and the membership-invitation notification (still a direct
   call from `MembershipsController.invite()` — a real-time, user-triggered
@@ -497,11 +516,12 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
   a pure side effect of `tenancy.tenant.provisioned.v1` being published and
   consumed by `apps/worker`. See the closed threat row above for the
   idempotency mechanism.
-- **No delivery retry.** A `FAILED` delivery (today: any non-`IN_APP`
-  channel) stays `FAILED` permanently — there is no retry/backoff like the
-  outbox's, since V1 dispatch is synchronous and there is nothing async to
-  retry yet. Revisit once a real async channel (e.g. Email via a worker)
-  exists.
+- **No delivery retry.** A `FAILED` delivery — including a real transient
+  SMTP failure, e.g. the mail server being briefly unreachable — stays
+  `FAILED` permanently — there is no retry/backoff like the outbox's, since
+  dispatch is synchronous with the request that triggered it and there is
+  no queue to retry from. Revisit once Email dispatch itself moves to an
+  async job.
 - **No notification preferences or opt-out.** Every requested channel is
   attempted for every notification; there is no per-user setting to
   suppress a channel or a type. `UserPreference` (Configuration module)
@@ -512,15 +532,17 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
   acceptable at Foundation data volume, revisit if a recipient's history
   grows large enough to need cursor-based paging.
 
-## Membership Invitations (2026-08-28)
+## Membership Invitations (2026-08-28, expiry + revocation added 2026-08-29)
 
 Scope: `InviteMembershipUseCase`, `AcceptMembershipInvitationUseCase`,
-`ListMembershipsUseCase`, `ListPendingInvitationsUseCase`,
-`MembershipsController` (`apps/api/src/core/tenants`) — closes the RBAC gap
-flagged above: adding a second real user to a tenant, and that user
-accepting on their own, using the `Membership` state machine
-(`INVITED` → `ACTIVE`) that already existed in the domain model
-(`docs/MULTITENANCY.md`).
+`RevokeMembershipInvitationUseCase`, `ListMembershipsUseCase`,
+`ListPendingInvitationsUseCase`, `MembershipsController`
+(`apps/api/src/core/tenants`) — closes the RBAC gap flagged above: adding a
+second real user to a tenant, and that user accepting on their own, using
+the `Membership` state machine (`INVITED` → `ACTIVE`) that already existed
+in the domain model (`docs/MULTITENANCY.md`). `Membership.isExpiredInvitation`/
+`Membership.reinvite` and `MEMBERSHIP_INVITATION_TTL_SECONDS` (default 7
+days) close the expiry/revocation gap this section originally documented.
 
 ### Assets
 
@@ -542,6 +564,9 @@ accepting on their own, using the `Membership` state machine
 | Duplicate invitation to a user who is already a member (any status) | `InviteMembershipUseCase` checks `findByUserId` first and rejects with `409 MEMBERSHIP_ALREADY_EXISTS` — a tenant cannot end up with two membership rows for the same user. |
 | `GET /tenants/memberships` (member list) or `GET /tenants/memberships/pending` (my invitations) leaking cross-tenant data | The member list is tenant-scoped through the same `TenantContextGuard` + `tenants.memberships.read` permission pattern as every other tenant-scoped GET. The pending-invitations list is intentionally cross-tenant (same reasoning as `GET /tenants`/`ListMyTenantsUseCase`: the caller has no tenant context yet) but is filtered to `findPendingByUserId(callerId)` — never accepts a caller-supplied user id, so it can only ever show the authenticated caller's own pending invitations. |
 | The in-app notification sent at invite time leaks tenant internals to the invitee before they accept | The notification body is generic ("Fuiste invitado a un espacio de trabajo") and its `data` payload carries only `tenantId`/`membershipId` — no organization/company details, financial data, or other members' identities. |
+| A stale, long-forgotten invitation is accepted years later by someone who no longer should have access | **Closed 2026-08-29.** `AcceptMembershipInvitationUseCase` checks `membership.isExpiredInvitation(now, ttlSeconds)` before activating and rejects with `410 INVITATION_EXPIRED`; `ListPendingInvitationsUseCase` also filters expired ones out of the invitee's own "pending" list, so a stale invitation cannot be accepted through either the direct endpoint or a link surfaced from that list. Verified against real Postgres (integration test with a genuinely backdated `updatedAt`). |
+| A tenant admin revokes a membership that is not actually a pending invitation (e.g. an ACTIVE member), using this endpoint as an undocumented "remove member" backdoor | `RevokeMembershipInvitationUseCase` explicitly checks `status === "INVITED"` before calling the domain's own (deliberately more permissive) `Membership.revoke()`, rejecting anything else with `409 MEMBERSHIP_NOT_INVITED` — "revoke a pending invitation" and "remove an active member" stay two different, differently-sensitive operations, and only the former is exposed today. |
+| `DELETE /tenants/memberships/:id` lets a tenant admin discover whether a membership id exists in a different tenant | Revoke is tenant-scoped the same way every other write in this module is: `RevokeMembershipInvitationUseCase.execute` looks the membership up via `findById(tenantId, membershipId)`, so an id belonging to a different tenant is indistinguishable from a genuinely unknown one — both surface as `404 MEMBERSHIP_NOT_FOUND` via `MembershipInvitationNotFoundError`. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
@@ -552,16 +577,22 @@ accepting on their own, using the `Membership` state machine
   provisioned before it does not retroactively gain them on its existing
   Owner role. No production tenants exist yet, so this has no real impact
   today.
-- **No invitation expiry or revocation.** An `INVITED` membership stays
-  invitable/acceptable indefinitely — there is no TTL, and no endpoint to
-  cancel a pending invitation before it is accepted (`Membership.revoke()`
-  exists in the domain but nothing in this slice's HTTP surface calls it for
-  an `INVITED` row). Deferred rather than built speculatively.
-- **No re-invitation of a `REVOKED` membership.** `MembershipAlreadyExistsError`
-  fires for *any* existing membership regardless of status, including
-  `REVOKED` — a person removed from a tenant cannot currently be re-invited
-  without a direct database change. Revisit alongside building an explicit
-  "remove member" flow, which does not exist yet either.
+- ~~**No invitation expiry or revocation.**~~ **Closed 2026-08-29:**
+  `RevokeMembershipInvitationUseCase` (`DELETE /tenants/memberships/:id`,
+  same `tenants.memberships.manage` permission as inviting) cancels a
+  pending invitation, and `MEMBERSHIP_INVITATION_TTL_SECONDS` (default 7
+  days, configurable) makes a forgotten invitation stop being acceptable on
+  its own without requiring anyone to remember to revoke it.
+- ~~**No re-invitation of a `REVOKED` membership.**~~ **Closed 2026-08-29:**
+  `InviteMembershipUseCase` now checks whether an existing membership is
+  `REVOKED` or a stale (past-TTL) `INVITED` row and, if so, calls
+  `Membership.reinvite()` on that same row (resetting its expiry clock)
+  instead of blocking with `MembershipAlreadyExistsError` — a person can be
+  invited again after being revoked, or after simply letting an old
+  invitation lapse, without any direct database change. An `ACTIVE` or
+  `SUSPENDED` existing membership is still correctly blocked — this only
+  reopens a genuinely non-participating row. Still no explicit "remove an
+  active member" flow — revisit alongside that, which does not exist yet.
 - **`ListMembershipsUseCase`/`ListPendingInvitationsUseCase` resolve their
   joined `User`/`Tenant` one at a time (N+1), not via a batch lookup** — same
   accepted tradeoff as `ListMembershipsUseCase`'s own docstring: Foundation-scale

@@ -1,4 +1,4 @@
-import { FileObject } from "./file-object.entity";
+import { FileNotDeletedError, FileObject } from "./file-object.entity";
 
 function baseProps() {
   return {
@@ -13,6 +13,7 @@ function baseProps() {
     status: "ACTIVE" as const,
     createdAt: new Date("2026-08-27T00:00:00.000Z"),
     deletedAt: null,
+    purgedAt: null,
   };
 }
 
@@ -81,6 +82,28 @@ describe("FileObject", () => {
     file.markDeleted(firstDeletedAt);
     file.markDeleted(secondDeletedAt);
     expect(file.deletedAt).toEqual(firstDeletedAt);
+  });
+
+  it("purges a deleted file", () => {
+    const file = FileObject.create({ ...baseProps(), status: "DELETED", deletedAt: new Date("2026-08-27T01:00:00.000Z") });
+    const purgedAt = new Date("2026-09-26T01:00:00.000Z");
+    file.markPurged(purgedAt);
+    expect(file.status).toBe("PURGED");
+    expect(file.purgedAt).toEqual(purgedAt);
+  });
+
+  it("is idempotent when purged twice", () => {
+    const file = FileObject.create({ ...baseProps(), status: "DELETED", deletedAt: new Date("2026-08-27T01:00:00.000Z") });
+    const firstPurgedAt = new Date("2026-09-26T01:00:00.000Z");
+    const secondPurgedAt = new Date("2026-09-27T01:00:00.000Z");
+    file.markPurged(firstPurgedAt);
+    file.markPurged(secondPurgedAt);
+    expect(file.purgedAt).toEqual(firstPurgedAt);
+  });
+
+  it("rejects purging a file that was never deleted", () => {
+    const file = FileObject.create(baseProps());
+    expect(() => file.markPurged(new Date())).toThrow(FileNotDeletedError);
   });
 
   it("round-trips through toProps", () => {

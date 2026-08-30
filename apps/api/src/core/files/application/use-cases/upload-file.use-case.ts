@@ -50,6 +50,7 @@ export class UploadFileUseCase {
       status: "ACTIVE",
       createdAt: new Date(),
       deletedAt: null,
+      purgedAt: null,
     });
 
     await this.files.save(file);

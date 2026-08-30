@@ -1,16 +1,13 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { newId } from "@erp/database";
 import { Notification } from "../../domain/notification.entity";
 import { NOTIFICATION_REPOSITORY, NotificationRepository } from "../../domain/notification.repository";
-import {
-  IMPLEMENTED_NOTIFICATION_CHANNELS,
-  NotificationChannel,
-  NotificationDelivery,
-} from "../../domain/notification-delivery.entity";
+import { NotificationChannel, NotificationDelivery } from "../../domain/notification-delivery.entity";
 import {
   NOTIFICATION_DELIVERY_REPOSITORY,
   NotificationDeliveryRepository,
 } from "../../domain/notification-delivery.repository";
+import { EMAIL_DISPATCHER, EmailDispatcherPort } from "../ports/email-dispatcher.port";
 
 export interface RequestNotificationInput {
   tenantId: string | null;
@@ -20,11 +17,18 @@ export interface RequestNotificationInput {
   body: string;
   data?: unknown;
   channels: NotificationChannel[];
+  /** Required for the EMAIL channel to actually dispatch — the caller already has the User in scope, so this package never needs to look it up itself. */
+  recipientEmail?: string;
 }
 
 export interface RequestNotificationResult {
   notification: Notification;
   deliveries: NotificationDelivery[];
+}
+
+interface ChannelDispatchOutcome {
+  ok: boolean;
+  reason?: string;
 }
 
 /**
@@ -33,8 +37,8 @@ export interface RequestNotificationResult {
  * public endpoint that lets any authenticated caller notify an arbitrary
  * user would be an abuse surface, so this is only an internal service call
  * from another module (same pattern as RecordAuditEntryUseCase). Dispatch
- * is synchronous: IN_APP "sending" is just persisting the row, so every
- * delivery is created already SENT or FAILED, never PENDING.
+ * is synchronous, so every delivery is created already SENT or FAILED,
+ * never PENDING.
  */
 @Injectable()
 export class RequestNotificationUseCase {
@@ -42,6 +46,7 @@ export class RequestNotificationUseCase {
     @Inject(NOTIFICATION_REPOSITORY) private readonly notifications: NotificationRepository,
     @Inject(NOTIFICATION_DELIVERY_REPOSITORY)
     private readonly deliveries: NotificationDeliveryRepository,
+    @Optional() @Inject(EMAIL_DISPATCHER) private readonly emailDispatcher?: EmailDispatcherPort,
   ) {}
 
   async execute(input: RequestNotificationInput): Promise<RequestNotificationResult> {
@@ -60,15 +65,15 @@ export class RequestNotificationUseCase {
 
     const createdDeliveries: NotificationDelivery[] = [];
     for (const channel of input.channels) {
-      const implemented = IMPLEMENTED_NOTIFICATION_CHANNELS.includes(channel);
+      const outcome = await this.dispatch(channel, input);
       const delivery = NotificationDelivery.create({
         id: newId(),
         notificationId: notification.id,
         channel,
-        status: implemented ? "SENT" : "FAILED",
-        sentAt: implemented ? now : null,
+        status: outcome.ok ? "SENT" : "FAILED",
+        sentAt: outcome.ok ? now : null,
         readAt: null,
-        failureReason: implemented ? null : `Channel ${channel} has no adapter implemented yet.`,
+        failureReason: outcome.ok ? null : (outcome.reason ?? "Delivery failed."),
         createdAt: now,
       });
       await this.deliveries.save(delivery);
@@ -76,5 +81,29 @@ export class RequestNotificationUseCase {
     }
 
     return { notification, deliveries: createdDeliveries };
+  }
+
+  private async dispatch(channel: NotificationChannel, input: RequestNotificationInput): Promise<ChannelDispatchOutcome> {
+    if (channel === "IN_APP") {
+      // Persisting the NotificationDelivery row IS the delivery for this channel.
+      return { ok: true };
+    }
+
+    if (channel === "EMAIL") {
+      if (!this.emailDispatcher) {
+        return { ok: false, reason: "No email adapter configured." };
+      }
+      if (!input.recipientEmail) {
+        return { ok: false, reason: "No recipient email address was provided." };
+      }
+      try {
+        await this.emailDispatcher.send({ to: input.recipientEmail, subject: input.title, body: input.body });
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : "Email dispatch failed." };
+      }
+    }
+
+    return { ok: false, reason: `Channel ${channel} has no adapter implemented yet.` };
   }
 }

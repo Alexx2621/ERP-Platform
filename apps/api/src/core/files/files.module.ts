@@ -12,6 +12,8 @@ import { UploadFileUseCase } from "./application/use-cases/upload-file.use-case"
 import { GetFileDownloadUrlUseCase } from "./application/use-cases/get-file-download-url.use-case";
 import { ListFilesUseCase } from "./application/use-cases/list-files.use-case";
 import { DeleteFileUseCase } from "./application/use-cases/delete-file.use-case";
+import { PurgeDeletedFilesUseCase } from "./application/use-cases/purge-deleted-files.use-case";
+import { FilePurgeScheduler } from "./application/file-purge.scheduler";
 import { FilesController } from "./presentation/files.controller";
 
 /**
@@ -32,6 +34,8 @@ import { FilesController } from "./presentation/files.controller";
     GetFileDownloadUrlUseCase,
     ListFilesUseCase,
     DeleteFileUseCase,
+    PurgeDeletedFilesUseCase,
+    FilePurgeScheduler,
   ],
   exports: [UploadFileUseCase, GetFileDownloadUrlUseCase, ListFilesUseCase, DeleteFileUseCase],
 })

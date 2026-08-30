@@ -423,14 +423,17 @@ tenant/ownership check.
 | `original_filename` | `varchar(255)` | As uploaded, for display only — never used to build `storage_key` or any filesystem path. |
 | `content_type` | `varchar(150)` | As reported by the upload (`multipart` field), passed through to the storage adapter's `PutObject` so signed downloads serve the correct `Content-Type`. |
 | `size_bytes` | `bigint` | `bigint`, not `int` — MASTER_SPEC has no stated file-size ceiling and Postgres `int` tops out at ~2 GiB. Serialized as a string at the API boundary (`FileObjectResponseDto`) since JSON has no native 64-bit integer type. |
-| `status` | enum `ACTIVE`/`DELETED` | Deliberate, explicit soft-delete (MASTER_SPEC §33) rather than a generic `deleted_at`-on-every-table policy — see `docs/SECURITY.md` "Files" for why `DELETE /files/:id` does not synchronously remove the storage object. |
+| `status` | enum `ACTIVE`/`DELETED`/`PURGED` | Deliberate, explicit soft-delete (MASTER_SPEC §33) rather than a generic `deleted_at`-on-every-table policy. `PURGED` (added 2026-08-29) is the terminal state once `PurgeDeletedFilesUseCase` has actually removed the real storage object — see `docs/SECURITY.md` "Files". |
 | `created_at` | `timestamptz(6)` | |
 | `deleted_at` | `timestamptz?` | Set once, by `FileObject.markDeleted` — idempotent (deleting twice keeps the first timestamp). |
+| `purged_at` | `timestamptz?` | Added 2026-08-29. Set once, by `FileObject.markPurged`, only after the real S3/MinIO object has actually been deleted — the row itself is never hard-deleted (an audit entry referencing this id must keep resolving). |
 
 `@@unique(storageKey)` makes a duplicate/colliding object key impossible at
 the database level, not just by convention. `@@index([tenantId, companyId])`
 supports the primary read pattern (a tenant's, optionally a company's, file
-listing).
+listing). `@@index([status, deletedAt])` (added 2026-08-29) supports
+`PurgeDeletedFilesUseCase`'s own read pattern: `DELETED` rows ordered by how
+long they have been deleted.
 
 ### Migration
 
@@ -438,7 +441,10 @@ listing).
 generated and applied via `prisma migrate dev --name files_foundation`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
-`apps/api/test/integration`.
+`apps/api/test/integration`. Extended by
+`packages/database/prisma/migrations/20260830004924_file_purge_and_membership_expiry/`
+(adds `PURGED` to the enum and the `purged_at` column/index) — same
+real-database + Testcontainers verification.
 
 ---
 

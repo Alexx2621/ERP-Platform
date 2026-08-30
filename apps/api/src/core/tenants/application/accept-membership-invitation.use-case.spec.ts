@@ -3,16 +3,17 @@ import { Tenant } from "../domain/tenant.entity";
 import { InMemoryMembershipRepository } from "../test-support/in-memory-membership.repository";
 import { InMemoryTenantRepository } from "../test-support/in-memory-tenant.repository";
 import { AcceptMembershipInvitationUseCase } from "./accept-membership-invitation.use-case";
-import { MembershipNotFoundForUserError, TenantContextNotFoundError } from "./errors";
+import { InvitationExpiredError, MembershipNotFoundForUserError, TenantContextNotFoundError } from "./errors";
 
 const now = new Date();
+const TTL_SECONDS = 7 * 24 * 60 * 60;
 
 function tenant(id: string, slug: string): Tenant {
   return Tenant.create({ id, slug, name: id, status: "ACTIVE", version: 1, createdAt: now, updatedAt: now });
 }
 
-function invitedMembership(id: string, tenantId: string, userId: string): Membership {
-  return Membership.create({ id, tenantId, userId, status: "INVITED", createdAt: now, updatedAt: now });
+function invitedMembership(id: string, tenantId: string, userId: string, updatedAt: Date = now): Membership {
+  return Membership.create({ id, tenantId, userId, status: "INVITED", createdAt: updatedAt, updatedAt });
 }
 
 describe("AcceptMembershipInvitationUseCase", () => {
@@ -27,6 +28,7 @@ describe("AcceptMembershipInvitationUseCase", () => {
       tenantSlug: "acme",
       membershipId: "membership-1",
       userId: "user-1",
+      invitationTtlSeconds: TTL_SECONDS,
     });
 
     expect(result.status).toBe("ACTIVE");
@@ -42,7 +44,12 @@ describe("AcceptMembershipInvitationUseCase", () => {
     const useCase = new AcceptMembershipInvitationUseCase(tenants, memberships);
 
     await expect(
-      useCase.execute({ tenantSlug: "acme", membershipId: "membership-1", userId: "someone-else" }),
+      useCase.execute({
+        tenantSlug: "acme",
+        membershipId: "membership-1",
+        userId: "someone-else",
+        invitationTtlSeconds: TTL_SECONDS,
+      }),
     ).rejects.toThrow(MembershipNotFoundForUserError);
   });
 
@@ -52,7 +59,12 @@ describe("AcceptMembershipInvitationUseCase", () => {
     const useCase = new AcceptMembershipInvitationUseCase(tenants, memberships);
 
     await expect(
-      useCase.execute({ tenantSlug: "unknown", membershipId: "membership-1", userId: "user-1" }),
+      useCase.execute({
+        tenantSlug: "unknown",
+        membershipId: "membership-1",
+        userId: "user-1",
+        invitationTtlSeconds: TTL_SECONDS,
+      }),
     ).rejects.toThrow(TenantContextNotFoundError);
   });
 
@@ -73,7 +85,30 @@ describe("AcceptMembershipInvitationUseCase", () => {
     const useCase = new AcceptMembershipInvitationUseCase(tenants, memberships);
 
     await expect(
-      useCase.execute({ tenantSlug: "acme", membershipId: "membership-1", userId: "user-1" }),
+      useCase.execute({
+        tenantSlug: "acme",
+        membershipId: "membership-1",
+        userId: "user-1",
+        invitationTtlSeconds: TTL_SECONDS,
+      }),
     ).rejects.toThrow(InvalidMembershipTransitionError);
+  });
+
+  it("rejects accepting an invitation past its TTL", async () => {
+    const tenants = new InMemoryTenantRepository();
+    const memberships = new InMemoryMembershipRepository();
+    await tenants.save(tenant("tenant-1", "acme"));
+    const staleInvitedAt = new Date(Date.now() - (TTL_SECONDS + 60) * 1000);
+    await memberships.save(invitedMembership("membership-1", "tenant-1", "user-1", staleInvitedAt));
+    const useCase = new AcceptMembershipInvitationUseCase(tenants, memberships);
+
+    await expect(
+      useCase.execute({
+        tenantSlug: "acme",
+        membershipId: "membership-1",
+        userId: "user-1",
+        invitationTtlSeconds: TTL_SECONDS,
+      }),
+    ).rejects.toThrow(InvitationExpiredError);
   });
 });
