@@ -1,6 +1,7 @@
 import { Global, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
+import { PRISMA_CLIENT as NOTIFICATIONS_PRISMA_CLIENT } from "@erp/notifications";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { RedisService } from "../../shared/redis/redis.service";
 import { ConfigurationModule } from "./configuration.module";
@@ -14,14 +15,17 @@ import { ListPlatformSettingsUseCase } from "./application/use-cases/list-platfo
 // ConfigurationModule imports AuthModule + TenantsModule (for their guards)
 // and AccessControlModule (for PermissionGuard) — same StubInfraModule
 // pattern as tenants.module.spec.ts, since those modules ultimately need
-// Prisma/Redis.
+// Prisma/Redis. TenantsModule also pulls in NotificationsModule (@erp/notifications),
+// which needs its own PRISMA_CLIENT token — same `useExisting` trick the
+// real PrismaModule uses, so this stub mirrors it instead of the real module.
 @Global()
 @Module({
   providers: [
     { provide: PrismaService, useValue: {} },
     { provide: RedisService, useValue: {} },
+    { provide: NOTIFICATIONS_PRISMA_CLIENT, useExisting: PrismaService },
   ],
-  exports: [PrismaService, RedisService],
+  exports: [PrismaService, RedisService, NOTIFICATIONS_PRISMA_CLIENT],
 })
 class StubInfraModule {}
 

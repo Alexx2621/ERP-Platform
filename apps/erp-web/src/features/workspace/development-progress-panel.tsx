@@ -30,10 +30,10 @@ export const overallDevelopmentProgress = Math.round(
 );
 
 const nextMilestones = [
-  "Escritura de settings a nivel PLATFORM",
-  "Vista de actividad no tenant-scoped",
-  "Inbox / idempotencia de consumidores",
+  "Purga real de storage para archivos borrados",
   "Adapter real de Email para Notifications",
+  "SDK generado desde el spec OpenAPI",
+  "Expirar / revocar invitaciones pendientes",
 ] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {

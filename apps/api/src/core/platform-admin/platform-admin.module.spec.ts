@@ -1,6 +1,7 @@
 import { Global, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
+import { PRISMA_CLIENT as NOTIFICATIONS_PRISMA_CLIENT } from "@erp/notifications";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { RedisService } from "../../shared/redis/redis.service";
 import { ListUsersUseCase, SetUserStatusUseCase } from "../users";
@@ -20,8 +21,9 @@ import { PlatformAdminModule } from "./platform-admin.module";
   providers: [
     { provide: PrismaService, useValue: {} },
     { provide: RedisService, useValue: {} },
+    { provide: NOTIFICATIONS_PRISMA_CLIENT, useExisting: PrismaService },
   ],
-  exports: [PrismaService, RedisService],
+  exports: [PrismaService, RedisService, NOTIFICATIONS_PRISMA_CLIENT],
 })
 class StubInfraModule {}
 

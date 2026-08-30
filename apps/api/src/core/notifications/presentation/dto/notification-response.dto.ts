@@ -1,6 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import type { NotificationWithDelivery } from "../../domain/notification.repository";
-import type { NotificationDelivery } from "../../domain/notification-delivery.entity";
+import type { NotificationWithDelivery, NotificationDelivery } from "@erp/notifications";
 
 export class NotificationResponseDto {
   @ApiProperty() id!: string;

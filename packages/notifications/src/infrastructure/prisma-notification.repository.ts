@@ -1,10 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type {
   Notification as PrismaNotification,
   NotificationDelivery as PrismaNotificationDelivery,
   Prisma,
+  PrismaClient,
 } from "@erp/database";
-import { PrismaService } from "../../../shared/prisma/prisma.service";
 import { Notification } from "../domain/notification.entity";
 import { NotificationDelivery } from "../domain/notification-delivery.entity";
 import {
@@ -12,10 +12,11 @@ import {
   NotificationRepository,
   NotificationWithDelivery,
 } from "../domain/notification.repository";
+import { PRISMA_CLIENT } from "./prisma-client.token";
 
 @Injectable()
 export class PrismaNotificationRepository implements NotificationRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
   async save(notification: Notification): Promise<void> {
     const props = notification.toProps();

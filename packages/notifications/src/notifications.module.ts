@@ -8,18 +8,21 @@ import { ListNotificationsUseCase } from "./application/use-cases/list-notificat
 import { MarkNotificationReadUseCase } from "./application/use-cases/mark-notification-read.use-case";
 
 /**
- * Deliberately has ZERO dependency on any other core module — same "leaf"
- * shape as AccessControlModule/AuditModule/EventsModule. Any module that
- * wants to request a notification (Tenants at provisioning today; future
- * business modules later) imports NotificationsModule directly; since
- * Notifications never imports anything back, none of those imports can
- * create a cycle.
+ * Lives in `@erp/notifications` (extracted from `apps/api/src/core/notifications`,
+ * same reasoning and pattern as the `@erp/events` extraction — docs/DECISIONS.md
+ * ADR-004's amendment) so both `apps/api` (HTTP read endpoints, direct
+ * application calls) and `apps/worker` (the `tenancy.tenant.provisioned.v1`
+ * event handler) can import it without any business module living outside
+ * a single app. Deliberately has ZERO dependency on any other module.
  *
- * There is no controller here. The read endpoints (GET /api/v1/notifications,
- * PUT /api/v1/notifications/:id/read) need SessionAuthGuard + TenantContextGuard,
- * so — same reasoning as RolesController/AuditEntriesController — they are
- * registered by TenantsModule instead: see
- * tenants/presentation/notifications.controller.ts.
+ * The consuming app must provide `PRISMA_CLIENT` (see
+ * `infrastructure/prisma-client.token`) somewhere globally reachable in its
+ * own module graph, same pattern `@erp/events` already established.
+ *
+ * There is no controller here — HTTP concerns (`GET /api/v1/notifications`,
+ * `PUT /api/v1/notifications/:id/read`) stay in `apps/api`, registered by
+ * `TenantsModule` for the same reason as RolesController/AuditEntriesController:
+ * see `apps/api/src/core/tenants/presentation/notifications.controller.ts`.
  */
 @Module({
   providers: [

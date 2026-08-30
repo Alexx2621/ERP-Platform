@@ -1,8 +1,10 @@
 import { Test } from "@nestjs/testing";
 import { DomainEventBus, DispatchOutboxBatchUseCase } from "@erp/events";
+import { RequestNotificationUseCase } from "@erp/notifications";
 import { WorkerModule } from "./worker.module";
 import { PrismaService } from "./shared/prisma/prisma.service";
 import { HealthController } from "./health/health.controller";
+import { TenantProvisionedNotificationHandler } from "./notifications/tenant-provisioned-notification.handler";
 
 /**
  * Boots the real WorkerModule graph with only PrismaService stubbed out, so
@@ -20,6 +22,10 @@ describe("WorkerModule wiring", () => {
     expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
     expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
     expect(moduleRef.get(HealthController)).toBeInstanceOf(HealthController);
+    expect(moduleRef.get(RequestNotificationUseCase)).toBeInstanceOf(RequestNotificationUseCase);
+    expect(moduleRef.get(TenantProvisionedNotificationHandler)).toBeInstanceOf(
+      TenantProvisionedNotificationHandler,
+    );
 
     await moduleRef.close();
   });

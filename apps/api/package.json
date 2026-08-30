@@ -16,6 +16,7 @@
     "@aws-sdk/s3-request-presigner": "^3.906.0",
     "@erp/database": "workspace:*",
     "@erp/events": "workspace:*",
+    "@erp/notifications": "workspace:*",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/common": "^11.2.1",
     "@nestjs/config": "^4.0.4",

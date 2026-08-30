@@ -1,6 +1,6 @@
 import { HttpStatus } from "@nestjs/common";
 import { AppException } from "../../../shared/errors/app.exception";
-import { NotificationNotFoundError } from "../application/errors";
+import { NotificationNotFoundError } from "@erp/notifications";
 
 export function handleNotificationsError(error: unknown): never {
   if (error instanceof NotificationNotFoundError) {

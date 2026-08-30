@@ -6,10 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 18,
-UI de administración de plataforma en erp-web + `isPlatformAdmin` expuesto en
-todo el flujo de auth — cierra el ítem 6 que dejó pendiente la sesión 16).
-Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 19,
+Notifications conectado al Event Bus — extraído a `@erp/notifications`,
+consumido por `apps/worker` vía el inbox de ADR-008 — cierra el ítem 1 de
+esta cola). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,30 +22,91 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **Conectar Notifications al Event Bus** — el inbox que ADR-004 punto 5
-   exigía antes de esto ya existe (ADR-008), pero conectar `Notifications`
-   requiere primero extraer al menos `RequestNotificationUseCase` y sus
-   dependencias a un paquete compartido que `apps/worker` pueda importar
-   (mismo patrón que la extracción de `packages/events` en la sesión 13) —
-   ningún módulo de negocio vive hoy fuera de `apps/api`. Ver ADR-008
-   "Deferred".
-2. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
+1. **Purga real de storage para archivos borrados** — `DeleteFileUseCase`
    solo marca `DELETED` en metadata; el objeto real permanece en el bucket
    indefinidamente (`docs/SECURITY.md` §"Files"). Job de retención/purga
    futuro, no bloqueado pero deliberadamente no construido junto con Files.
-3. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
+2. **Adapter real de Email para Notifications** — hoy solo `IN_APP` tiene
    implementación; `EMAIL`/`SMS`/`WHATSAPP`/`PUSH` son valores de canal
    reservados que producen un delivery `FAILED` explícito. Requiere elegir
    un proveedor SMTP/transaccional (no decidido todavía).
-4. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
+3. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
    mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
    generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
    bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
    el SDK ya probado en un mismo cambio — refactor de proceso separado.
-5. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
+4. **Expirar/revocar invitaciones pendientes** — `Membership.revoke()` ya
    existe en el dominio, pero ningún endpoint lo invoca para una membership
    `INVITED`, y no hay TTL. Ver hueco documentado en `docs/SECURITY.md`
    §"Membership Invitations".
+
+### Hecho — sesión 19 (Notifications conectado al Event Bus)
+
+- **Extracción a `@erp/notifications`** (nuevo paquete compartido, mismo
+  patrón que `@erp/events` en la sesión 13): `Notification`,
+  `NotificationDelivery`, sus repositorios, `RequestNotificationUseCase`,
+  `ListNotificationsUseCase`, `MarkNotificationReadUseCase`,
+  `NotificationsModule`, y los repositorios Prisma (ahora dependen de un
+  token `PRISMA_CLIENT` propio del paquete en vez de la clase concreta
+  `PrismaService` de `apps/api`, satisfecho vía `useExisting` — igual que
+  `@erp/events`). La presentación HTTP (`NotificationResponseDto`,
+  `handleNotificationsError`) se queda en `apps/api/src/core/notifications`,
+  que ahora es solo un barrel que reexporta el paquete compartido más esos
+  DTOs — ningún import existente (`NotificationsController`,
+  `AppModule`) tuvo que cambiar.
+- **`apps/worker/src/notifications/tenant-provisioned-notification.handler.ts`**
+  (nuevo): el primer consumidor de negocio real de `DomainEventBus`
+  (ADR-004 punto 5 / ADR-008 "Deferred"). `OnModuleInit` se suscribe a
+  `tenancy.tenant.provisioned.v1` y envuelve la llamada a
+  `RequestNotificationUseCase` en `consumeIdempotently` (el inbox de
+  ADR-008, `consumerName: "notifications.tenant-provisioned"`) — una
+  redelivery del mismo evento no produce una segunda notificación.
+- **`TenantsController.provision()` ya no conoce Notifications.** Se quitó
+  la llamada directa a `RequestNotificationUseCase` y su import — la
+  notificación al owner ahora es un efecto secundario genuino de que
+  `tenancy.tenant.provisioned.v1` se publique y sea consumido por
+  `apps/worker`, no una llamada directa disfrazada de evento (contraste con
+  la invitación de membresías, que sigue siendo una llamada directa a
+  propósito: ver el nuevo texto en `docs/SECURITY.md`).
+- **`apps/api`/`apps/worker`** ahora proveen también el token `PRISMA_CLIENT`
+  de `@erp/notifications` en su `PrismaModule` global (`apps/worker` ya
+  proveía el de `@erp/events`; ahora provee ambos). 4 archivos de test de
+  wiring de `apps/api` (`configuration.module.spec.ts`,
+  `files.module.spec.ts`, `tenants.module.spec.ts`,
+  `platform-admin.module.spec.ts`) tenían su propio `StubInfraModule` que
+  solo asilaba `PrismaService` sin la derivación `useExisting` — bug real
+  de test encontrado al correr la suite completa (no el test aislado),
+  corregido replicando el mismo patrón que el `PrismaModule` real.
+- Tests: 29 tests de notificaciones movidos verbatim a `@erp/notifications`
+  (169 tests unitarios en `apps/api`, antes 198 — la resta exacta) + 6 tests
+  nuevos en `apps/worker` para `TenantProvisionedNotificationHandler`
+  (efecto correcto desde el payload real, redelivery sin duplicar, payload
+  malformado ignorado sin lanzar, suscripción real vía `onModuleInit`).
+  Suite de integración de `apps/api` ampliada con un escenario real de
+  punta a punta: provisiona un tenant real, despacha el outbox real,
+  confirma exactamente una `Notification` real vía los repositorios Prisma
+  reales (no una réplica en memoria), y confirma que una redelivery manual
+  del mismo evento no crea una segunda — 17/17 en total (antes 16).
+- Smoke test manual contra la infraestructura Docker real, con los
+  procesos `apps/api`/`apps/worker` persistentes reconstruidos: registro y
+  provisioning reales de un tenant → confirmado en el log real de
+  `apps/worker` (proceso separado de `apps/api`) el despacho
+  (`claimed=1 published=1 failed=0`) → `GET /api/v1/notifications` real
+  confirma la notificación `tenancy.tenant_provisioned` con el contenido
+  correcto, creada enteramente por `apps/worker` sin que `apps/api`
+  ejecutara ningún código de notificaciones.
+- Documentación actualizada: `docs/DECISIONS.md` (ADR-008 enmendado con la
+  sección "Amendment (2026-08-29) — Notifications connected as the first
+  real consumer"), `docs/SECURITY.md` (sección "Notifications" actualizada:
+  hueco "Not wired to the Event Bus" cerrado con tachado, nueva fila de
+  amenaza describiendo el control de idempotencia real).
+- Validación completa: `pnpm lint`/`typecheck` limpios en los 8
+  paquetes/apps (nuevo: `@erp/notifications`), `pnpm test` (169/169
+  `apps/api`, 29/29 `@erp/notifications`, 6/6 `@erp/worker` — antes 1),
+  `pnpm build` (8 paquetes/apps), `pnpm --filter @erp/api test:integration`
+  (17/17 contra Postgres real), `pnpm --filter @erp/e2e test:e2e` (4/4
+  Playwright, con el log real del worker despachando el evento durante el
+  test de onboarding) — todo verde.
 
 ### Hecho — sesión 18 (UI de administración de plataforma + `isPlatformAdmin` en el flujo de auth)
 
@@ -1262,18 +1323,19 @@ Playwright).
   ya existe. Ver "Hecho — sesión 16" (tercer bloque).
 - ~~Un `DomainEventBus` handler con efecto secundario no idempotente depende
   de construir primero `inbox_messages`...~~ — cerrado en la sesión 17
-  (ADR-008). Conectar Notifications (ítem 1 de la cola Claude) ahora
-  depende únicamente de extraer el módulo a un paquete compartido, no de
-  ninguna decisión de arquitectura pendiente.
-- Una purga real de storage para archivos borrados (ítem 2 de la cola
+  (ADR-008).
+- ~~Conectar Notifications al Event Bus depende de extraer el módulo a un
+  paquete compartido...~~ — cerrado en la sesión 19: `@erp/notifications`
+  ya existe y `apps/worker` lo consume. Ver "Hecho — sesión 19".
+- Una purga real de storage para archivos borrados (ítem 1 de la cola
   Claude) depende de definir una ventana de retención — no bloqueado, solo
   pendiente de diseñar como job auditado, no borrado ad-hoc.
-- Un adapter real de Email para Notifications (ítem 3 de la cola Claude)
+- Un adapter real de Email para Notifications (ítem 2 de la cola Claude)
   depende de elegir un proveedor SMTP/transaccional — no decidido todavía.
-- `@erp/api-client` generado desde OpenAPI (ítem 4 de la cola Claude)
+- `@erp/api-client` generado desde OpenAPI (ítem 3 de la cola Claude)
   depende de elegir una herramienta de generación (p. ej.
   `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Expirar/revocar invitaciones pendientes (ítem 5 de la cola Claude) depende
+- Expirar/revocar invitaciones pendientes (ítem 4 de la cola Claude) depende
   de decidir una política de TTL — no bloqueado, no decidido todavía.
 - ~~Una UI de administración de plataforma en erp-web...~~ — cerrado en la
   sesión 18: `platform-admin-page.tsx` (Usuarios/Ajustes/Actividad) ya
@@ -1296,8 +1358,9 @@ Architecture — implementado y ratificado en sesión 10, enmendado en sesión
 `isPlatformAdmin` + `PlatformAdminGuard`, enfoque elegido explícitamente por
 el usuario entre tres alternativas presentadas); ADR-008 (Consumer-Side
 Idempotency / Inbox — implementado y ratificado en sesión 17, mecanismo
-completo verificado contra Postgres real; conectar un consumidor de
-negocio real queda como backlog separado). Pendientes de numerar
+completo verificado contra Postgres real; enmendado en sesión 19 con el
+primer consumidor de negocio real, Notifications, conectado vía
+`@erp/notifications` + `apps/worker`). Pendientes de numerar
 formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
 `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres

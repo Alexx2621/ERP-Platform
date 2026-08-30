@@ -441,12 +441,17 @@ almacenamiento local del servidor"). `FilesController` exposes
   with how other modules only audit successful state changes today, not
   rejected attempts.
 
-## Notifications (2026-08-28)
+## Notifications (2026-08-28, extracted to `@erp/notifications` 2026-08-29)
 
 Scope: `Notification`, `NotificationDelivery`, `RequestNotificationUseCase`,
-`ListNotificationsUseCase`, `MarkNotificationReadUseCase`
-(`apps/api/src/core/notifications`) — implements MASTER_SPEC §48. Read
-endpoints (`GET /api/v1/notifications`, `PUT /api/v1/notifications/:id/read`)
+`ListNotificationsUseCase`, `MarkNotificationReadUseCase` — moved from
+`apps/api/src/core/notifications` into the shared `@erp/notifications`
+package (same extraction pattern as `@erp/events`, ADR-004's amendment) so
+`apps/worker` can request a notification from its own event handlers, not
+just `apps/api`. Implements MASTER_SPEC §48. HTTP presentation
+(`NotificationResponseDto`, the error mapper) stays in `apps/api` — only
+domain/application/infrastructure moved. Read endpoints
+(`GET /api/v1/notifications`, `PUT /api/v1/notifications/:id/read`) still
 live in `NotificationsController`, physically inside `tenants/presentation/`
 for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
 
@@ -464,11 +469,11 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
 
 | Threat | Control |
 | --- | --- |
-| Any authenticated user spams or phishes another user via a public "create notification" endpoint | There is no `POST /api/v1/notifications`. `RequestNotificationUseCase` is only reachable as a direct application call from another module's own code (today: `TenantsController.provision()`) — never as a public request handler, so no caller-supplied recipient/content ever reaches it without that module's own logic deciding what to send and to whom. |
+| Any authenticated user spams or phishes another user via a public "create notification" endpoint | There is no `POST /api/v1/notifications`. `RequestNotificationUseCase` is only reachable as a direct application call from trusted code — either another module's own controller (`MembershipsController.invite()`, invitation notifications) or `apps/worker`'s `TenantProvisionedNotificationHandler` (`tenancy.tenant.provisioned.v1` consumer) — never as a public request handler, so no caller-supplied recipient/content ever reaches it without that caller's own logic deciding what to send and to whom. |
 | A user reads another user's notifications by tenant membership alone | `ListNotificationsUseCase`/`MarkNotificationReadUseCase` always filter by `recipientUserId = ctx.actor.userId` in addition to `tenantId` — there is no way to pass an arbitrary recipient from the HTTP layer (`NotificationsController` never accepts one), so a caller can only ever see their own notifications, not a co-worker's. Verified against real Postgres in this session's manual smoke test: a second real tenant's user only ever saw their own provisioning notification. |
 | A user marks another user's (or another tenant's) notification as read, or discovers whether it exists, via `PUT /:id/read` | `MarkNotificationReadUseCase` loads the notification first and requires both `tenantId` and `recipientUserId` to match before touching anything — a mismatch on either and a genuinely missing id both surface as the identical `404 NOTIFICATION_NOT_FOUND` (same IDOR-resistant shape as `GetFileDownloadUrlUseCase`). Verified against real Postgres: a second real tenant received `404` attempting to mark the first tenant's real notification read. |
-| A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications | Not built this way on purpose: `TenantsController.provision()` calls `RequestNotificationUseCase` as a direct, synchronous application call, not as a `DomainEventBus` subscriber to `tenancy.tenant.provisioned.v1`. The inbox mechanism ADR-004 point 5 required now exists (2026-08-29, ADR-008) — connecting Notifications to the bus is unblocked, but not yet done, since it also requires extracting the module to a shared package `apps/worker` can import (see ADR-008's "Deferred" section). |
-| Sensitive data (passwords, tokens, full entities) ends up in `data` and later gets logged or exposed | `RequestNotificationUseCase` does not enforce a payload schema for `data` — this is an application-layer discipline each caller must follow, not something the infrastructure verifies structurally. The one producer built so far (tenant provisioning) only includes the tenant's id and slug — no credentials. |
+| ~~A handler with a non-idempotent side effect (creating a `Notification` row) is registered on `DomainEventBus`, and a retried outbox dispatch creates duplicate notifications~~ | **Closed 2026-08-29.** `apps/worker`'s `TenantProvisionedNotificationHandler` subscribes to `tenancy.tenant.provisioned.v1` and wraps the `RequestNotificationUseCase` call in `consumeIdempotently` (ADR-008's inbox, `consumerName: "notifications.tenant-provisioned"`) — a redelivered outbox row is a no-op the second time, verified against real Postgres (new integration test) and a real manual smoke test (provision a real tenant, confirm exactly one `Notification` row created by the worker process, not `apps/api`). |
+| Sensitive data (passwords, tokens, full entities) ends up in `data` and later gets logged or exposed | `RequestNotificationUseCase` does not enforce a payload schema for `data` — this is an application-layer discipline each caller must follow, not something the infrastructure verifies structurally. The producers built so far (tenant provisioning, membership invitation) only include ids/slugs — no credentials. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
@@ -479,19 +484,19 @@ for the same module-cycle reason as `RolesController`/`AuditEntriesController`.
   requesting multiple channels still gets the ones that work. Building a
   real Email adapter needs an SMTP/provider integration that does not exist
   in this codebase yet.
-- **Single producer today.** `tenancy.tenant_provisioned` is the only
-  notification type actually requested — deliberately not inventing more
-  producers speculatively (MASTER_SPEC §59/§93) before a real business
-  module needs to notify a user of something. The mechanism (request,
-  per-channel delivery, list, mark-read) is built and tested end-to-end
-  regardless.
-- **Not wired to the Event Bus.** Despite `tenancy.tenant.provisioned.v1`
-  already existing as a real integration event, the tenant-provisioned
-  notification is requested via a direct call from `TenantsController`, not
-  a `DomainEventBus` subscriber. The inbox that ADR-004 point 5 required
-  before this could happen now exists (ADR-008) — the remaining blocker is
-  extracting Notifications into a package `apps/worker` can import, a
-  separate backlog item (`docs/WORK_QUEUE.md`).
+- **Two producers today.** `tenancy.tenant_provisioned` (event-driven, from
+  `apps/worker`) and the membership-invitation notification (still a direct
+  call from `MembershipsController.invite()` — a real-time, user-triggered
+  action with no corresponding outbox event, so a direct call remains the
+  right shape for it, not a gap). Deliberately not inventing more producers
+  speculatively (MASTER_SPEC §59/§93) before a real business module needs
+  to notify a user of something.
+- ~~**Not wired to the Event Bus.**~~ **Closed 2026-08-29** for the
+  tenant-provisioned notification: `TenantsController.provision()` no
+  longer knows Notifications exists at all — the owner notification is now
+  a pure side effect of `tenancy.tenant.provisioned.v1` being published and
+  consumed by `apps/worker`. See the closed threat row above for the
+  idempotency mechanism.
 - **No delivery retry.** A `FAILED` delivery (today: any non-`IN_APP`
   channel) stays `FAILED` permanently — there is no retry/backoff like the
   outbox's, since V1 dispatch is synchronous and there is nothing async to

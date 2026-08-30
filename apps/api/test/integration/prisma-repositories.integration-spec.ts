@@ -59,11 +59,13 @@ import { GetFileDownloadUrlUseCase } from "../../src/core/files/application/use-
 import { DeleteFileUseCase } from "../../src/core/files/application/use-cases/delete-file.use-case";
 import { FakeFileStorageAdapter } from "../../src/core/files/test-support/fake-file-storage.adapter";
 import { FileObject } from "../../src/core/files/domain/file-object.entity";
-import { PrismaNotificationRepository } from "../../src/core/notifications/infrastructure/prisma-notification.repository";
-import { PrismaNotificationDeliveryRepository } from "../../src/core/notifications/infrastructure/prisma-notification-delivery.repository";
-import { RequestNotificationUseCase } from "../../src/core/notifications/application/use-cases/request-notification.use-case";
-import { ListNotificationsUseCase } from "../../src/core/notifications/application/use-cases/list-notifications.use-case";
-import { MarkNotificationReadUseCase } from "../../src/core/notifications/application/use-cases/mark-notification-read.use-case";
+import {
+  PrismaNotificationRepository,
+  PrismaNotificationDeliveryRepository,
+  RequestNotificationUseCase,
+  ListNotificationsUseCase,
+  MarkNotificationReadUseCase,
+} from "@erp/notifications";
 import { SetUserStatusUseCase } from "../../src/core/users/application/set-user-status.use-case";
 import { ListUsersUseCase } from "../../src/core/users/application/list-users.use-case";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
@@ -1172,5 +1174,104 @@ describe("Prisma repositories against PostgreSQL", () => {
     );
 
     expect(consumerEffect).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests exactly one real tenant-owner notification from a real tenancy.tenant.provisioned.v1 delivery, even redelivered", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const provisioning = new PrismaTenantProvisioningRepository(prisma);
+    const provisionTenant = new ProvisionTenantUseCase(tenants, provisioning, users);
+    const outbox = new PrismaOutboxMessageRepository(prisma as unknown as PrismaClient);
+    const inbox = new PrismaInboxMessageRepository(prisma as unknown as PrismaClient);
+    const bus = new DomainEventBus();
+    const dispatch = new DispatchOutboxBatchUseCase(outbox, bus);
+    const notifications = new PrismaNotificationRepository(prisma);
+    const deliveries = new PrismaNotificationDeliveryRepository(prisma);
+    const requestNotification = new RequestNotificationUseCase(notifications, deliveries);
+    const listNotifications = new ListNotificationsUseCase(notifications);
+    const now = new Date("2026-08-29T22:00:00.000Z");
+
+    // Mirrors apps/worker's TenantProvisionedNotificationHandler line for
+    // line (that class itself is unit-tested in isolation with a mocked
+    // RequestNotificationUseCase) — this proves the real Prisma repos, the
+    // real use case and the real inbox mechanism actually integrate against
+    // Postgres, which is what an integration test is for.
+    const owner = createUser(now, "worker-notification-owner@example.com");
+    await users.save(owner);
+
+    bus.subscribe("tenancy.tenant.provisioned.v1", async (event) => {
+      const payload = event.payload as { tenantId: string; slug: string; name: string; ownerUserId: string };
+      await consumeIdempotently(
+        inbox,
+        { consumerName: "notifications.tenant-provisioned", messageId: event.eventId, tenantId: event.tenantId, now: new Date() },
+        async () => {
+          await requestNotification.execute({
+            tenantId: payload.tenantId,
+            recipientUserId: payload.ownerUserId,
+            type: "tenancy.tenant_provisioned",
+            title: "Tu empresa fue creada",
+            body: `${payload.name} está lista para usarse.`,
+            data: { tenantId: payload.tenantId, tenantSlug: payload.slug },
+            channels: ["IN_APP"],
+          });
+        },
+      );
+    });
+
+    const provisioned = await provisionTenant.execute({
+      slug: "worker-notification-tenant",
+      name: "Worker Notification Tenant",
+      ownerUserId: owner.id,
+      organization: { code: "HQ", name: "HQ Org" },
+      correlationId: "worker-notification-correlation-1",
+    });
+
+    await dispatch.execute({ workerId: "worker-notification-integration" });
+
+    const afterFirstDelivery = await listNotifications.execute({
+      tenantId: provisioned.tenant.id,
+      recipientUserId: owner.id,
+    });
+    expect(afterFirstDelivery).toHaveLength(1);
+    expect(afterFirstDelivery[0]?.notification.type).toBe("tenancy.tenant_provisioned");
+    expect(afterFirstDelivery[0]?.delivery?.status).toBe("SENT");
+
+    // Redeliver the exact same event manually — no second notification.
+    const publishedRow = await prisma.outboxMessage.findFirstOrThrow({
+      where: { eventType: "tenancy.tenant.provisioned.v1", correlationId: "worker-notification-correlation-1" },
+    });
+    await bus.publish(
+      OutboxMessage.create({
+        id: publishedRow.id,
+        tenantId: publishedRow.tenantId,
+        companyId: publishedRow.companyId,
+        eventType: publishedRow.eventType,
+        eventVersion: publishedRow.eventVersion,
+        aggregateType: publishedRow.aggregateType,
+        aggregateId: publishedRow.aggregateId,
+        aggregateVersion: publishedRow.aggregateVersion,
+        payload: publishedRow.payload,
+        occurredAt: publishedRow.occurredAt,
+        availableAt: publishedRow.availableAt,
+        status: publishedRow.status,
+        attemptCount: publishedRow.attemptCount,
+        lastErrorCode: publishedRow.lastErrorCode,
+        lockedAt: publishedRow.lockedAt,
+        lockedBy: publishedRow.lockedBy,
+        publishedAt: publishedRow.publishedAt,
+        correlationId: publishedRow.correlationId,
+        causationId: publishedRow.causationId,
+        actorType: publishedRow.actorType as "USER" | "SYSTEM" | null,
+        actorId: publishedRow.actorId,
+        createdAt: publishedRow.createdAt,
+      }).toEnvelope(),
+    );
+
+    const afterRedelivery = await listNotifications.execute({
+      tenantId: provisioned.tenant.id,
+      recipientUserId: owner.id,
+    });
+    expect(afterRedelivery).toHaveLength(1);
   });
 });

@@ -443,9 +443,9 @@ setting changes).
 
 **Status:** Accepted (scope: the inbox mechanism itself — claim/lease
 table, repository, `consumeIdempotently` helper, verified against real
-Postgres including real concurrent claimants and lease recovery; not yet
-wired to a real cross-process business handler, e.g. connecting
-Notifications to `tenancy.tenant.provisioned.v1` — see "Deferred" below)
+Postgres including real concurrent claimants and lease recovery. The
+"Deferred" item below — wiring Notifications to a real cross-process
+handler — was completed 2026-08-29; see "Amendment" below.)
 
 **Context**
 
@@ -555,3 +555,34 @@ independently reviewable.
   the outbox's own retry already bounds how many times a failing handler is
   retried (`OutboxMessage.markFailed`'s `maxAttempts`), so an inbox-level
   DLQ would be redundant machinery on top of that existing limit.
+
+**Amendment (2026-08-29) — Notifications connected as the first real consumer**
+
+The "Deferred" item above is done. `RequestNotificationUseCase` and its
+domain/application/infrastructure moved out of `apps/api/src/core/notifications`
+into a new shared package, `@erp/notifications` (same extraction shape as
+`@erp/events`, ADR-004's amendment — a `PRISMA_CLIENT` DI token each
+consuming app satisfies via `useExisting` on its own `PrismaService`; HTTP
+presentation stayed in `apps/api`). `apps/worker` imports it and registers
+`TenantProvisionedNotificationHandler`, an `OnModuleInit` provider that
+subscribes to `tenancy.tenant.provisioned.v1` on `DomainEventBus` and wraps
+the `RequestNotificationUseCase` call in `consumeIdempotently` exactly as
+this ADR specifies (`consumerName: "notifications.tenant-provisioned"`,
+`messageId: event.eventId`). `TenantsController.provision()` no longer
+imports or calls `RequestNotificationUseCase` at all — the owner
+notification is now a genuine side effect of the event being published, not
+a direct call dressed up as one.
+
+Verified against real Postgres: a new integration test provisions a real
+tenant, dispatches the real outbox, confirms exactly one real `Notification`
+row via the real `PrismaNotificationRepository`, then redelivers the same
+event manually and confirms no second row is created. Verified against the
+real Docker dev environment: the persistent `apps/worker` process (not
+`apps/api`) created the notification for a real provisioned tenant, visible
+in its own log (`Outbox dispatch: claimed=1 published=1 failed=0`) with zero
+notification-related code running inside `apps/api` at all.
+
+Membership-invitation notifications (`MembershipsController.invite()`,
+session 15) deliberately remain a direct call, not an event — that action
+has no corresponding outbox event and is a real-time, user-triggered
+request where a direct call is the correct shape, not a gap to close.

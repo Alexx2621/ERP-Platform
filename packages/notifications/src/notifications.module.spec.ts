@@ -1,22 +1,22 @@
 import { Global, Module } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { PrismaService } from "../../shared/prisma/prisma.service";
 import { NotificationsModule } from "./notifications.module";
+import { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
 import { RequestNotificationUseCase } from "./application/use-cases/request-notification.use-case";
 import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.use-case";
 import { MarkNotificationReadUseCase } from "./application/use-cases/mark-notification-read.use-case";
 
 @Global()
 @Module({
-  providers: [{ provide: PrismaService, useValue: {} }],
-  exports: [PrismaService],
+  providers: [{ provide: PRISMA_CLIENT, useValue: {} }],
+  exports: [PRISMA_CLIENT],
 })
-class StubInfraModule {}
+class StubPrismaModule {}
 
 describe("NotificationsModule wiring", () => {
-  it("resolves every notification use case with zero dependency on any other core module", async () => {
+  it("resolves every notification use case given a PRISMA_CLIENT provided elsewhere in the graph", async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [StubInfraModule, NotificationsModule],
+      imports: [StubPrismaModule, NotificationsModule],
     }).compile();
 
     expect(moduleRef.get(RequestNotificationUseCase)).toBeInstanceOf(RequestNotificationUseCase);

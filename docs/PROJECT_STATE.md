@@ -1,11 +1,14 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 18), tras construir la UI de
-administración de plataforma en `apps/erp-web` (Usuarios/Ajustes/Actividad)
-y exponer `isPlatformAdmin` en todo el flujo de autenticación
-(login/refresh/`me`) para que el frontend pueda mostrar el acceso solo a
-quien corresponde — cierra el último hueco que dejó pendiente la sesión 16
-(backend de Platform Administration, ADR-007). Modelo de trabajo vigente:
+Última actualización: 2026-08-29 (sesión 19), tras conectar Notifications al
+Event Bus: `RequestNotificationUseCase` y el resto del módulo se extrajeron
+a un paquete compartido nuevo (`@erp/notifications`, mismo patrón que
+`@erp/events` en la sesión 13), y `apps/worker` registra el primer
+consumidor de negocio real de `DomainEventBus`
+(`TenantProvisionedNotificationHandler`), idempotente vía el inbox de
+ADR-008. `TenantsController.provision()` ya no llama a Notifications
+directamente — cierra el ítem 1 que dejaba pendiente `docs/WORK_QUEUE.md`
+desde que se construyó el inbox (sesión 17). Modelo de trabajo vigente:
 `docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
 que quedan como historial).
 
@@ -433,18 +436,61 @@ ADR-004 nada se ha construido contra él todavía.
   principal al bifurcar los workers — patrón documentado de la propia
   herramienta). Detalle completo en `docs/WORK_QUEUE.md`
   ("Hecho — sesión 18").
-- 231 tests unitarios pasando (api 198, api-client 9, erp-web 16) + 27 en
-  `@erp/events` + 1 en `@erp/worker` + 16 tests de integración con Postgres
-  real + **4 tests E2E de Playwright pasando contra infraestructura real
-  completa** (Chromium real, Postgres+Redis+MinIO efímeros vía
-  Testcontainers, API y worker compilados reales, Vite real), incluyendo
-  pruebas de wiring real de NestJS (`auth.module.spec.ts`,
-  `app.module.spec.ts`, `tenants.module.spec.ts`,
-  `access-control.module.spec.ts`, `configuration.module.spec.ts`,
-  `audit.module.spec.ts`, `files.module.spec.ts`, `notifications.module.spec.ts`,
-  `platform-admin.module.spec.ts` en `apps/api`; `outbox-dispatcher.module.spec.ts`
-  en `@erp/events`; `worker.module.spec.ts` en `@erp/worker`) y pruebas
-  negativas de aislamiento cross-tenant.
+- **Notifications conectado al Event Bus** (`packages/notifications`,
+  `apps/worker/src/notifications`, Claude, sesión 19): cierra el ítem 1 de
+  `docs/WORK_QUEUE.md` — el inbox de la sesión 17 (ADR-008) existía pero
+  nada lo usaba todavía. `Notification`/`NotificationDelivery` y sus casos
+  de uso se extrajeron de `apps/api/src/core/notifications` a un paquete
+  compartido nuevo, `@erp/notifications` (mismo patrón que `@erp/events` en
+  la sesión 13: un token `PRISMA_CLIENT` propio que cada app satisface con
+  `useExisting` sobre su propio `PrismaService`). La presentación HTTP
+  (DTOs, mapeo de errores) se queda en `apps/api`, que ahora solo reexporta
+  el paquete compartido — ningún import existente tuvo que cambiar.
+  `apps/worker` registra `TenantProvisionedNotificationHandler`, el primer
+  consumidor de negocio real de `DomainEventBus`: se suscribe a
+  `tenancy.tenant.provisioned.v1` en `onModuleInit` y envuelve la llamada a
+  `RequestNotificationUseCase` en `consumeIdempotently` (ADR-008), así que
+  una redelivery del outbox no duplica la notificación.
+  `TenantsController.provision()` (`apps/api`) ya no importa ni llama a
+  Notifications en absoluto — la notificación al owner es ahora un efecto
+  secundario genuino de que el evento se publique, no una llamada directa
+  disfrazada. La notificación de invitación de membresía
+  (`MembershipsController`, sesión 15) sigue siendo una llamada directa a
+  propósito, documentado como decisión correcta y no como hueco pendiente.
+  **Bug real de test encontrado al correr la suite completa** (no en el
+  test aislado): 4 archivos de `apps/api` con su propio `StubInfraModule`
+  minimalista (`configuration.module.spec.ts`, `files.module.spec.ts`,
+  `tenants.module.spec.ts`, `platform-admin.module.spec.ts`) solo
+  proveían `PrismaService`, sin la derivación `PRISMA_CLIENT` que
+  `NotificationsModule` (importado transitivamente vía `TenantsModule`)
+  ahora requiere — corregido replicando en cada stub el mismo
+  `useExisting` que ya usa el `PrismaModule` real. **Verificado contra
+  Postgres real de punta a punta, no solo con mocks**: un nuevo test de
+  integración provisiona un tenant real, despacha el outbox real, confirma
+  exactamente una fila `Notification` real vía los repositorios Prisma
+  reales, y confirma que una redelivery manual del mismo evento no crea una
+  segunda. **Smoke test manual contra la infraestructura Docker real**
+  (procesos `apps/api`/`apps/worker` persistentes reconstruidos con el
+  build nuevo): registro y provisioning reales → confirmado en el log real
+  y separado de `apps/worker` el despacho (`claimed=1 published=1
+  failed=0`) → `GET /api/v1/notifications` real confirma la notificación
+  con el contenido correcto, creada enteramente por el proceso worker sin
+  que `apps/api` ejecutara código de notificaciones. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 19").
+- 256 tests unitarios pasando (api 169, api-client 9, erp-web 16) + 27 en
+  `@erp/events` + 29 en `@erp/notifications` + 6 en `@erp/worker` + 17
+  tests de integración con Postgres real + **4 tests E2E de Playwright
+  pasando contra infraestructura real completa** (Chromium real,
+  Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
+  compilados reales, Vite real), incluyendo pruebas de wiring real de
+  NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
+  `tenants.module.spec.ts`, `access-control.module.spec.ts`,
+  `configuration.module.spec.ts`, `audit.module.spec.ts`,
+  `files.module.spec.ts`, `platform-admin.module.spec.ts` en `apps/api`;
+  `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
+  `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
+  también verifica `TenantProvisionedNotificationHandler`) en
+  `@erp/worker`) y pruebas negativas de aislamiento cross-tenant.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -501,17 +547,14 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (conectar
-Notifications al Event Bus, lo que primero requiere extraer el módulo a un
-paquete compartido).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (purga real
+de storage para archivos borrados).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: extraer Notifications a un paquete
-compartido y conectarlo al Event Bus vía `tenancy.tenant.provisioned.v1`
-(el inbox que esto requería ya existe — ADR-008) → purga real de storage
-para archivos borrados (`DeleteFileUseCase` hoy solo hace soft-delete de
+Resumen bajo ownership único de Claude: purga real de storage para
+archivos borrados (`DeleteFileUseCase` hoy solo hace soft-delete de
 metadata) → adapter real de Email para Notifications (proveedor
 SMTP/transaccional no decidido) → `@erp/api-client` generado desde el spec
 OpenAPI (`/api/docs-json` ya existe; herramienta de generación todavía no
@@ -739,3 +782,21 @@ genera `user.registered` — puede eliminarse sin violar la garantía de
 MASTER_SPEC §10 de que los logs de auditoría no deben poder modificarse
 fácilmente; es la razón por la que esta base de desarrollo acumula cuentas
 de pruebas de sesiones anteriores en vez de quedar vacía entre sesiones.
+
+**Sesión 19 (2026-08-29, Notifications conectado al Event Bus)**: sin
+migración nueva — reutiliza `notifications`/`notification_deliveries`
+(sesión 12), `outbox_messages` (sesión 10) e `inbox_messages` (sesión 17)
+ya existentes; el cambio es enteramente de aplicación (extracción a
+`@erp/notifications` + el nuevo consumidor en `apps/worker`). Flujo real
+repetido con los procesos persistentes reconstruidos: registro y
+provisioning reales de un tenant → confirmado en el log real del proceso
+`apps/worker` (separado de `apps/api`, verificado que sigue siendo un
+proceso distinto tras el refactor) el despacho del outbox real
+(`claimed=1 published=1 failed=0`) → `GET /api/v1/notifications` real
+confirma exactamente una notificación `tenancy.tenant_provisioned` con el
+contenido correcto — creada enteramente por `apps/worker` sin que
+`apps/api` ejecutara ningún código de notificaciones, la prueba real de
+que la extracción y el nuevo consumidor funcionan de punta a punta contra
+infraestructura real, no solo en tests. Datos de prueba (usuario/tenant)
+no eliminados por el mismo motivo `onDelete: Restrict` ya documentado
+arriba.
