@@ -40,7 +40,7 @@ export class EffectiveSettingResponseDto {
 export class SettingValueResponseDto {
   @ApiProperty() key!: string;
   @ApiProperty({ enum: ["TENANT", "COMPANY"] }) scopeType!: string;
-  @ApiProperty({ nullable: true }) companyId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) companyId!: string | null;
   @ApiProperty({ type: Object }) value!: unknown;
   @ApiProperty({ format: "date-time" }) updatedAt!: string;
 

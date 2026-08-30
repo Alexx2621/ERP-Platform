@@ -37,7 +37,7 @@ export class RoleAssignmentResponseDto {
   @ApiProperty() membershipId!: string;
   @ApiProperty() roleId!: string;
   @ApiProperty({ enum: ["TENANT", "COMPANY"] }) scopeType!: string;
-  @ApiProperty({ nullable: true }) scopeId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) scopeId!: string | null;
 
   static fromDomain(assignment: RoleAssignment): RoleAssignmentResponseDto {
     const dto = new RoleAssignmentResponseDto();

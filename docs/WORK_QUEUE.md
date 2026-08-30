@@ -6,11 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 20,
-tres bloques cerrados de una vez: purga real de storage para archivos
-borrados, adapter real de Email vía SMTP para Notifications, y
-expirar/revocar/reinvitar invitaciones pendientes de membership — cierra
-los ítems 1, 2 y 4 de esta cola). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-29 (sesión 21,
+`@erp/api-client` generado desde el spec OpenAPI real — cierra el último
+ítem original de esta cola). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -23,21 +21,90 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo, en orden de dependencia técnica
 
-1. **`@erp/api-client` generado desde el spec OpenAPI** — hoy sigue
-   mantenido a mano; ahora que `/api/docs-json` existe (sesión 14), podría
-   generarse (p. ej. `openapi-typescript`) en vez de mantenerse manual. No
-   bloqueado, deliberadamente no hecho junto con el spec para no arriesgar
-   el SDK ya probado en un mismo cambio — refactor de proceso separado. El
-   único ítem restante de esta lista: los otros tres se cerraron en la
-   sesión 20.
-2. **App Registry mínimo** — el último paso pendiente de
+1. **App Registry mínimo** — el último paso pendiente de
    `docs/ARCHITECTURE.md` §17 antes de poder cerrar formalmente Foundation
    (`AppDefinition`/`TenantApp`/`AppConfiguration`, diseño completo en
    `docs/PLUGINS.md`). Deliberadamente no adelantado todavía: no existe
    ningún módulo de negocio real más allá del Core para registrar, y
    construir el mecanismo sin nada que registrar en él sería exactamente la
    sobrearquitectura que MASTER_SPEC §59/§93 advierte evitar. Revisar
-   cuando la Fase 2 (Master Data) esté por comenzar.
+   cuando la Fase 2 (Master Data) esté por comenzar. Único ítem restante de
+   esta lista — todo lo demás en "Próximo" desde que esta cola existe ya
+   está cerrado (ver "Hecho — sesión 20" y "Hecho — sesión 21").
+
+### Hecho — sesión 21 (`@erp/api-client` generado desde OpenAPI)
+
+- **`openapi-typescript`** (`packages/api-client`, nueva devDependency,
+  `^7.9.1`, resuelta `7.13.0`): `src/generated/openapi-types.ts` se genera
+  contra el spec real servido por un `apps/api` corriendo en
+  `http://127.0.0.1:3000/api/docs-json` (`pnpm --filter @erp/api-client run
+  generate-types`), no desde un archivo de spec offline — `NestFactory.create()`
+  dispara `onModuleInit()` real (conexiones a Postgres/Redis), así que un
+  script de generación "sin servidor" no sería más simple que consultar el
+  dev server ya corriendo. El archivo generado **se versiona en Git**
+  (documentado en `packages/api-client/README.md`, sección nueva): a
+  diferencia del cliente de Prisma, regenerarlo exige un servidor HTTP vivo,
+  no solo un archivo de schema, así que no hay forma de producirlo en un
+  `pnpm install`/CI limpio sin levantar toda la infraestructura.
+- **Dos huecos reales de documentación OpenAPI encontrados y cerrados**,
+  descubiertos al inspeccionar el spec generado: `TenantsController.listMine()`
+  (`GET /api/v1/tenants`) devolvía `MyTenantSummary[]` sin ningún DTO
+  decorado, y `TenantsController.current()` (`GET /api/v1/tenants/current`)
+  devolvía un objeto plano inline (`{ tenantId, membershipId, companyId? }`)
+  — ambos, formas de respuesta reales completamente ausentes de
+  `components.schemas`. Corregido con `TenantSummaryResponseDto`/
+  `TenantExecutionContextResponseDto` nuevos
+  (`apps/api/src/core/tenants/presentation/dto/tenant-summary-response.dto.ts`,
+  patrón `fromDomain` ya usado en el resto del módulo), wireados vía
+  `@ApiResponse({ type: ... })` en ambos endpoints. Sin cambio de
+  comportamiento HTTP — mismos campos, mismo JSON serializado.
+- **Bug real de fidelidad de decoradores Swagger encontrado y corregido en
+  6 archivos de DTO**: `@ApiProperty({ nullable: true })` sin `type:`
+  explícito en un campo `string | null` produce un schema vacío en el spec
+  generado (`design:type` de TypeScript para una unión resuelve a `Object`,
+  no a un constructor concreto — Nest/Swagger no puede inferir el tipo),
+  que `openapi-typescript` traduce como `Record<string, never>` en vez de
+  `string`. Mismo problema para campos `format: "date-time"` sin `type:`
+  explícito. Corregido agregando `type: String` a los 14 campos afectados
+  en `audit-entry-response.dto.ts` (6 campos), `notification-response.dto.ts`
+  (3), `membership-response.dto.ts` (1), `file-response.dto.ts` (1),
+  `setting-response.dto.ts` (1) y `role-response.dto.ts` (1). De paso, un
+  bug no relacionado encontrado en el mismo archivo:
+  `FileObjectResponseDto.status` seguía con `enum: ["ACTIVE", "DELETED"]`,
+  sin el valor `"PURGED"` agregado en la sesión 20 — corregido. Verificado
+  con `grep -c "Record<string, never>"` antes/después: quedan únicamente
+  las 12 ocurrencias genuinamente irreductibles (campos de valor JSON
+  dinámico: `value`, `data`, `previousValues`, `newValues`, `defaultValue`
+  — OpenAPI/JSON-Schema no tiene forma honesta de expresar "cualquier valor
+  JSON" salvo un schema de objeto vacío) más 2 tipos boilerplate que
+  `openapi-typescript` siempre emite (`webhooks`, `$defs`).
+- **`packages/api-client/src/contracts.ts` reescrito por completo**: cada
+  tipo exportado ahora se deriva de `components["schemas"][...]` del
+  archivo generado, en vez de mantenerse duplicado a mano. Las únicas dos
+  excepciones, documentadas en la cabecera del propio archivo: los campos
+  de valor JSON dinámico se sobrescriben de vuelta a `unknown` (más
+  correcto que el `Record<string, never>` que emite OpenAPI), y
+  `ApiErrorEnvelope` describe el filtro de excepciones HTTP global, no un
+  DTO de Nest/Swagger, así que no tiene schema del que derivar. **Cero
+  cambios de nombre exportado** — cada interfaz/tipo (`AuthenticatedUser`,
+  `SessionResponse`, `TenantSummary`, `RoleResponse`,
+  `SettingDefinitionResponse`, `MembershipResponse`, `AuditEntryResponse`,
+  etc., 35 identificadores en total) se preservó exactamente, verificado
+  contra un grep de todos los imports de `@erp/api-client` en
+  `apps/erp-web` antes del refactor.
+- Tests: sin tests nuevos — este bloque es generación de tipos y un
+  refactor de `contracts.ts` que preserva la forma pública exacta, no
+  lógica nueva que probar; los 9 tests existentes de `@erp/api-client` y
+  los 16 de `apps/erp-web` (que consume estos tipos directamente en 4
+  features) siguen pasando sin ninguna modificación de aserción.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps del monorepo, `pnpm test` (198 api + 27 events + 33
+  notifications + 6 worker + 9 api-client + 16 erp-web = 289, sin cambio),
+  `pnpm --filter @erp/api test:integration` (20/20 contra Postgres real vía
+  Testcontainers), `pnpm --filter @erp/e2e test:e2e` (5/5 Playwright con
+  Chromium real) — todo verde. Servidor real de `apps/api` reiniciado con
+  el build nuevo antes de cada regeneración del spec, para confirmar que
+  `/api/docs-json` refleja los DTOs corregidos, no una copia en caché.
 
 ### Hecho — sesión 20 (purga de archivos + adapter de Email + expirar/revocar invitaciones)
 
@@ -1428,7 +1495,8 @@ miembros, sin pedir un `membershipId` escrito a mano. Ver "Hecho — sesión
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará con el ítem 1 de "Próximo" y cualquier superficie de UI,
+- Claude continuará con el ítem 1 de "Próximo" (App Registry mínimo) cuando
+  la Fase 2 (Master Data) esté por comenzar, y cualquier superficie de UI,
   SDK, pruebas o documentación que ese bloque requiera.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
@@ -1478,10 +1546,12 @@ Playwright).
   de TTL...~~ — cerrado en la sesión 20: `MEMBERSHIP_INVITATION_TTL_SECONDS`
   (default 7 días) ya existe, junto con revocar y reinvitar. Ver "Hecho —
   sesión 20".
-- `@erp/api-client` generado desde OpenAPI (ítem 1 de la cola Claude)
-  depende de elegir una herramienta de generación (p. ej.
-  `openapi-typescript`) — no decidido todavía, no bloqueado.
-- Un App Registry mínimo (ítem 2 de la cola Claude) no depende de ninguna
+- ~~`@erp/api-client` generado desde OpenAPI depende de elegir una
+  herramienta de generación...~~ — cerrado en la sesión 21:
+  `openapi-typescript` genera `src/generated/openapi-types.ts` desde
+  `/api/docs-json` real, y `contracts.ts` deriva de ahí. Ver "Hecho —
+  sesión 21".
+- Un App Registry mínimo (único ítem restante de la cola Claude) no depende de ninguna
   decisión de arquitectura pendiente — deliberadamente no adelantado
   porque no existe todavía ningún módulo de negocio real más allá del Core
   para registrar en él (ver el ítem mismo en "Próximo").

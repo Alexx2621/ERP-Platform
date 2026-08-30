@@ -7,8 +7,8 @@ export class NotificationResponseDto {
   @ApiProperty() title!: string;
   @ApiProperty() body!: string;
   @ApiProperty({ type: Object, nullable: true }) data!: unknown;
-  @ApiProperty({ format: "date-time", nullable: true }) sentAt!: string | null;
-  @ApiProperty({ format: "date-time", nullable: true }) readAt!: string | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true }) sentAt!: string | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true }) readAt!: string | null;
   @ApiProperty({ format: "date-time" }) createdAt!: string;
 
   static fromDomain(pair: NotificationWithDelivery): NotificationResponseDto {
@@ -29,7 +29,7 @@ export class NotificationDeliveryResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty({ enum: ["IN_APP", "EMAIL", "SMS", "WHATSAPP", "PUSH"] }) channel!: string;
   @ApiProperty({ enum: ["SENT", "FAILED"] }) status!: string;
-  @ApiProperty({ format: "date-time", nullable: true }) readAt!: string | null;
+  @ApiProperty({ type: String, format: "date-time", nullable: true }) readAt!: string | null;
 
   static fromDomain(delivery: NotificationDelivery): NotificationDeliveryResponseDto {
     const dto = new NotificationDeliveryResponseDto();

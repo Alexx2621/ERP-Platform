@@ -29,10 +29,7 @@ export const overallDevelopmentProgress = Math.round(
     developmentRoadmap.length,
 );
 
-const nextMilestones = [
-  "SDK generado desde el spec OpenAPI",
-  "App Registry mínimo (antes de Master Data)",
-] as const;
+const nextMilestones = ["App Registry mínimo (antes de Master Data)"] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {
   return (

@@ -15,9 +15,11 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate-types": "openapi-typescript http://127.0.0.1:3000/api/docs-json -o src/generated/openapi-types.ts"
   },
   "devDependencies": {
+    "openapi-typescript": "^7.9.1",
     "typescript": "5.9.3",
     "vitest": "^4.1.0"
   }

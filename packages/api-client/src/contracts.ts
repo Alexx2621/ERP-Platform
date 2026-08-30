@@ -1,230 +1,93 @@
-export interface AuthenticatedUser {
-  id: string;
-  email: string;
-  displayName: string;
-  isPlatformAdmin: boolean;
-}
+import type { components } from "./generated/openapi-types.js";
 
-export interface SessionResponse {
-  accessToken: string;
-  refreshToken: string;
-  accessExpiresAt: string;
-  refreshExpiresAt: string;
-  user: AuthenticatedUser;
-}
+/**
+ * Every exported type below is derived from `generated/openapi-types.ts`
+ * (regenerate via `pnpm --filter @erp/api-client generate-types` against a
+ * running `apps/api`), not hand-duplicated. Two categories are the deliberate
+ * exceptions:
+ *
+ * - Dynamic/polymorphic JSON value fields (`value`, `data`, `previousValues`,
+ *   `newValues`, `defaultValue`) render as `Record<string, never>` in the
+ *   generated types — OpenAPI/JSON-Schema has no way to honestly express
+ *   "any JSON value" — so this file overrides them back to `unknown`, which
+ *   is the more correct type for callers.
+ * - `ApiErrorEnvelope` describes the global HTTP exception-filter shape, not
+ *   a Nest/Swagger DTO, so it has no corresponding schema to derive from.
+ */
 
-export interface LoginInput {
-  email: string;
-  password: string;
-}
+export type AuthenticatedUser = components["schemas"]["SessionUserDto"];
+export type SessionResponse = components["schemas"]["SessionResponseDto"];
+export type LoginInput = components["schemas"]["LoginDto"];
+export type RegisterInput = components["schemas"]["RegisterDto"];
 
-export interface RegisterInput extends LoginInput {
-  displayName: string;
-}
+export type TenantSummary = components["schemas"]["TenantSummaryResponseDto"];
+export type TenantExecutionContext = components["schemas"]["TenantExecutionContextResponseDto"];
 
-export interface TenantSummary {
-  tenantId: string;
-  slug: string;
-  name: string;
-  membershipId: string;
-}
+export type ProvisionTenantInput = components["schemas"]["ProvisionTenantDto"];
+export type ProvisionTenantResponse = components["schemas"]["ProvisionedTenantResponseDto"];
 
-export interface TenantExecutionContext {
-  tenantId: string;
-  membershipId: string;
-  companyId?: string;
-}
+export type RoleResponse = components["schemas"]["RoleResponseDto"];
+export type PermissionResponse = components["schemas"]["PermissionResponseDto"];
+export type CreateRoleInput = components["schemas"]["CreateRoleDto"];
 
-export interface ProvisionTenantInput {
-  slug: string;
-  name: string;
-  organization: {
-    code: string;
-    name: string;
-  };
-  company?: {
-    code: string;
-    name: string;
-  };
-}
+export type RoleAssignmentScope = components["schemas"]["AssignRoleDto"]["scopeType"];
+export type AssignRoleInput = components["schemas"]["AssignRoleDto"];
+export type RoleAssignmentResponse = components["schemas"]["RoleAssignmentResponseDto"];
 
-export interface ProvisionTenantResponse {
-  tenant: {
-    id: string;
-    slug: string;
-    name: string;
-    status: string;
-  };
-  membership: {
-    id: string;
-    status: string;
-  };
-  organization: {
-    id: string;
-    code: string;
-    name: string;
-  };
-  company?: {
-    id: string;
-    code: string;
-    name: string;
-  };
-}
-
-export interface RoleResponse {
-  id: string;
-  name: string;
-  isSystem: boolean;
-  permissionKeys: string[];
-}
-
-export interface PermissionResponse {
-  key: string;
-  description: string;
-}
-
-export interface CreateRoleInput {
-  name: string;
-  permissionKeys: string[];
-}
-
-export type RoleAssignmentScope = "TENANT" | "COMPANY";
-
-export interface AssignRoleInput {
-  membershipId: string;
-  scopeType: RoleAssignmentScope;
-  scopeId?: string;
-}
-
-export interface RoleAssignmentResponse {
-  id: string;
-  membershipId: string;
-  roleId: string;
-  scopeType: RoleAssignmentScope;
-  scopeId: string | null;
-}
-
-export type SettingDataType = "STRING" | "NUMBER" | "BOOLEAN" | "JSON";
-export type SettingScope = "PLATFORM" | "TENANT" | "COMPANY";
+export type SettingDataType = components["schemas"]["SettingDefinitionResponseDto"]["dataType"];
+export type SettingScope = components["schemas"]["SettingDefinitionResponseDto"]["allowedScopes"][number];
 export type WritableSettingScope = Exclude<SettingScope, "PLATFORM">;
-export type EffectiveSettingSource = SettingScope | "DEFAULT";
+export type EffectiveSettingSource = components["schemas"]["EffectiveSettingResponseDto"]["source"];
 
-export interface SettingDefinitionResponse {
-  key: string;
-  dataType: SettingDataType;
-  description: string;
+export type SettingDefinitionResponse = Omit<components["schemas"]["SettingDefinitionResponseDto"], "defaultValue"> & {
   defaultValue: unknown;
-  allowedScopes: SettingScope[];
-}
+};
 
-export interface EffectiveSettingResponse {
-  key: string;
+export type EffectiveSettingResponse = Omit<components["schemas"]["EffectiveSettingResponseDto"], "value"> & {
   value: unknown;
-  source: EffectiveSettingSource;
-}
+};
 
-export interface SetSettingValueInput {
-  scopeType: WritableSettingScope;
-  companyId?: string;
+export type SetSettingValueInput = Omit<components["schemas"]["SetSettingValueDto"], "value"> & {
   value: unknown;
-}
+};
 
-export interface SettingValueResponse {
-  key: string;
-  scopeType: SettingScope;
-  companyId: string | null;
+export type SettingValueResponse = Omit<components["schemas"]["SettingValueResponseDto"], "value"> & {
   value: unknown;
-  updatedAt: string;
-}
+};
 
-export interface UserPreferenceResponse {
-  key: string;
+export type UserPreferenceResponse = Omit<components["schemas"]["UserPreferenceResponseDto"], "value"> & {
   value: unknown;
-  updatedAt: string;
-}
+};
 
-export type MembershipStatus = "INVITED" | "ACTIVE" | "SUSPENDED" | "REVOKED";
+export type MembershipStatus = components["schemas"]["MembershipResponseDto"]["status"];
+export type MembershipResponse = components["schemas"]["MembershipResponseDto"];
+export type MembershipWithUserResponse = components["schemas"]["MembershipWithUserResponseDto"];
+export type PendingInvitationResponse = components["schemas"]["PendingInvitationResponseDto"];
+export type InviteMembershipInput = components["schemas"]["InviteMembershipDto"];
+export type AcceptMembershipInvitationInput = components["schemas"]["AcceptMembershipInvitationDto"];
 
-export interface MembershipResponse {
-  id: string;
-  tenantId: string;
-  userId: string;
-  status: MembershipStatus;
-  createdAt: string;
-  updatedAt: string;
-  /** Only set while status is INVITED — when this invitation stops being acceptable. */
-  expiresAt: string | null;
-}
+export type UserStatus = components["schemas"]["PlatformUserResponseDto"]["status"];
+export type PlatformUserResponse = components["schemas"]["PlatformUserResponseDto"];
+export type SetPlatformUserStatusInput = components["schemas"]["SetPlatformUserStatusDto"];
 
-export interface MembershipWithUserResponse extends MembershipResponse {
-  email: string;
-  displayName: string;
-}
+export type PlatformSettingSource = components["schemas"]["PlatformSettingResponseDto"]["source"];
 
-export interface PendingInvitationResponse {
-  membershipId: string;
-  tenantSlug: string;
-  tenantName: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface InviteMembershipInput {
-  email: string;
-}
-
-export interface AcceptMembershipInvitationInput {
-  tenantSlug: string;
-}
-
-export type UserStatus = "ACTIVE" | "DISABLED";
-
-export interface PlatformUserResponse {
-  id: string;
-  email: string;
-  displayName: string;
-  status: UserStatus;
-  isPlatformAdmin: boolean;
-  createdAt: string;
-}
-
-export interface SetPlatformUserStatusInput {
-  status: UserStatus;
-}
-
-export type PlatformSettingSource = "PLATFORM" | "DEFAULT";
-
-export interface PlatformSettingResponse {
-  key: string;
+export type PlatformSettingResponse = Omit<components["schemas"]["PlatformSettingResponseDto"], "value"> & {
   value: unknown;
-  source: PlatformSettingSource;
-}
+};
 
-export interface SetPlatformSettingValueInput {
+export type SetPlatformSettingValueInput = Omit<components["schemas"]["SetPlatformSettingValueDto"], "value"> & {
   value: unknown;
-}
+};
 
-export interface PlatformSettingValueResponse {
-  key: string;
+export type PlatformSettingValueResponse = Omit<components["schemas"]["PlatformSettingValueResponseDto"], "value"> & {
   value: unknown;
-  updatedAt: string;
-}
+};
 
-export interface AuditEntryResponse {
-  id: string;
-  userId: string | null;
-  tenantId: string | null;
-  companyId: string | null;
-  action: string;
-  resource: string;
-  resourceId: string | null;
+export type AuditEntryResponse = Omit<components["schemas"]["AuditEntryResponseDto"], "previousValues" | "newValues"> & {
   previousValues: unknown;
   newValues: unknown;
-  ipAddress: string | null;
-  userAgent: string | null;
-  correlationId: string;
-  createdAt: string;
-}
+};
 
 export interface ApiErrorEnvelope {
   statusCode: number;

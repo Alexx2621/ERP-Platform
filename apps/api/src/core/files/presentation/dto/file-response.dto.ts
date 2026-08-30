@@ -4,13 +4,13 @@ import type { FileDownloadUrl } from "../../application/use-cases/get-file-downl
 
 export class FileObjectResponseDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ nullable: true }) companyId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) companyId!: string | null;
   @ApiProperty() ownerUserId!: string;
   @ApiProperty() originalFilename!: string;
   @ApiProperty({ example: "application/pdf" }) contentType!: string;
   @ApiProperty({ description: "bigint serialized as a string — JSON has no native 64-bit integer type.", example: "65536" })
   sizeBytes!: string;
-  @ApiProperty({ enum: ["ACTIVE", "DELETED"] }) status!: string;
+  @ApiProperty({ enum: ["ACTIVE", "DELETED", "PURGED"] }) status!: string;
   @ApiProperty({ format: "date-time" }) createdAt!: string;
 
   static fromDomain(file: FileObject): FileObjectResponseDto {

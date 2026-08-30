@@ -6,9 +6,10 @@ import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
 import { SeedOwnerRoleUseCase } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
 import { ProvisionTenantUseCase } from "../application/provision-tenant.use-case";
-import { ListMyTenantsUseCase, type MyTenantSummary } from "../application/list-my-tenants.use-case";
+import { ListMyTenantsUseCase } from "../application/list-my-tenants.use-case";
 import { ProvisionTenantDto } from "./dto/provision-tenant.dto";
 import { ProvisionedTenantResponseDto } from "./dto/provisioned-tenant-response.dto";
+import { TenantSummaryResponseDto, TenantExecutionContextResponseDto } from "./dto/tenant-summary-response.dto";
 import { TenantContextGuard } from "./tenant-context.guard";
 import { CurrentTenantContext } from "./current-tenant-context.decorator";
 import { handleTenantError } from "./tenant-error.mapper";
@@ -98,8 +99,10 @@ export class TenantsController {
   /** Tenant picker: "which tenants can I access" before any tenant is selected. */
   @Get()
   @ApiOperation({ summary: "Tenants the current user has an active membership in — the tenant picker." })
-  async listMine(@CurrentAuth() auth: AuthContext): Promise<MyTenantSummary[]> {
-    return this.listMyTenants.execute(auth.user.id);
+  @ApiResponse({ status: HttpStatus.OK, type: [TenantSummaryResponseDto] })
+  async listMine(@CurrentAuth() auth: AuthContext): Promise<TenantSummaryResponseDto[]> {
+    const summaries = await this.listMyTenants.execute(auth.user.id);
+    return summaries.map((summary) => TenantSummaryResponseDto.fromDomain(summary));
   }
 
   /**
@@ -111,15 +114,8 @@ export class TenantsController {
   @UseGuards(TenantContextGuard)
   @ApiTenantHeaders()
   @ApiOperation({ summary: "Resolve the tenant context for the caller's X-Tenant-Slug header." })
-  current(@CurrentTenantContext() tenantContext: TenantExecutionContext): {
-    tenantId: string;
-    membershipId: string;
-    companyId?: string;
-  } {
-    return {
-      tenantId: tenantContext.tenantId,
-      membershipId: tenantContext.membershipId,
-      companyId: tenantContext.companyId,
-    };
+  @ApiResponse({ status: HttpStatus.OK, type: TenantExecutionContextResponseDto })
+  current(@CurrentTenantContext() tenantContext: TenantExecutionContext): TenantExecutionContextResponseDto {
+    return TenantExecutionContextResponseDto.fromDomain(tenantContext);
   }
 }

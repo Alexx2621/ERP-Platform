@@ -16,7 +16,11 @@ export class MembershipResponseDto {
   @ApiProperty({ enum: ["INVITED", "ACTIVE", "SUSPENDED", "REVOKED"] }) status!: MembershipStatus;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
-  @ApiProperty({ nullable: true, description: "When a pending invitation stops being acceptable. Null for any other status." })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "When a pending invitation stops being acceptable. Null for any other status.",
+  })
   expiresAt!: string | null;
 
   static fromDomain(membership: Membership, invitationTtlSeconds?: number): MembershipResponseDto {

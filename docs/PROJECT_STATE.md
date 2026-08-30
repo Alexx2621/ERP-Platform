@@ -1,13 +1,15 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 20), tras cerrar tres ítems de la
-cola en un solo bloque: purga real de storage para archivos borrados
-(`FilePurgeScheduler`, nuevo estado `PURGED`), un adapter real de Email vía
-SMTP para Notifications (`SmtpEmailDispatcher`, genérico por proveedor), y
-expirar/revocar/reinvitar invitaciones de membership
-(`MEMBERSHIP_INVITATION_TTL_SECONDS`, `RevokeMembershipInvitationUseCase`).
-Los tres verificados con smoke tests reales contra Docker/Postgres/MinIO.
-Modelo de trabajo vigente:
+Última actualización: 2026-08-29 (sesión 21), tras generar
+`@erp/api-client` desde el spec OpenAPI real (`openapi-typescript` contra
+`/api/docs-json`) — cierra el último ítem original de `docs/WORK_QUEUE.md`.
+De paso se encontraron y corrigieron dos huecos reales de documentación
+(`TenantsController.listMine()`/`current()` sin DTO decorado) y un bug de
+fidelidad de decoradores Swagger en 6 archivos (`@ApiProperty({nullable:
+true})` sin `type:` explícito perdía el tipo real en el spec generado).
+`packages/api-client/src/contracts.ts` ahora deriva cada tipo público de
+`components["schemas"][...]` en vez de mantenerse duplicado a mano, sin
+cambiar ningún nombre exportado. Modelo de trabajo vigente:
 `docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
 que quedan como historial).
 
@@ -506,6 +508,35 @@ ADR-004 nada se ha construido contra él todavía.
   `EMAIL`/`FAILED`/`"No email adapter configured."` junto a
   `IN_APP`/`SENT`. Detalle completo en `docs/WORK_QUEUE.md`
   ("Hecho — sesión 20").
+- **`@erp/api-client` generado desde OpenAPI** (`packages/api-client`,
+  Claude, sesión 21): `src/generated/openapi-types.ts` se genera con
+  `openapi-typescript` contra el `/api/docs-json` real de un `apps/api`
+  corriendo (no un spec offline — el proceso ya necesita Postgres/Redis
+  reales para arrancar, así que no hay generación "sin servidor" más
+  simple); el archivo se versiona en Git, documentado en
+  `packages/api-client/README.md` como excepción deliberada al patrón del
+  cliente Prisma (regenerarlo exige un servidor HTTP vivo, no solo un
+  schema). `contracts.ts` se reescribió por completo para derivar cada tipo
+  público de `components["schemas"][...]`, preservando los 35 nombres
+  exportados exactamente (verificado contra un grep de todos los imports de
+  `@erp/api-client` en `apps/erp-web`) — las únicas excepciones son los
+  campos de valor JSON genuinamente dinámico (sobrescritos de `Record<string,
+  never>` a `unknown`) y `ApiErrorEnvelope` (el filtro de excepciones HTTP
+  global, sin DTO propio). **Dos huecos reales de documentación OpenAPI
+  encontrados y cerrados**: `TenantsController.listMine()`/`current()`
+  devolvían tipos sin decorar (`MyTenantSummary[]`/un objeto plano inline)
+  — nuevos `TenantSummaryResponseDto`/`TenantExecutionContextResponseDto`
+  cierran ambos, sin cambiar el JSON serializado. **Bug real de decoradores
+  Swagger encontrado y corregido en 6 archivos**: `@ApiProperty({nullable:
+  true})` sin `type:` explícito en un campo `string | null` pierde el tipo
+  real en el spec generado (la reflexión `design:type` de TypeScript para
+  una unión resuelve a `Object`), agregando `type: String` a 14 campos
+  afectados; de paso, un `enum` de `FileObjectResponseDto.status` que
+  seguía sin el valor `PURGED` de la sesión 20 también se corrigió.
+  Verificado con `grep -c "Record<string, never>"` que solo quedan las 12
+  ocurrencias irreductibles (valores JSON dinámicos) más 2 tipos boilerplate
+  de la propia herramienta. Detalle completo en `docs/WORK_QUEUE.md`
+  ("Hecho — sesión 21").
 - 289 tests unitarios pasando (api 198, api-client 9, erp-web 16) + 27 en
   `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 20
   tests de integración con Postgres real + **5 tests E2E de Playwright
@@ -576,18 +607,16 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (`@erp/api-client`
-generado desde OpenAPI, o el App Registry mínimo si se prefiere adelantar
-la Fase 2).
+Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (App Registry
+mínimo, deliberadamente diferido hasta que exista un módulo de negocio real
+que registrar; único ítem restante de la cola original).
 
 ## Pending
 
 Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: `@erp/api-client` generado desde el
-spec OpenAPI (`/api/docs-json` ya existe; herramienta de generación
-todavía no decidida) → App Registry mínimo (deliberadamente diferido hasta
-que exista un módulo de negocio real que registrar, ver
-`docs/WORK_QUEUE.md`).
+Resumen bajo ownership único de Claude: App Registry mínimo (deliberadamente
+diferido hasta que exista un módulo de negocio real que registrar, ver
+`docs/WORK_QUEUE.md`) — único ítem restante de la cola original.
 También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
 (ADR-004, ADR-006, ADR-007 y ADR-008 ya están ratificados). Claude debe
 completar cualquier UI, SDK y cobertura de pruebas que estos bloques
