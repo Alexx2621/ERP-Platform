@@ -1,6 +1,13 @@
 # Plugin Architecture V1 — Propuesta
 
-Estado: **Propuesta para aprobación**
+Estado: **El subconjunto "mínimo" (App Registry: `AppDefinition`/
+`TenantApp`/`AppConfiguration`, catálogo code-owned, chequeo real de
+dependencias/dependents) está implementado y ratificado en
+`docs/DECISIONS.md` ADR-005. El resto de este documento (manifests
+compilados en build, SemVer ranges, la máquina de estados completa,
+entitlement/facturación, registries de contribución de frontend/backend)
+sigue como propuesta de referencia sin implementar — ver ADR-005
+"Deferred".**
 
 Alcance: módulos/apps oficiales, App Registry y extensiones controladas de V1
 

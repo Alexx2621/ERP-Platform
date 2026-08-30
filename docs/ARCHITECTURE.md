@@ -1,6 +1,11 @@
 # Architecture V1 — Propuesta
 
-Estado: **Propuesta para aprobación**
+Estado: **Aceptada para Foundation (Fase 1), implementada y verificada
+contra infraestructura real de extremo a extremo — sesión 22, 2026-08-30.
+Ver "Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. El
+alcance descrito aquí para Business Apps/Channels (§5.2) sigue vigente
+como diseño de referencia para las fases futuras del roadmap, todavía sin
+implementar.**
 
 Alcance: arquitectura objetivo de la primera versión y Foundation
 

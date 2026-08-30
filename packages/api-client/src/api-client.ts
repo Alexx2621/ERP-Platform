@@ -1,5 +1,7 @@
 import type {
   AcceptMembershipInvitationInput,
+  AppConfigurationResponse,
+  AppDefinitionResponse,
   AssignRoleInput,
   ApiErrorEnvelope,
   AuditEntryResponse,
@@ -20,12 +22,14 @@ import type {
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
+  SetAppConfigurationInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
   SetSettingValueInput,
   SessionResponse,
   SettingDefinitionResponse,
   SettingValueResponse,
+  TenantAppResponse,
   TenantExecutionContext,
   TenantSummary,
   UserPreferenceResponse,
@@ -381,6 +385,69 @@ export class ApiClient {
       accessToken,
       body: { value },
     });
+  }
+
+  async listAppDefinitions(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<AppDefinitionResponse[]> {
+    return this.request<AppDefinitionResponse[]>("/apps/definitions", { accessToken, tenantSlug, signal });
+  }
+
+  async listTenantApps(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<TenantAppResponse[]> {
+    return this.request<TenantAppResponse[]>("/apps", { accessToken, tenantSlug, signal });
+  }
+
+  async enableApp(accessToken: string, tenantSlug: string, key: string): Promise<TenantAppResponse> {
+    return this.request<TenantAppResponse>(`/apps/${encodeURIComponent(key)}/enable`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+    });
+  }
+
+  async disableApp(accessToken: string, tenantSlug: string, key: string): Promise<TenantAppResponse> {
+    return this.request<TenantAppResponse>(`/apps/${encodeURIComponent(key)}/disable`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+    });
+  }
+
+  async listAppConfiguration(
+    accessToken: string,
+    tenantSlug: string,
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<AppConfigurationResponse[]> {
+    return this.request<AppConfigurationResponse[]>(`/apps/${encodeURIComponent(key)}/configuration`, {
+      accessToken,
+      tenantSlug,
+      signal,
+    });
+  }
+
+  async setAppConfiguration(
+    accessToken: string,
+    tenantSlug: string,
+    key: string,
+    configKey: string,
+    input: SetAppConfigurationInput,
+  ): Promise<AppConfigurationResponse> {
+    return this.request<AppConfigurationResponse>(
+      `/apps/${encodeURIComponent(key)}/configuration/${encodeURIComponent(configKey)}`,
+      {
+        method: "PUT",
+        accessToken,
+        tenantSlug,
+        body: input,
+      },
+    );
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

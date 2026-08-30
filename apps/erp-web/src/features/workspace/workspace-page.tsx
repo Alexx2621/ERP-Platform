@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   SquaresFour,
+  Storefront,
 } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
 import type { AppPath } from "../../shared/navigation/router";
@@ -46,6 +47,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/settings")}>
             <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
             Ajustes
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/apps")}>
+            <Storefront size={17} weight="bold" aria-hidden="true" />
+            Apps
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

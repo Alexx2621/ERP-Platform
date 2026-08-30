@@ -6,9 +6,8 @@ Numbering follows `docs/ROADMAP.md` §4 (Fase 0 entregables). Only ADRs that hav
 actually been written appear below — this is not a placeholder index. ADR-001
 (Modular Monolith), ADR-002 (PostgreSQL/Prisma) and ADR-003 (Multi-Tenancy) are
 still pending; they belong to whoever ratifies the broader Architecture V1
-proposal, not to a single module task. ADR-005 (Plugin Architecture) is also
-still pending — its design exists complete in `docs/PLUGINS.md` but nothing
-has been implemented against it yet, unlike ADR-004 below.
+proposal, not to a single module task. ADR-005 (Plugin Architecture V1 mínimo)
+was ratified once the App Registry mechanism was implemented — see below.
 
 ---
 
@@ -165,6 +164,147 @@ backlog item this ADR always called out as later work. Concretely:
   currently needs it — every other repository still manages its own
   transactions independently, per existing precedent (`docs/ARCHITECTURE.md`
   §6).
+
+---
+
+## ADR-005 — Plugin Architecture V1 mínimo (Code-Owned Catalog, ENABLED/DISABLED Lifecycle)
+
+**Status:** Accepted (scope: the App Registry mechanism itself —
+`AppDefinition`/`TenantApp`/`AppConfiguration`, dependency and dependents
+checks, one HTTP surface, seeded with an empty catalog; not the full future
+scope of `docs/PLUGINS.md`, e.g. manifest files compiled at build time,
+SemVer range compatibility, the AVAILABLE/INSTALLING/ENABLING/DISABLING/
+SUSPENDED lifecycle, entitlement/billing, or backend/frontend contribution
+registries)
+
+**Context**
+
+`docs/PLUGINS.md` has carried a complete Plugin Architecture V1 design since
+the initial commit (manifest schema, layered model, lifecycle state machine,
+backend/frontend extension registries, catalog validation pipeline) but was
+deliberately left unimplemented: `docs/WORK_QUEUE.md` tracked "App Registry
+mínimo" as the last remaining Foundation backlog item, explicitly deferred
+because no business module beyond the Platform Core existed yet to register
+in it — building the full mechanism with nothing real to register would have
+been exactly the premature machinery MASTER_SPEC §59/§93 warns against. This
+ADR ratifies the scope actually built once that deferral was lifted: a
+working mechanism validated against fixture apps, ready for the first real
+business app (Phase 2+) to register against, without carrying the parts of
+`docs/PLUGINS.md`'s full design that have nothing real to justify them yet.
+
+**Decision**
+
+1. **The catalog is a code-owned array (`FOUNDATION_APPS`), not a
+   compiled-from-manifest-files build artifact.** Same pattern as
+   `FOUNDATION_PERMISSIONS`/`setting-catalog.ts`: a plain TypeScript array,
+   validated at boot (`validateAppCatalog`) and upserted into
+   `app_definitions` by `AppCatalogSeeder`, mirroring
+   `PermissionCatalogSeeder`/`SettingCatalogSeeder` exactly. `docs/PLUGINS.md`
+   §4-§5 describes JSON manifests compiled and validated by CI before
+   deployment — that is real infrastructure work with nothing to validate
+   yet (`FOUNDATION_APPS` is empty; no business module exists), so it is
+   deferred until a real manifest actually needs authoring outside
+   TypeScript source.
+2. **`FOUNDATION_APPS` ships empty.** No fabricated or placeholder app
+   entry was added to production code — MASTER_SPEC §90 ("no simular
+   integraciones o operaciones exitosas") extends to not simulating a
+   business app that does not exist. The mechanism is instead validated by
+   unit tests (fixture manifests fed to `validateAppCatalog` and the
+   enable/disable use cases) and one integration/E2E scenario that inserts
+   temporary fixture rows directly into `app_definitions` — the same
+   sanctioned pattern already used for hard-to-reach test states throughout
+   this project (granting the first platform admin, backdating a file's
+   `deleted_at`).
+3. **Tenant lifecycle collapses to `ENABLED`/`DISABLED`, not the full
+   `AVAILABLE -> INSTALLING -> INSTALLED -> ENABLING -> ENABLED` state
+   machine `docs/PLUGINS.md` §7 describes.** "Install" (§7.1) exists to
+   validate entitlement, create configuration, and record acceptance of
+   already-deployed code — but V1 mínimo has no entitlement/billing system
+   (MASTER_SPEC §56, still deferred) and no migration/preflight step that
+   differs between "installed" and "enabled". Collapsing the two into one
+   idempotent `EnableAppUseCase` avoids modeling transitional states with
+   no distinct real behavior yet — the same reasoning ADR-008 used to
+   collapse the inbox to two states instead of three.
+4. **Dependency and dependents checks are real, exact-match by key —
+   without SemVer range compatibility.** `EnableAppUseCase` requires every
+   `dependsOnKeys` entry to already be `ENABLED` for the tenant;
+   `DisableAppUseCase` rejects disabling an app that another `ENABLED` app
+   still depends on. `docs/PLUGINS.md` §4.1/§6 describes dependency ranges
+   (`">=1.2.0 <2.0.0"`) — with a single version per app and no upgrade path
+   yet to reconcile, range matching would have nothing real to resolve
+   against. Revisit once a second version of any app definition actually
+   ships.
+5. **No backend/frontend contribution registries
+   (`registerRoute`/`registerMenuItem`/`registerDashboardWidget`/etc.,
+   `docs/PLUGINS.md` §8-§9).** These exist to let a module contribute
+   routes, jobs, menu entries and widgets without touching the Core — but
+   zero business apps have any such contribution to register yet. Building
+   the registries now would be speculative infrastructure with no caller.
+   The one real HTTP surface needed today (`AppsController`: list catalog,
+   list-with-tenant-status, enable, disable, get/set configuration) is
+   built and permission-gated (`apps.read`/`apps.manage`, added to
+   `FOUNDATION_PERMISSIONS`).
+6. **`AppConfiguration` is opaque JSON with no per-key catalog**, same
+   simplicity already accepted for `UserPreference` — no shipped app
+   declares a configurable setting yet, so there is nothing real to
+   validate a schema against. Setting/reading a configuration value
+   requires the owning app to be currently `ENABLED` for the tenant.
+7. **Physically homed in its own module (`app-registry/`), not
+   `tenants/presentation/`.** Unlike Roles/Audit/Notifications, `TenantsModule`
+   never needs to import `AppRegistryModule` (provisioning a tenant does not
+   auto-enable any app — there are none to enable), so no module-loading
+   cycle exists, and `AppsController` can safely import
+   `TenantContextGuard`/`PermissionGuard` from Tenants/Access Control while
+   living in `app-registry/presentation/` — same reasoning already
+   documented for `ConfigurationModule`/`FilesModule`.
+
+**Consequences**
+
+- The first real business app (Phase 2+) needs only to add one entry to
+  `FOUNDATION_APPS` — the seeding, validation, enable/disable, dependency,
+  and configuration mechanics all already exist and are already tested.
+- No route, job, menu item, or widget can be conditionally shown/hidden
+  based on app enablement yet — every future module that needs this must
+  build its own gating (checking `ListTenantAppsUseCase`'s result, or a new
+  guard) until the registries described in `docs/PLUGINS.md` §8-§9 are
+  built for real. This is a known, accepted gap, not an oversight.
+- Upgrading an app to a second version has no defined migration path yet
+  (`TenantApp.version` doesn't even exist as a field in this V1 mínimo — the
+  domain only tracks `ENABLED`/`DISABLED`, not a version pin per tenant).
+  Revisit `docs/PLUGINS.md` §7.5 once a real app actually ships a second
+  version.
+- Entitlement/plan-gating (MASTER_SPEC §56) is not connected to enablement
+  at all — any tenant can enable any catalog app it can see. Acceptable
+  today (empty catalog, no SaaS billing yet); must be revisited before any
+  paid plan differentiation is real.
+
+**Deferred**
+
+Everything in `docs/PLUGINS.md` not listed under "Decision" above remains
+future scope, not implicitly ruled out: manifest files and CI catalog
+validation, SemVer ranges, the full lifecycle state machine, entitlement,
+backend/frontend contribution registries, uninstall/data retention, and any
+third-party plugin trust model (`docs/PLUGINS.md` §16 already states V1's
+manifest vocabulary is not a security boundary for untrusted code).
+
+**Alternatives considered**
+
+- **Building the full `docs/PLUGINS.md` design now, including manifest
+  files and contribution registries:** rejected as premature — every one of
+  those pieces has zero real caller today (`FOUNDATION_APPS` is empty), and
+  building them speculatively is exactly the sobrearquitectura MASTER_SPEC
+  §59/§93 warns against. The mechanism that exists now is proportionate to
+  what can actually be exercised and tested for real.
+- **Waiting until Phase 2 (Master Data) to build any of this:** rejected
+  per explicit user instruction to close out this last Foundation item now,
+  so that Phase 2's first business app has the registration mechanism
+  ready rather than needing to build it alongside its own domain work.
+- **Seeding a placeholder/example app into `FOUNDATION_APPS`** to have
+  something visible in the UI today: rejected — it would be a fabricated
+  business app that doesn't exist, violating the same "don't simulate"
+  principle applied everywhere else in this codebase. The mechanism is
+  validated by tests and fixtures instead, and the UI's own empty state
+  ("Todavía no hay apps en el catálogo") honestly reflects reality.
 
 ---
 

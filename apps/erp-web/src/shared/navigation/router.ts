@@ -8,6 +8,7 @@ export type AppPath =
   | "/workspace"
   | "/roles"
   | "/settings"
+  | "/apps"
   | "/platform-admin";
 
 const VALID_PATHS = new Set<AppPath>([
@@ -18,6 +19,7 @@ const VALID_PATHS = new Set<AppPath>([
   "/workspace",
   "/roles",
   "/settings",
+  "/apps",
   "/platform-admin",
 ]);
 

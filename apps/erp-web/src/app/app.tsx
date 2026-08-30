@@ -9,6 +9,7 @@ import { TenantListPage } from "../features/tenants/tenant-list-page";
 import { WorkspacePage } from "../features/workspace/workspace-page";
 import { RolesPermissionsPage } from "../features/access-control/roles-permissions-page";
 import { SettingsPage } from "../features/configuration/settings-page";
+import { AppsPage } from "../features/app-registry/apps-page";
 import { PlatformAdminPage } from "../features/platform-admin/platform-admin-page";
 
 interface WorkspaceSelection extends TenantSummary {
@@ -32,7 +33,7 @@ export function App() {
     }
     if (
       session &&
-      (path === "/workspace" || path === "/roles" || path === "/settings") &&
+      (path === "/workspace" || path === "/roles" || path === "/settings" || path === "/apps") &&
       !selection
     ) {
       navigate("/tenants", true);
@@ -64,6 +65,10 @@ export function App() {
 
   if (path === "/settings" && selection) {
     return <SettingsPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/apps" && selection) {
+    return <AppsPage selection={selection} navigate={navigate} />;
   }
 
   if (path === "/platform-admin" && session.user.isPlatformAdmin) {

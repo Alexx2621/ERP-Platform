@@ -22,6 +22,9 @@ export type {
   FileObject,
   Notification,
   NotificationDelivery,
+  AppDefinition,
+  TenantApp,
+  AppConfiguration,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -33,6 +36,8 @@ export {
   FileObjectStatus,
   NotificationChannel,
   NotificationDeliveryStatus,
+  AppKind,
+  TenantAppStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

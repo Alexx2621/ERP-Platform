@@ -38,4 +38,9 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "tenants.memberships.manage",
     description: "Invite existing users to the tenant as new memberships.",
   },
+  { key: "apps.read", description: "View the app catalog and this tenant's own app enablement state." },
+  {
+    key: "apps.manage",
+    description: "Enable or disable apps for the tenant, and set their configuration.",
+  },
 ];

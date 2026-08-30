@@ -116,6 +116,7 @@ model Tenant {
   fileObjects     FileObject[]
   notifications   Notification[]
   inboxMessages   InboxMessage[]
+  tenantApps      TenantApp[]
 
   @@map("tenants")
 }
@@ -575,4 +576,83 @@ model NotificationDelivery {
 
   @@unique([notificationId, channel])
   @@map("notification_deliveries")
+}
+
+enum AppKind {
+  BUSINESS_APP
+  CHANNEL
+  INTEGRATION
+  INDUSTRY_EXTENSION
+}
+
+/// Global, code-owned catalog of official apps/modules (docs/PLUGINS.md,
+/// docs/ARCHITECTURE.md §8.2). Never created from the UI; seeded
+/// idempotently by AppCatalogSeeder, same pattern as Permission/
+/// SettingDefinition. `key` is the manifest id (docs/PLUGINS.md §4.1:
+/// stable, lowercase kebab-case, never reused) — `id` stays a surrogate
+/// UUID so FKs follow this project's usual pattern, exactly like Permission.
+/// `dependsOnKeys` references other rows' `key`, not `id` — the catalog is
+/// defined in code before any UUID exists, so dependencies are naturally
+/// expressed in terms of the stable keys (see AppCatalogSeeder).
+model AppDefinition {
+  id            String   @id @db.Uuid
+  key           String   @unique @db.VarChar(60)
+  name          String   @db.VarChar(150)
+  version       String   @db.VarChar(30)
+  kind          AppKind
+  dependsOnKeys String[] @map("depends_on_keys")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenantApps TenantApp[]
+
+  @@map("app_definitions")
+}
+
+enum TenantAppStatus {
+  ENABLED
+  DISABLED
+}
+
+/// Tenant-scoped enablement of an AppDefinition (docs/PLUGINS.md §3.5, §7).
+/// V1 mínimo collapses the full AVAILABLE/INSTALLING/INSTALLED/ENABLING/
+/// DISABLING/SUSPENDED lifecycle down to ENABLED/DISABLED: with no
+/// entitlement/billing system yet (MASTER_SPEC §56) and no app-specific
+/// routes/jobs to gate behind a transitional state, those extra states
+/// would have no distinct real behavior — see docs/DECISIONS.md ADR-005.
+model TenantApp {
+  id              String          @id @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  appDefinitionId String          @map("app_definition_id") @db.Uuid
+  status          TenantAppStatus
+  enabledAt       DateTime        @map("enabled_at") @db.Timestamptz(6)
+  disabledAt      DateTime?       @map("disabled_at") @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appDefinition  AppDefinition      @relation(fields: [appDefinitionId], references: [id], onDelete: Restrict)
+  configurations AppConfiguration[]
+
+  @@unique([tenantId, appDefinitionId])
+  @@index([tenantId])
+  @@map("tenant_apps")
+}
+
+/// Opaque per-tenant-app JSON configuration (docs/PLUGINS.md §11.2). No
+/// formal per-key catalog like SettingDefinition yet — no shipped app
+/// declares any configurable setting today, so there is nothing real to
+/// validate a schema against (see docs/DECISIONS.md ADR-005 "Deferred").
+model AppConfiguration {
+  id          String   @id @db.Uuid
+  tenantAppId String   @map("tenant_app_id") @db.Uuid
+  key         String   @db.VarChar(150)
+  value       Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenantApp TenantApp @relation(fields: [tenantAppId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantAppId, key])
+  @@map("app_configurations")
 }

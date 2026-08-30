@@ -1,6 +1,9 @@
 # Technical Roadmap V1
 
-Estado: **Propuesta para aprobación**
+Estado: **Fase 0 (Arquitectura) y Fase 1 (Foundation) aceptadas,
+implementadas y cerradas formalmente — sesión 22, 2026-08-30. Ver
+"Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. Las fases
+2-12 siguen como propuesta de roadmap sin implementar.**
 
 Estrategia: fases con exit criteria, sin fechas artificiales
 

@@ -89,6 +89,19 @@ export type AuditEntryResponse = Omit<components["schemas"]["AuditEntryResponseD
   newValues: unknown;
 };
 
+export type AppKind = components["schemas"]["AppDefinitionResponseDto"]["kind"];
+export type TenantAppStatus = components["schemas"]["TenantAppResponseDto"]["status"];
+export type AppDefinitionResponse = components["schemas"]["AppDefinitionResponseDto"];
+export type TenantAppResponse = components["schemas"]["TenantAppResponseDto"];
+
+export type AppConfigurationResponse = Omit<components["schemas"]["AppConfigurationResponseDto"], "value"> & {
+  value: unknown;
+};
+
+export type SetAppConfigurationInput = Omit<components["schemas"]["SetAppConfigurationDto"], "value"> & {
+  value: unknown;
+};
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

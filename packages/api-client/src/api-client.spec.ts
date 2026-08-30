@@ -363,6 +363,66 @@ describe("ApiClient", () => {
     expect(new Headers(fetchMock.mock.calls[5]?.[1]?.headers).get("X-Tenant-Slug")).toBeNull();
   });
 
+  it("uses the documented App Registry endpoints", async () => {
+    const definition = {
+      key: "manufacturing",
+      name: "Manufacturing",
+      version: "1.0.0",
+      kind: "BUSINESS_APP",
+      dependsOnKeys: ["products"],
+    };
+    const tenantApp = { ...definition, status: "ENABLED" };
+    const configuration = { key: "default_warehouse", value: "wh-1", updatedAt: "2026-08-30T12:00:00.000Z" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([definition]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([tenantApp]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(tenantApp), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...tenantApp, status: "DISABLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([configuration]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(configuration), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listAppDefinitions("access-token", "grupo-aurora");
+    await client.listTenantApps("access-token", "grupo-aurora");
+    await client.enableApp("access-token", "grupo-aurora", "manufacturing");
+    await client.disableApp("access-token", "grupo-aurora", "manufacturing");
+    await client.listAppConfiguration("access-token", "grupo-aurora", "manufacturing");
+    await client.setAppConfiguration("access-token", "grupo-aurora", "manufacturing", "default_warehouse", {
+      value: "wh-1",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/apps/definitions",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/apps", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/apps/manufacturing/enable",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/apps/manufacturing/disable",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/apps/manufacturing/configuration",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "/api/v1/apps/manufacturing/configuration/default_warehouse",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ value: "wh-1" }) }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      expect(new Headers(call[1]?.headers).get("X-Tenant-Slug")).toBe("grupo-aurora");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

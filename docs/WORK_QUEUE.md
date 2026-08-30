@@ -6,9 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-29 (sesión 21,
-`@erp/api-client` generado desde el spec OpenAPI real — cierra el último
-ítem original de esta cola). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-30 (sesión 22,
+App Registry mínimo implementado — cierra el último ítem restante de esta
+cola original y formaliza el cierre de Foundation). Modelo operativo
+actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -19,18 +20,118 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ## Backlog activo — Claude (ownership end-to-end)
 
-### Próximo, en orden de dependencia técnica
+### Próximo
 
-1. **App Registry mínimo** — el último paso pendiente de
-   `docs/ARCHITECTURE.md` §17 antes de poder cerrar formalmente Foundation
-   (`AppDefinition`/`TenantApp`/`AppConfiguration`, diseño completo en
-   `docs/PLUGINS.md`). Deliberadamente no adelantado todavía: no existe
-   ningún módulo de negocio real más allá del Core para registrar, y
-   construir el mecanismo sin nada que registrar en él sería exactamente la
-   sobrearquitectura que MASTER_SPEC §59/§93 advierte evitar. Revisar
-   cuando la Fase 2 (Master Data) esté por comenzar. Único ítem restante de
-   esta lista — todo lo demás en "Próximo" desde que esta cola existe ya
-   está cerrado (ver "Hecho — sesión 20" y "Hecho — sesión 21").
+Ningún ítem pendiente de la cola original de Foundation — el último
+(App Registry mínimo) se cerró en la sesión 22. El siguiente trabajo es
+Fase 2 (Master Data): Customers, Suppliers, Product Catalog, Pricing,
+Taxes, Warehousing master data (`docs/ARCHITECTURE.md` §5.2). Antes de
+iniciarla, revisar `docs/ARCHITECTURE.md`/`docs/MULTITENANCY.md`/
+`docs/ROADMAP.md` (ver "Revisión de cierre de Foundation" en
+`docs/PROJECT_STATE.md`, sesión 22) para confirmar que ninguna decisión de
+Fase 2 quede bloqueada por un hueco de Foundation sin resolver.
+
+### Hecho — sesión 22 (App Registry mínimo — ADR-005, cierra Foundation)
+
+Único ítem restante de la cola original. Ver ADR-005 en `docs/DECISIONS.md`
+para el razonamiento completo de alcance ("mínimo" frente al diseño total
+de `docs/PLUGINS.md`).
+
+- **`apps/api/src/core/app-registry/`** (módulo nuevo): `AppDefinition`
+  (catálogo global code-owned, `key` kebab-case validado en el dominio,
+  `dependsOnKeys` por clave — no por UUID, ya que el catálogo se define en
+  código antes de que exista ningún UUID), `TenantApp` (enablement por
+  tenant, lifecycle `ENABLED`/`DISABLED` únicamente — la máquina de estados
+  completa de `docs/PLUGINS.md` §7 queda deliberadamente fuera de alcance),
+  `AppConfiguration` (JSON opaco por `(tenantApp, key)`, sin catálogo propio
+  — mismo criterio que `UserPreference`). `validateAppCatalog` (nueva
+  función pura) rechaza claves duplicadas, dependencias a claves
+  inexistentes y ciclos (incluyendo ciclos indirectos) antes de que
+  `AppCatalogSeeder` escriba nada — mismo patrón fail-fast que
+  `docs/PLUGINS.md` §5 exige para un manifest inválido, aplicado a un
+  catálogo definido en código en vez de archivos de manifest compilados.
+  `EnableAppUseCase` exige que cada dependencia declarada esté `ENABLED`
+  para el tenant (idempotente: re-habilitar no falla ni duplica fila);
+  `DisableAppUseCase` rechaza deshabilitar una app de la que otra app
+  `ENABLED` todavía depende (`docs/PLUGINS.md` §6), y trata deshabilitar una
+  app nunca habilitada como un error real (`AppNotEnabledError`), no como
+  no-op — solo la re-deshabilitación de una fila ya `DISABLED` es
+  idempotente. `FOUNDATION_APPS` **queda vacío en producción** — no existe
+  ningún módulo de negocio real más allá del Core para registrar todavía
+  (MASTER_SPEC §90, "no simular operaciones exitosas" aplicado también a no
+  fabricar una app de ejemplo); el mecanismo completo se verifica con
+  fixtures de prueba, nunca con datos de producción.
+- Tablas nuevas (migración `20260830041057_app_registry_foundation`,
+  **generada y aplicada directamente contra Postgres real** vía
+  `prisma migrate dev`): `app_definitions` (PK UUID + `key` único
+  VARCHAR(60), mismo patrón que `permissions`), `tenant_apps`
+  (`@@unique([tenantId, appDefinitionId])`, FK real a `tenants`/
+  `app_definitions`), `app_configurations` (`@@unique([tenantAppId, key])`,
+  `ON DELETE CASCADE` hacia `tenant_apps` — única cascada correcta de este
+  módulo, mismo razonamiento que `notification_deliveries`). 2 permisos
+  nuevos en `FOUNDATION_PERMISSIONS`: `apps.read`, `apps.manage` — mismo
+  hueco ya documentado de "sin backfill retroactivo" para tenants
+  aprovisionados antes de este cambio.
+- Contrato HTTP nuevo (`AppsController`, físicamente en
+  `app-registry/presentation/`, no en `tenants/presentation/`: a diferencia
+  de Roles/Audit/Notifications, `TenantsModule` nunca necesita importar
+  `AppRegistryModule` — provisionar un tenant no auto-habilita ninguna app
+  — así que no hay ciclo de módulos que evitar, mismo caso que
+  Configuration/Files): `GET /api/v1/apps/definitions` (catálogo crudo),
+  `GET /api/v1/apps` (catálogo unido al estado propio del tenant),
+  `POST /api/v1/apps/:key/enable`, `POST /api/v1/apps/:key/disable`,
+  `GET/PUT /api/v1/apps/:key/configuration[/:configKey]`. Auditoría real:
+  `app_registry.app.enabled`/`.disabled`/`.app_configuration.changed`.
+- **`@erp/api-client`**: tipos y 6 métodos nuevos derivados del spec OpenAPI
+  regenerado (`listAppDefinitions`, `listTenantApps`, `enableApp`,
+  `disableApp`, `listAppConfiguration`, `setAppConfiguration`) — mismo flujo
+  de generación de la sesión 21, sin bugs de fidelidad de decoradores esta
+  vez (los campos nullable ya llevaban `type:` explícito desde el inicio).
+- **UI** (`apps/erp-web/src/features/app-registry/apps-page.tsx`, ruta
+  nueva `/apps`, botón "Apps" agregado al workspace): tabla del catálogo
+  unido al estado del tenant con botón Habilitar/Deshabilitar por fila.
+  Estado vacío honesto ("Todavía no hay apps en el catálogo") en vez de
+  datos de ejemplo — refleja la realidad de que `FOUNDATION_APPS` está
+  vacío. Errores del backend (dependencia faltante, dependiente activo) se
+  muestran tal cual el mensaje real de la API, sin reinterpretarlos.
+  Deliberadamente **no** incluye una UI de configuración por app en este
+  bloque — el SDK y el backend ya la soportan completa, pero no hay ninguna
+  app real todavía cuya configuración editar; se añadirá junto con el
+  primer módulo de negocio que la necesite.
+- Tests: 39 tests unitarios nuevos (entidades, validador de catálogo,
+  6 use cases, wiring de módulo) — 237 tests unitarios totales en
+  `apps/api` (antes 198). Suite de integración ampliada con un escenario
+  real contra Postgres: fixtures insertadas directamente (mismo patrón
+  sancionado que el resto del proyecto), dependencia rechazada entre
+  tenants reales, aislamiento cross-tenant confirmado, dependents rechazado
+  y luego permitido tras deshabilitar el dependiente, configuración
+  aislada por tenant y rechazada si la app no está habilitada — 21/21 en
+  total (antes 20). 3 tests nuevos en `apps/erp-web`
+  (`apps-page.spec.tsx`) — 19/19 en total (antes 16). **E2E real nuevo**
+  (`apps/e2e/tests/app-registry.spec.ts`, Chromium vía Testcontainers):
+  inserta dos apps fixture reales por SQL directo, habilita/deshabilita
+  desde la UI real contra el backend real, confirma el rechazo real de
+  dependencia y de dependents con sus mensajes exactos visibles en la
+  pantalla — 6/6 Playwright en total (antes 5).
+- **Smoke test manual contra Docker/Postgres reales** (además de la
+  suite automatizada): dos apps fixture insertadas por SQL directo en la
+  base de desarrollo persistente, ciclo completo habilitar/configurar/
+  rechazo de dependencia/rechazo de dependents/deshabilitar verificado por
+  HTTP real, auditoría real confirmada, y las fixtures + filas de
+  `tenant_apps`/`app_configurations` **limpiadas al terminar** (a
+  diferencia de otros smoke tests de este proyecto, aquí sí fue posible:
+  ninguna de esas tres tablas tiene un `onDelete: Restrict` que lo
+  impidiera, a diferencia de `audit_entries.user_id`).
+- Documentación actualizada: `docs/DATABASE.md` (nueva sección App
+  Registry tables), `docs/SECURITY.md` (nueva sección App Registry con
+  modelo de amenazas y huecos conocidos), `docs/DECISIONS.md` (ADR-005
+  ratificado), `apps/erp-web/.../development-progress-panel.tsx`
+  (Foundation recalculado a 8/8 pasos de `docs/ARCHITECTURE.md` §17).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (237 api + 27 events + 33 notifications + 6
+  worker + 10 api-client + 19 erp-web = 332), `pnpm --filter @erp/api
+  test:integration` (21/21 contra Postgres real), `pnpm --filter @erp/e2e
+  test:e2e` (6/6 Playwright) — todo verde.
 
 ### Hecho — sesión 21 (`@erp/api-client` generado desde OpenAPI)
 
@@ -1495,9 +1596,9 @@ miembros, sin pedir un `membershipId` escrito a mano. Ver "Hecho — sesión
 ### Estado operativo actual
 
 - No existe una asignación permanente para Codex ni una cola secundaria.
-- Claude continuará con el ítem 1 de "Próximo" (App Registry mínimo) cuando
-  la Fase 2 (Master Data) esté por comenzar, y cualquier superficie de UI,
-  SDK, pruebas o documentación que ese bloque requiera.
+- ~~Claude continuará con el ítem 1 de "Próximo" (App Registry mínimo)...~~
+  — cerrado en la sesión 22, ver "Hecho — sesión 22" arriba. Claude
+  continuará con Fase 2 (Master Data) como próximo bloque de trabajo.
 - Si el usuario o Claude asignan a Codex una tarea aislada, debe registrarse con
   alcance, criterios de aceptación, rama y validación explícitos; esa asignación
   termina al entregar el alcance indicado.
@@ -1551,10 +1652,10 @@ Playwright).
   `openapi-typescript` genera `src/generated/openapi-types.ts` desde
   `/api/docs-json` real, y `contracts.ts` deriva de ahí. Ver "Hecho —
   sesión 21".
-- Un App Registry mínimo (único ítem restante de la cola Claude) no depende de ninguna
-  decisión de arquitectura pendiente — deliberadamente no adelantado
-  porque no existe todavía ningún módulo de negocio real más allá del Core
-  para registrar en él (ver el ítem mismo en "Próximo").
+- ~~Un App Registry mínimo (único ítem restante de la cola Claude) no depende
+  de ninguna decisión de arquitectura pendiente...~~ — cerrado en la sesión
+  22: `AppDefinition`/`TenantApp`/`AppConfiguration` ya existen (ADR-005).
+  Ver "Hecho — sesión 22".
 - ~~Una UI de administración de plataforma en erp-web...~~ — cerrado en la
   sesión 18: `platform-admin-page.tsx` (Usuarios/Ajustes/Actividad) ya
   existe y está cubierto por E2E real. Ver "Hecho — sesión 18".
@@ -1578,10 +1679,13 @@ el usuario entre tres alternativas presentadas); ADR-008 (Consumer-Side
 Idempotency / Inbox — implementado y ratificado en sesión 17, mecanismo
 completo verificado contra Postgres real; enmendado en sesión 19 con el
 primer consumidor de negocio real, Notifications, conectado vía
-`@erp/notifications` + `apps/worker`). Pendientes de numerar
-formalmente cuando corresponda: ADR-001 (Modular Monolith), ADR-002
-(PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
-`docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
-real: manual, integration test, y ahora E2E de navegador), ADR-005 (Plugin
-Architecture — el diseño ya existe completo en `docs/PLUGINS.md`, falta
-implementar y ratificar).
+`@erp/notifications` + `apps/worker`); ADR-005 (Plugin Architecture V1
+mínimo — implementado y ratificado en sesión 22: catálogo code-owned
+`FOUNDATION_APPS` vacío en producción, `AppDefinition`/`TenantApp`/
+`AppConfiguration`, lifecycle `ENABLED`/`DISABLED` colapsado, chequeo real
+de dependencias/dependents, verificado con fixtures contra Postgres real y
+E2E de navegador real). Pendientes de numerar formalmente cuando
+corresponda: ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma),
+ADR-003 (Multi-Tenancy — el patrón de `docs/MULTITENANCY.md` §8 ya está
+verificado tres veces contra Postgres real: manual, integration test, y
+ahora E2E de navegador).

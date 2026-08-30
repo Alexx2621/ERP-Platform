@@ -74,6 +74,20 @@ import {
 } from "@erp/notifications";
 import { SetUserStatusUseCase } from "../../src/core/users/application/set-user-status.use-case";
 import { ListUsersUseCase } from "../../src/core/users/application/list-users.use-case";
+import { AppDefinition } from "../../src/core/app-registry/domain/app-definition.entity";
+import { PrismaAppDefinitionRepository } from "../../src/core/app-registry/infrastructure/prisma-app-definition.repository";
+import { PrismaTenantAppRepository } from "../../src/core/app-registry/infrastructure/prisma-tenant-app.repository";
+import { PrismaAppConfigurationRepository } from "../../src/core/app-registry/infrastructure/prisma-app-configuration.repository";
+import { EnableAppUseCase } from "../../src/core/app-registry/application/use-cases/enable-app.use-case";
+import { DisableAppUseCase } from "../../src/core/app-registry/application/use-cases/disable-app.use-case";
+import { ListTenantAppsUseCase } from "../../src/core/app-registry/application/use-cases/list-tenant-apps.use-case";
+import { ListAppConfigurationUseCase } from "../../src/core/app-registry/application/use-cases/list-app-configuration.use-case";
+import { SetAppConfigurationUseCase } from "../../src/core/app-registry/application/use-cases/set-app-configuration.use-case";
+import {
+  AppDependencyNotSatisfiedError,
+  AppHasActiveDependentsError,
+  AppNotEnabledError,
+} from "../../src/core/app-registry/application/errors";
 import type { PrismaService } from "../../src/shared/prisma/prisma.service";
 import { startPostgresTestHarness, type PostgresTestHarness } from "./postgres-test-harness";
 
@@ -1432,5 +1446,126 @@ describe("Prisma repositories against PostgreSQL", () => {
       recipientUserId: owner.id,
     });
     expect(afterRedelivery).toHaveLength(1);
+  });
+
+  it("enforces App Registry dependencies, dependents and tenant isolation against real Postgres", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const definitions = new PrismaAppDefinitionRepository(prisma);
+    const tenantApps = new PrismaTenantAppRepository(prisma);
+    const configurations = new PrismaAppConfigurationRepository(prisma);
+    const now = new Date("2026-08-30T00:00:00.000Z");
+
+    const owner = createUser(now, "app-registry-owner@example.com");
+    const tenantA = createTenant(now, "app-registry-tenant-a");
+    const tenantB = createTenant(now, "app-registry-tenant-b");
+    await users.save(owner);
+    await tenants.save(tenantA);
+    await tenants.save(tenantB);
+
+    // Test-only fixture apps, inserted directly like every other sanctioned
+    // hard-to-reach-via-API test state in this suite — FOUNDATION_APPS
+    // stays empty in production (docs/WORK_QUEUE.md).
+    await definitions.upsert(
+      AppDefinition.create({
+        id: newId(),
+        key: "products",
+        name: "Products",
+        version: "1.0.0",
+        kind: "BUSINESS_APP",
+        dependsOnKeys: [],
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    await definitions.upsert(
+      AppDefinition.create({
+        id: newId(),
+        key: "manufacturing",
+        name: "Manufacturing",
+        version: "1.0.0",
+        kind: "BUSINESS_APP",
+        dependsOnKeys: ["products"],
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    // Upsert is idempotent by key — re-seeding must not duplicate the row.
+    await definitions.upsert(
+      AppDefinition.create({
+        id: newId(),
+        key: "products",
+        name: "Products",
+        version: "1.0.0",
+        kind: "BUSINESS_APP",
+        dependsOnKeys: [],
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    expect(await definitions.findAll()).toHaveLength(2);
+
+    const enableApp = new EnableAppUseCase(definitions, tenantApps);
+    const disableApp = new DisableAppUseCase(definitions, tenantApps);
+    const listTenantApps = new ListTenantAppsUseCase(definitions, tenantApps);
+    const setConfiguration = new SetAppConfigurationUseCase(definitions, tenantApps, configurations);
+    const listConfiguration = new ListAppConfigurationUseCase(definitions, tenantApps, configurations);
+
+    // tenantB tries to enable manufacturing before products — real dependency check.
+    await expect(enableApp.execute({ tenantId: tenantB.id, key: "manufacturing" })).rejects.toThrow(
+      AppDependencyNotSatisfiedError,
+    );
+
+    await enableApp.execute({ tenantId: tenantB.id, key: "products" });
+    await enableApp.execute({ tenantId: tenantB.id, key: "manufacturing" });
+
+    // tenantA never enabled anything — real cross-tenant isolation, not a fake.
+    const tenantASummaries = await listTenantApps.execute(tenantA.id);
+    expect(tenantASummaries).toEqual([
+      expect.objectContaining({ key: "manufacturing", status: "DISABLED" }),
+      expect.objectContaining({ key: "products", status: "DISABLED" }),
+    ]);
+    const tenantBSummaries = await listTenantApps.execute(tenantB.id);
+    expect(tenantBSummaries).toEqual([
+      expect.objectContaining({ key: "manufacturing", status: "ENABLED" }),
+      expect.objectContaining({ key: "products", status: "ENABLED" }),
+    ]);
+
+    // Real dependents check: disabling products while manufacturing is enabled is rejected.
+    await expect(disableApp.execute({ tenantId: tenantB.id, key: "products" })).rejects.toThrow(
+      AppHasActiveDependentsError,
+    );
+
+    await disableApp.execute({ tenantId: tenantB.id, key: "manufacturing" });
+    await disableApp.execute({ tenantId: tenantB.id, key: "products" });
+    const afterDisable = await listTenantApps.execute(tenantB.id);
+    expect(afterDisable).toEqual([
+      expect.objectContaining({ key: "manufacturing", status: "DISABLED" }),
+      expect.objectContaining({ key: "products", status: "DISABLED" }),
+    ]);
+
+    // Configuration requires the app to be enabled, is tenant-isolated, and upserts by key.
+    await enableApp.execute({ tenantId: tenantA.id, key: "products" });
+    await setConfiguration.execute({
+      tenantId: tenantA.id,
+      key: "products",
+      configKey: "default_warehouse",
+      value: "wh-a",
+    });
+    await setConfiguration.execute({
+      tenantId: tenantA.id,
+      key: "products",
+      configKey: "default_warehouse",
+      value: "wh-a-updated",
+    });
+    const tenantAConfig = await listConfiguration.execute({ tenantId: tenantA.id, key: "products" });
+    expect(tenantAConfig).toEqual([
+      expect.objectContaining({ key: "default_warehouse", value: "wh-a-updated" }),
+    ]);
+
+    await expect(
+      listConfiguration.execute({ tenantId: tenantB.id, key: "products" }),
+    ).rejects.toThrow(AppNotEnabledError);
   });
 });

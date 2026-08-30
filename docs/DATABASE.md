@@ -507,3 +507,80 @@ generated and applied via `prisma migrate dev --name notifications_foundation`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+---
+
+## App Registry tables (2026-08-30)
+
+Scope: `docs/PLUGINS.md`, `docs/DECISIONS.md` ADR-005 (V1 mínimo). Applied to
+the real running PostgreSQL instance via `prisma migrate dev` (not just
+diffed).
+
+### `app_definitions`
+
+Global, code-owned catalog — same pattern as `permissions`. Seeded
+idempotently by `AppCatalogSeeder` from the code-owned `FOUNDATION_APPS`
+array, which ships **empty** in production (no business module beyond the
+Platform Core exists yet to register — see ADR-005 and `docs/SECURITY.md`
+"App Registry").
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | Surrogate key, same split as `permissions.id`/`.key`. |
+| `key` | `varchar(60)` | Unique. The manifest id (`docs/PLUGINS.md` §4.1) — stable, lowercase kebab-case, validated by `AppDefinition.create`'s domain invariant, never reused. |
+| `name` | `varchar(150)` | Display name. |
+| `version` | `varchar(30)` | Plain string, informational only in V1 mínimo — no SemVer range compatibility checking yet (ADR-005). |
+| `kind` | enum `BUSINESS_APP`/`CHANNEL`/`INTEGRATION`/`INDUSTRY_EXTENSION` | `PLATFORM` deliberately absent — Core capabilities are never app-registrable (`docs/ARCHITECTURE.md` §5.3-§5.4). |
+| `depends_on_keys` | `text[]` | References other rows' `key`, not `id` — the catalog is defined in code before any UUID exists. Validated acyclic and fully-resolvable by `validateAppCatalog` before any write. |
+| `created_at` | `timestamptz(6)` | |
+| `updated_at` | `timestamptz(6)` | |
+
+### `tenant_apps`
+
+Tenant-scoped enablement. V1 mínimo collapses the full
+`AVAILABLE -> INSTALLING -> INSTALLED -> ENABLING -> ENABLED`/`DISABLING ->
+DISABLED`/`SUSPENDED` lifecycle (`docs/PLUGINS.md` §7) down to
+`ENABLED`/`DISABLED` — see ADR-005 for why the extra transitional states
+have no distinct real behavior yet.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` | `uuid` | FK → `tenants.id` `ON DELETE RESTRICT`. |
+| `app_definition_id` | `uuid` | FK → `app_definitions.id` `ON DELETE RESTRICT` — an app can never be hard-deleted out from under a tenant's own enablement history. |
+| `status` | enum `ENABLED`/`DISABLED` | |
+| `enabled_at` | `timestamptz(6)` | Refreshed on every `enable()`/re-`enable()` call. |
+| `disabled_at` | `timestamptz?` | `NULL` while `ENABLED` — enforced by `TenantApp.create`'s domain invariant. |
+| `created_at` | `timestamptz(6)` | |
+| `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, appDefinitionId])` makes a duplicate enablement row for
+the same tenant+app impossible at the database level — `EnableAppUseCase`/
+`DisableAppUseCase` upsert against this constraint, never insert blindly.
+
+### `app_configurations`
+
+Opaque per-tenant-app JSON configuration. No formal per-key catalog like
+`setting_definitions` yet — no shipped app declares a configurable setting
+today, so there is nothing real to validate a schema against (ADR-005
+"Deferred").
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_app_id` | `uuid` | FK → `tenant_apps.id` `ON DELETE CASCADE` — the only cascade in this module: a configuration value has no meaning without its `TenantApp`, same reasoning as `notification_deliveries` → `notifications`. |
+| `key` | `varchar(150)` | Free-form, like `user_preferences.key`. |
+| `value` | `jsonb` | |
+| `created_at` | `timestamptz(6)` | |
+| `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantAppId, key])` makes `SetAppConfigurationUseCase` a real
+upsert, not an append-only log.
+
+### Migration
+
+`packages/database/prisma/migrations/20260830041057_app_registry_foundation/` —
+generated and applied via `prisma migrate dev --name app_registry_foundation`
+against the real `erp_platform` Postgres container, confirmed applying
+cleanly both there and against the ephemeral Testcontainers instance used by
+`apps/api/test/integration`.

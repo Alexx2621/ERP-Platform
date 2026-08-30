@@ -46,6 +46,7 @@ import {
 import { ListUsersUseCase } from "./core/users";
 import { ListPlatformSettingsUseCase } from "./core/configuration";
 import { ListPlatformAuditEntriesUseCase } from "./core/audit";
+import { AppsController, EnableAppUseCase, DisableAppUseCase, ListTenantAppsUseCase } from "./core/app-registry";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -100,6 +101,10 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(ListPlatformSettingsUseCase)).toBeInstanceOf(ListPlatformSettingsUseCase);
     expect(moduleRef.get(PlatformAuditEntriesController)).toBeInstanceOf(PlatformAuditEntriesController);
     expect(moduleRef.get(ListPlatformAuditEntriesUseCase)).toBeInstanceOf(ListPlatformAuditEntriesUseCase);
+    expect(moduleRef.get(AppsController)).toBeInstanceOf(AppsController);
+    expect(moduleRef.get(EnableAppUseCase)).toBeInstanceOf(EnableAppUseCase);
+    expect(moduleRef.get(DisableAppUseCase)).toBeInstanceOf(DisableAppUseCase);
+    expect(moduleRef.get(ListTenantAppsUseCase)).toBeInstanceOf(ListTenantAppsUseCase);
 
     await moduleRef.close();
   });

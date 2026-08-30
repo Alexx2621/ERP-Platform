@@ -10,7 +10,7 @@ interface RoadmapPhase {
 // PROJECT_STATE and WORK_QUEUE until a real delivery-tracking source exists.
 export const developmentRoadmap: readonly RoadmapPhase[] = [
   { id: "phase-0", name: "Arquitectura", progress: 85 },
-  { id: "phase-1", name: "Foundation", progress: 78 },
+  { id: "phase-1", name: "Foundation", progress: 100 },
   { id: "phase-2", name: "Master Data", progress: 0 },
   { id: "phase-3", name: "Inventario", progress: 0 },
   { id: "phase-4", name: "Ventas", progress: 0 },
@@ -29,7 +29,9 @@ export const overallDevelopmentProgress = Math.round(
     developmentRoadmap.length,
 );
 
-const nextMilestones = ["App Registry mínimo (antes de Master Data)"] as const;
+const nextMilestones = [
+  "Fase 2 — Master Data: Clientes, Proveedores, Catálogo de Productos, Precios, Impuestos",
+] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {
   return (
@@ -91,7 +93,7 @@ export function DevelopmentProgressPanel() {
             <div className="shrink-0 rounded-[10px] border border-[var(--line)] bg-[var(--field)] px-4 py-3">
               <p className="text-[10px] font-bold text-[var(--muted)]">Fase activa</p>
               <p className="mt-1 font-mono text-[18px] font-extrabold text-[var(--ink)]">
-                Foundation 78%
+                Foundation 100%
               </p>
             </div>
           </div>
@@ -123,7 +125,7 @@ export function DevelopmentProgressPanel() {
               className="text-[var(--accent)]"
               aria-hidden="true"
             />
-            <h3 className="text-[13px] font-extrabold">Próximos hitos de Foundation</h3>
+            <h3 className="text-[13px] font-extrabold">Próxima fase</h3>
           </div>
           <ol className="mt-4 grid gap-2 sm:grid-cols-2">
             {nextMilestones.map((milestone, index) => (
@@ -146,7 +148,7 @@ export function DevelopmentProgressPanel() {
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
             Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85% y Foundation al
-            78%; las fases funcionales futuras permanecen en 0%.
+            100% (cerrada formalmente); las fases funcionales futuras permanecen en 0%.
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para

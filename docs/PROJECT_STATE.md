@@ -28,21 +28,124 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
-PHASE 1 — Foundation, primer vertical slice integrado y verificado de
-extremo a extremo: backend + frontend + CI + E2E de navegador real contra
-infraestructura real (Identity + Tenancy + onboarding + Access Control +
-Typed Configuration + Audit + Event Bus + Files + Notifications). Desde la
-sesión 13, la topología real de despliegue tiene dos procesos backend
-separados (`apps/api` para HTTP, `apps/worker` para el outbox dispatcher),
-no solo uno — la primera vez que el monorepo despliega más de un proceso
-Node de aplicación.
-Fase 0 no está
-formalmente cerrada: `docs/DECISIONS.md` tiene ADR-004 y ADR-006 numerados;
-`ARCHITECTURE.md`/`MULTITENANCY.md`/`ROADMAP.md` siguen marcados "Propuesta
-para aprobación" en sus propios encabezados. ADR-005 (Plugin Architecture)
-sigue sin implementar — su diseño existe completo en `docs/PLUGINS.md`
-(368 líneas) desde el commit inicial del repositorio, pero a diferencia de
-ADR-004 nada se ha construido contra él todavía.
+PHASE 1 — Foundation, **formalmente cerrada el 2026-08-30 (sesión 22)**:
+primer vertical slice integrado y verificado de extremo a extremo —
+backend + frontend + CI + E2E de navegador real contra infraestructura
+real (Identity + Tenancy + onboarding + Access Control + Typed
+Configuration + Audit + Event Bus + Files + Notifications + App Registry).
+Desde la sesión 13, la topología real de despliegue tiene dos procesos
+backend separados (`apps/api` para HTTP, `apps/worker` para el outbox
+dispatcher). Los 8 pasos de `docs/ARCHITECTURE.md` §17 ("Primera secuencia
+de construcción") están completos, incluyendo el paso 8 ("Revisión
+integral de Foundation antes de Master Data") — ver la sección inmediata
+siguiente. `docs/ARCHITECTURE.md`/`docs/MULTITENANCY.md`/`docs/ROADMAP.md`
+ya no llevan el encabezado "Propuesta para aprobación"; ADR-004, ADR-005,
+ADR-006, ADR-007 y ADR-008 están ratificados en `docs/DECISIONS.md`.
+ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma) y ADR-003
+(Multi-Tenancy) siguen pendientes de numeración formal — sus decisiones ya
+están implementadas y verificadas repetidamente, pero no hay un documento
+ADR dedicado a cada una todavía; esto no bloquea el cierre de Foundation ni
+el inicio de Fase 2.
+
+## Revisión de cierre de Foundation (MASTER_SPEC §92, sesión 22, 2026-08-30)
+
+Revisión integral realizada antes de iniciar Fase 2, cubriendo las seis
+áreas que MASTER_SPEC §92 exige al final de cada fase. No repite el detalle
+ya documentado módulo por módulo en `docs/SECURITY.md` (huecos conocidos)
+y `docs/DATABASE.md` (esquema); referencia esos documentos en vez de
+duplicarlos.
+
+**Architecture Review.** Los límites de módulo definidos en
+`docs/ARCHITECTURE.md` §5-§6 se sostuvieron durante 22 sesiones sin una
+sola violación de "un módulo no consulta tablas de otro" — cada acceso
+cross-module pasa por el contrato público (`index.ts`) de su módulo. El
+único patrón recurrente de fricción real fue el ciclo de carga de módulos
+cuando un controller necesita guards de otro módulo que a su vez depende
+del primero (RBAC/Audit/Notifications dentro de `tenants/presentation/`);
+se resolvió siempre de la misma manera documentada (mover el controller al
+módulo del que depende su guard) y App Registry confirma que el patrón
+generaliza: al no existir esa dependencia inversa, su controller sí pudo
+vivir en su propio módulo sin fricción. Los tres ciclos previstos como
+posible deuda (Access Control, Configuration/Files/Notifications) están
+todos resueltos y probados por `app.module.spec.ts`. No existe todavía una
+fitness function de CI que falle automáticamente ante un import prohibido
+(`docs/ARCHITECTURE.md` §16) — hoy se sostiene por convención y revisión,
+no por una regla de lint; queda como deuda técnica aceptada, no bloqueante
+para Fase 2.
+
+**Security Review.** Cobertura real de autenticación (Argon2id, sesiones
+opacas con rotación y revocación, resistencia a enumeración de cuentas),
+autorización (RBAC deny-by-default, verificado con aislamiento cross-tenant
+real en cada módulo que lo requiere), y un modelo de amenazas explícito
+por módulo en `docs/SECURITY.md` (14 secciones). Huecos aceptados y
+documentados que MASTER_SPEC §8 marca como "eventual", no como requisito
+de Foundation: sin MFA, sin OAuth/OIDC/SSO, sin API Keys/Service Accounts.
+Sin PostgreSQL Row Level Security (evaluado y explícitamente diferido en
+`docs/ARCHITECTURE.md` §2.2/§10 — los controles de aplicación ya
+verificados se consideran suficientes para Foundation). Rate limiting
+existe solo en `/api/v1/auth/*`; el resto de la superficie HTTP no lo
+tiene todavía (aceptable sin tráfico público real). Sin secret manager
+dedicado (variables de entorno); sin escaneo de dependencias/imágenes en
+CI todavía. Ninguno de estos huecos afecta la corrección del aislamiento
+multi-tenant ya verificado, que es la garantía crítica de Foundation.
+
+**Database Review.** Esquema relacional normalizado, sin una tabla
+"universal" de JSON; JSONB usado únicamente donde el propio diseño ya lo
+justificaba (`SettingValue.value`, `AppConfiguration.value`,
+`AuditEntry.previousValues`/`newValues`, `Notification.data`) y siempre
+documentado como decisión explícita, nunca por conveniencia. IDs UUID
+consistentes en las 24 tablas de Foundation; `timestamptz(6)` para todo
+instante, sin cadenas de fecha locales. Ninguna tabla usa `float` para
+dinero — no existe todavía ningún campo monetario en Foundation, así que
+esta regla (MASTER_SPEC §30) queda pendiente de su primera prueba real en
+Fase 4 (Ventas). Migraciones: 12 migraciones forward-only, todas generadas
+y aplicadas contra Postgres real (`prisma migrate dev`), cero drift
+confirmado repetidamente vía `prisma migrate status`. Sin estrategia de
+backup/PITR todavía (MASTER_SPEC §44, explícitamente "diseñar
+posteriormente") — aceptable sin producción desplegada.
+
+**Testing Review.** 332 tests unitarios (`apps/api` 237, `@erp/events` 27,
+`@erp/notifications` 33, `@erp/worker` 6, `@erp/api-client` 10,
+`apps/erp-web` 19) + 21 tests de integración contra Postgres real vía
+Testcontainers + 6 tests E2E de Playwright con Chromium real contra la
+topología completa (api + worker + erp-web + Postgres + Redis + MinIO).
+Cobertura de riesgo alta (auth, tenancy, permisos, aislamiento
+cross-tenant) verificada en los tres niveles, no solo unitario. Los module
+wiring specs (`*.module.spec.ts`) funcionan como una fitness function
+parcial de arquitectura (detectan ciclos de módulos y providers faltantes)
+aunque no sean tests de arquitectura formales. Sin contract tests contra
+el spec OpenAPI todavía (`docs/ARCHITECTURE.md` §12 los lista como nivel
+futuro) — mitigado parcialmente por generar el SDK directamente del spec
+real (sesión 21), que ya fuerza una correspondencia exacta.
+
+**Performance Review.** Sin problema real detectado — el volumen de datos
+de Foundation es de desarrollo/pruebas, no de producción. Deuda aceptada
+para revisar antes de Fase 2 introducir volumen real: ningún endpoint de
+listado usa paginación cursor-based todavía (`docs/ARCHITECTURE.md` §9 la
+exige "donde el orden sea estable"); los listados actuales (`findAll`,
+`listX`) son consultas acotadas por límites estáticos en código
+(`limit`/tope 200 en Audit y Platform Users) o catálogos pequeños por
+diseño (Permissions, Settings, Apps), nunca miles de filas reales todavía.
+Revisar antes de que Master Data introduzca catálogos de productos/clientes
+con volumen genuino.
+
+**Technical Debt Review.** Deuda técnica consolidada, ya documentada
+individualmente en `docs/SECURITY.md`/`docs/DECISIONS.md`, sin ítems
+nuevos descubiertos en esta revisión: ratificación formal de ADR-001/002/003
+(documentación, no reimplementación); dead-letter para el inbox de
+consumidores (ADR-008); observabilidad/OpenTelemetry (`docs/ARCHITECTURE.md`
+§11, nunca iniciado); entitlement/facturación SaaS conectado al App
+Registry (ADR-005); registries de contribución de frontend/backend para
+apps (`docs/PLUGINS.md` §8-§9); SemVer ranges para dependencias entre apps.
+Ninguno de estos ítems bloquea Fase 2 — se retoman cuando el módulo de
+negocio correspondiente los necesite de verdad, siguiendo el mismo
+criterio de "no sobrearquitectura" aplicado durante toda Foundation
+(MASTER_SPEC §59/§93).
+
+**Conclusión.** Foundation cumple los criterios de salida de
+`docs/ARCHITECTURE.md` §17 y queda cerrada formalmente. Fase 2 (Master
+Data) puede comenzar sin decisiones de arquitectura pendientes que la
+bloqueen.
 
 ## Completed
 
@@ -537,16 +640,40 @@ ADR-004 nada se ha construido contra él todavía.
   ocurrencias irreductibles (valores JSON dinámicos) más 2 tipos boilerplate
   de la propia herramienta. Detalle completo en `docs/WORK_QUEUE.md`
   ("Hecho — sesión 21").
-- 289 tests unitarios pasando (api 198, api-client 9, erp-web 16) + 27 en
-  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 20
-  tests de integración con Postgres real + **5 tests E2E de Playwright
+- **App Registry mínimo** (`apps/api/src/core/app-registry`, Claude,
+  sesión 22, ADR-005): `AppDefinition` (catálogo global code-owned,
+  `FOUNDATION_APPS` vacío en producción — ningún módulo de negocio real
+  más allá del Core existe todavía para registrar), `TenantApp`
+  (enablement por tenant, lifecycle `ENABLED`/`DISABLED` únicamente, sin
+  la máquina de estados completa de `docs/PLUGINS.md` §7), `AppConfiguration`
+  (JSON opaco por tenant+app, sin catálogo propio). `validateAppCatalog`
+  rechaza claves duplicadas, dependencias inexistentes y ciclos antes de
+  seedear nada; `EnableAppUseCase`/`DisableAppUseCase` implementan chequeo
+  real de dependencias y de dependents (`docs/PLUGINS.md` §6). Contrato
+  HTTP nuevo (`GET/POST /api/v1/apps/...`), 2 permisos nuevos
+  (`apps.read`/`apps.manage`), auditoría real, UI nueva ("Apps",
+  `apps/erp-web/src/features/app-registry`) con estado vacío honesto en
+  vez de datos de ejemplo. Cierra el último ítem restante de
+  `docs/WORK_QUEUE.md` y formaliza el cierre de Foundation (ver "Revisión
+  de cierre de Foundation" arriba). Tablas nuevas (migración
+  `20260830041057_app_registry_foundation`, **generada y aplicada
+  directamente contra Postgres real**). **Verificado con fixtures de
+  prueba insertadas directamente vía SQL** (mismo patrón sancionado que el
+  resto del proyecto) contra Postgres real y contra la infraestructura
+  Docker persistente (limpiadas al terminar el smoke test — la única de
+  las tablas de Foundation sin un `onDelete: Restrict` que lo impidiera).
+  Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 22").
+- 332 tests unitarios pasando (api 237, api-client 10, erp-web 19) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 21
+  tests de integración con Postgres real + **6 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
   NestJS (`auth.module.spec.ts`, `app.module.spec.ts`,
   `tenants.module.spec.ts`, `access-control.module.spec.ts`,
   `configuration.module.spec.ts`, `audit.module.spec.ts`,
-  `files.module.spec.ts`, `platform-admin.module.spec.ts` en `apps/api`;
+  `files.module.spec.ts`, `platform-admin.module.spec.ts`,
+  `app-registry.module.spec.ts` en `apps/api`;
   `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
@@ -607,24 +734,24 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — ver `docs/WORK_QUEUE.md` para el próximo ítem (App Registry
-mínimo, deliberadamente diferido hasta que exista un módulo de negocio real
-que registrar; único ítem restante de la cola original).
+Ninguno activo — Foundation quedó formalmente cerrada en la sesión 22 (ver
+"Revisión de cierre de Foundation" arriba). El siguiente bloque es Fase 2
+(Master Data): Customers, Suppliers, Product Catalog, Pricing, Taxes,
+Warehousing master data (`docs/ARCHITECTURE.md` §5.2).
 
 ## Pending
 
-Ver `docs/WORK_QUEUE.md` para el orden de dependencia técnica completo.
-Resumen bajo ownership único de Claude: App Registry mínimo (deliberadamente
-diferido hasta que exista un módulo de negocio real que registrar, ver
-`docs/WORK_QUEUE.md`) — único ítem restante de la cola original.
-También pendiente: ratificar ADR-001, ADR-002, ADR-003 y ADR-005 formalmente
-(ADR-004, ADR-006, ADR-007 y ADR-008 ya están ratificados). Claude debe
-completar cualquier UI, SDK y cobertura de pruebas que estos bloques
-necesiten. La UI de RBAC (incluida la invitación de miembros), el E2E de
-sesión, la UI de Configuración y la UI de Platform Administration (panel de
-admin en erp-web, sesión 18) ya están hechas e integradas (ver Completed);
-la UI de Files (subida/listado/descarga) y de Notifications (bandeja/badge
-de no leídas) todavía no se han construido.
+Ningún ítem de la cola original de Foundation queda pendiente
+(`docs/WORK_QUEUE.md`). También pendiente, sin bloquear Fase 2: ratificar
+ADR-001, ADR-002 y ADR-003 formalmente (ADR-004, ADR-005, ADR-006, ADR-007
+y ADR-008 ya están ratificados) — sus decisiones ya están implementadas y
+verificadas, solo falta el documento formal. La UI de RBAC (incluida la
+invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
+de Platform Administration (sesión 18) y la UI de Apps (sesión 22) ya
+están hechas e integradas (ver Completed); la UI de Files (subida/listado/
+descarga) y de Notifications (bandeja/badge de no leídas) todavía no se
+han construido — quedan como mejoras de UX sin dependencia de arquitectura,
+a retomar si el usuario las pide o cuando un módulo de negocio las necesite.
 
 ## Production Status
 
@@ -883,3 +1010,31 @@ no simulado). Servidores persistentes reiniciados con configuración normal
 operativa: Docker Desktop se había detenido entre el bloque anterior de
 esta sesión y este (mismo patrón ya documentado en sesiones previas);
 reiniciado antes de correr `test:integration`/`test:e2e`.
+
+**Sesión 22 (2026-08-30, App Registry mínimo)**: migración
+`20260830041057_app_registry_foundation` (`app_definitions`, `tenant_apps`,
+`app_configurations`) generada y **aplicada directamente contra Postgres
+real** vía `prisma migrate dev` — `prisma migrate status` confirma las 12
+migraciones aplicadas sin drift. Flujo HTTP completo repetido con el
+servidor real compilado tras el rebuild de esta sesión: registro y
+provisioning reales → catálogo vacío confirmado (`GET
+/api/v1/apps/definitions` → `[]`) → dos apps fixture ("products",
+"manufacturing" dependiendo de "products") insertadas directamente vía
+`psql` → habilitar "manufacturing" sin "products" rechazado con
+`409 APP_DEPENDENCY_NOT_SATISFIED` real → habilitar "products" → habilitar
+"manufacturing" (ahora exitoso) → habilitar "products" de nuevo confirma
+idempotencia real (sin fila duplicada) → configurar
+`default_warehouse=wh-1` para "products" → listar configuración confirma
+el valor real → deshabilitar "products" mientras "manufacturing" sigue
+habilitado rechazado con `409 APP_HAS_ACTIVE_DEPENDENTS` real →
+deshabilitar "manufacturing" → deshabilitar "products" (ahora exitoso) →
+`GET /api/v1/audit-entries` confirma las 9 entradas reales esperadas
+(3 `enabled`, 3 `disabled`, 1 `app_configuration.changed`, más las de
+provisioning ya conocidas). Las fixtures y filas de
+`tenant_apps`/`app_configurations`/`app_definitions` de este smoke test
+**fueron eliminadas al terminar** — a diferencia de la mayoría de smoke
+tests de sesiones anteriores, aquí sí fue posible: ninguna de las tres
+tablas nuevas tiene un `onDelete: Restrict` hacia `users` que lo
+impidiera, a diferencia de `audit_entries.user_id`. El usuario/tenant de
+prueba de este smoke test sí permanecen en la base, por el mismo motivo ya
+documentado en sesiones anteriores.

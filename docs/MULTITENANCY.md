@@ -1,6 +1,9 @@
 # Multi-Tenancy V1 — Propuesta
 
-Estado: **Propuesta para aprobación**
+Estado: **Aceptada, implementada y verificada tres veces contra Postgres
+real (manual, integration test y E2E de navegador) — sesión 22,
+2026-08-30. Ver "Revisión de cierre de Foundation" en
+`docs/PROJECT_STATE.md`.**
 
 Alcance: aislamiento, jerarquía organizacional y autorización contextual de V1
 

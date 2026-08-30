@@ -1,6 +1,10 @@
 # Event Architecture V1 — Propuesta
 
-Estado: **Propuesta para aprobación**
+Estado: **El subconjunto "mínimo" (outbox transaccional, bus in-process,
+inbox/idempotencia de consumidores) está implementado y ratificado en
+`docs/DECISIONS.md` ADR-004 y ADR-008. El resto de este documento (jobs
+BullMQ para negocio, webhooks salientes, taxonomía completa de eventos de
+integración) sigue como propuesta de referencia sin implementar.**
 
 Alcance: eventos de dominio, eventos de integración, outbox, jobs e idempotencia
 
