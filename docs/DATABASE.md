@@ -753,3 +753,107 @@ generated and applied via
 `prisma migrate dev --name customers_suppliers_master_data` against the
 real `erp_platform` Postgres container; applied cleanly on the first
 attempt (no schema-validator errors this time, unlike Catalog's migration).
+
+## Taxes / Warehouses / Pricing tables (Master Data — Phase 2, closing block, 2026-08-31)
+
+Scope: `docs/ARCHITECTURE.md` §5.2 "Master Data" — the third and final
+Phase 2 block, closing out the phase. Three separate modules
+(`apps/api/src/modules/taxes`, `.../warehouses`, `.../pricing`), one
+combined migration.
+
+### `taxes`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | No `@@unique([tenantId, id])` — nothing references this table via a composite FK. |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `code` | `varchar(50)` | |
+| `name` | `varchar(150)` | |
+| `rate` | `numeric(7,4)` | A **percentage** value (`"12.0000"` means 12%), not a fraction. Scoped to `numeric(7,4)` rather than the `numeric(14,4)` used for money — a tax rate has no realistic need for money's range, and using a tighter, deliberately-chosen scale here (rather than copy-pasting the money column type) was a conscious choice. |
+| `status` | `MasterDataStatus` | Reuses the enum already defined for Catalog. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])`. Deliberately **not** a rules
+engine — no jurisdiction logic, no compound/cascading composition, no
+product-category applicability. See docs/SECURITY.md "Taxes".
+
+### `warehouses`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | Same no-composite-unique reasoning as `taxes`. |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `code` | `varchar(50)` | |
+| `name` | `varchar(150)` | |
+| `address_line` / `city` / `country` | `varchar(255)?` / `varchar(100)?` / `varchar(2)?` | Same flat-address shape as `customers`/`suppliers`. |
+| `status` | `MasterDataStatus` | |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])`. Belongs directly to `Company` —
+**no `branch_id`/`location_id` column**, because neither `Branch` nor
+`Location` exists anywhere in this schema yet
+(`docs/ARCHITECTURE.md` §6's conceptual model allows an optional
+association, but adding nullable FKs to tables that don't exist would be
+pure speculative scaffolding). Add the association additively once either
+entity is actually built.
+
+### `price_lists`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | `@@unique([tenantId, id])` — required so `price_list_items.price_list_id` can reference this table tenant-scoped. |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `code` | `varchar(50)` | |
+| `name` | `varchar(150)` | |
+| `currency` | `varchar(3)` | ISO 4217, uppercased by the domain layer; **not validated** against a real currency list — same accepted gap already documented for `country` on Customer/Supplier/Warehouse. |
+| `valid_from` / `valid_until` | `date?` / `date?` | `@db.Date`, not `timestamptz` — these are civil dates, not instants (`docs/ARCHITECTURE.md` §8.1). Domain-validated `validFrom <= validUntil` when both are present. |
+| `status` | `MasterDataStatus` | |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])`. Resolving which list actually
+applies to a real sale on a given date is Sales-phase business logic
+(Phase 4) — this table only stores the list itself, the same
+"storage now, business rules later" split already used for Typed
+Configuration in Foundation.
+
+### `price_list_items`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `price_list_id` | `uuid` | `price_list_id` → `price_lists(tenantId, id)`, `ON DELETE CASCADE` — a line has no meaning without its list, same reasoning as `product_variants` → `products`. |
+| `product_id` | `uuid` | → `products(tenantId, id)`, `ON DELETE RESTRICT`. **Deliberately references `Product` only, never `ProductVariant`.** Supporting per-variant list pricing would need a nullable-FK uniqueness scheme — a partial unique index (`WHERE product_variant_id IS NOT NULL`) that Prisma cannot express declaratively — for no validated use case yet. A `hasVariants` product simply cannot be added to a price list in this slice; see docs/SECURITY.md "Pricing". |
+| `price` | `numeric(14,4)` | Same money-column shape as `products.base_price`. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, priceListId, productId])` — a real database
+constraint, not just an application check (verified against real
+Postgres). No `status` column: removing an item is a real `DELETE`
+(`RemovePriceListItemUseCase`), not a lifecycle transition — a price list
+line has no status of its own the way a standalone master-data entity
+does.
+
+### The first genuine cross-module dependency
+
+`AddPriceListItemUseCase` (Pricing) calls `GetProductUseCase`, a new use
+case added to Catalog's own public contract
+(`apps/api/src/modules/catalog/application/use-cases/get-product.use-case.ts`,
+exported from `modules/catalog/index.ts`) — the first time one business
+module in this codebase depends on another
+(`docs/ARCHITECTURE.md` §6: "module A -> public contract of module B").
+`PricingModule` imports `CatalogModule` directly; the dependency is
+directed and cycle-free — Catalog has zero knowledge of Pricing.
+Exposed as a use case, not the raw `ProductRepository` interface, so the
+consuming module gets Catalog's own read boundary rather than ad-hoc query
+access to its persistence.
+
+### Migration
+
+`packages/database/prisma/migrations/20260831170111_pricing_taxes_warehouses_master_data/` —
+generated and applied via
+`prisma migrate dev --name pricing_taxes_warehouses_master_data` against
+the real `erp_platform` Postgres container; applied cleanly on the first
+attempt.

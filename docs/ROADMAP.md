@@ -2,8 +2,11 @@
 
 Estado: **Fase 0 (Arquitectura) y Fase 1 (Foundation) aceptadas,
 implementadas y cerradas formalmente — sesión 22, 2026-08-30. Ver
-"Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. Las fases
-2-12 siguen como propuesta de roadmap sin implementar.**
+"Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. Fase 2
+(Master Data) implementada y cerrada formalmente — sesión 25, 2026-08-31,
+en tres bloques (Catálogo, sesión 23; Customers/Suppliers, sesión 24;
+Taxes/Warehouses/Pricing, sesión 25). Las fases 3-12 siguen como propuesta
+de roadmap sin implementar.**
 
 Estrategia: fases con exit criteria, sin fechas artificiales
 

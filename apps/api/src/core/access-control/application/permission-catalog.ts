@@ -58,4 +58,13 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
   { key: "customers.manage", description: "Create, edit and archive customers." },
   { key: "suppliers.read", description: "View the company's suppliers." },
   { key: "suppliers.manage", description: "Create, edit and archive suppliers." },
+  { key: "taxes.read", description: "View the company's taxes." },
+  { key: "taxes.manage", description: "Create, edit and archive taxes." },
+  { key: "warehouses.read", description: "View the company's warehouses." },
+  { key: "warehouses.manage", description: "Create, edit and archive warehouses." },
+  { key: "pricing.price-lists.read", description: "View the company's price lists and their items." },
+  {
+    key: "pricing.price-lists.manage",
+    description: "Create, edit and archive price lists and manage their items.",
+  },
 ];

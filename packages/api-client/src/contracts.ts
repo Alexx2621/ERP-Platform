@@ -161,6 +161,24 @@ export type CreateSupplierInput = components["schemas"]["CreateSupplierDto"];
 export type UpdateSupplierInput = components["schemas"]["UpdateSupplierDto"];
 export type SetSupplierStatusInput = components["schemas"]["SetSupplierStatusDto"];
 
+export type TaxResponse = components["schemas"]["TaxResponseDto"];
+export type CreateTaxInput = components["schemas"]["CreateTaxDto"];
+export type UpdateTaxInput = components["schemas"]["UpdateTaxDto"];
+export type SetTaxStatusInput = components["schemas"]["SetTaxStatusDto"];
+
+export type WarehouseResponse = components["schemas"]["WarehouseResponseDto"];
+export type CreateWarehouseInput = components["schemas"]["CreateWarehouseDto"];
+export type UpdateWarehouseInput = components["schemas"]["UpdateWarehouseDto"];
+export type SetWarehouseStatusInput = components["schemas"]["SetWarehouseStatusDto"];
+
+export type PriceListResponse = components["schemas"]["PriceListResponseDto"];
+export type CreatePriceListInput = components["schemas"]["CreatePriceListDto"];
+export type UpdatePriceListInput = components["schemas"]["UpdatePriceListDto"];
+export type SetPriceListStatusInput = components["schemas"]["SetPriceListStatusDto"];
+export type PriceListItemResponse = components["schemas"]["PriceListItemResponseDto"];
+export type AddPriceListItemInput = components["schemas"]["AddPriceListItemDto"];
+export type UpdatePriceListItemInput = components["schemas"]["UpdatePriceListItemDto"];
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

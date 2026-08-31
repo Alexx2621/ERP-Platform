@@ -22,14 +22,161 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-Fase 2 (Master Data) está en curso. El primer bloque (Catálogo — Units of
-Measure, Categories, Brands, Products, Product Variants) se cerró en la
-sesión 23; el segundo bloque (Customers, Suppliers) se cerró en la sesión
-24 (ver "Hecho — sesión 24" abajo). Quedan pendientes del alcance de Fase 2
-descrito en `docs/ARCHITECTURE.md` §5.2: Pricing (price lists/multi-tier),
-Taxes, y Warehousing master data — cada uno deliberadamente diferido, no
-simulado, ver "Known limitations" en las secciones "Catalog" y
-"Customers / Suppliers" de `docs/SECURITY.md`.
+**Fase 2 (Master Data) está completa** — los tres bloques descritos en
+`docs/ARCHITECTURE.md` §5.2 están cerrados: Catálogo (sesión 23),
+Customers/Suppliers (sesión 24) y Taxes/Warehouses/Pricing (sesión 25, ver
+"Hecho — sesión 25" abajo). El siguiente trabajo no bloqueado es Fase 3
+(Inventory) según `docs/ROADMAP.md` §7, salvo que el usuario indique otra
+prioridad. Alcance deliberadamente fuera de Fase 2 y diferido a fases
+futuras (no simulado): un motor de reglas fiscales real (Sales/Phase 4),
+resolución de qué lista de precios aplica a una venta (Sales/Phase 4),
+precios de lista por variante (requeriría un índice único parcial que
+Prisma no expresa declarativamente), asociación Warehouse↔Branch/Location
+(ninguna de las dos entidades existe todavía), e import/export masivo
+(MASTER_SPEC §83, mencionado también en `docs/ROADMAP.md` §6 punto 6 pero
+fuera del alcance de Master Data en sí) — ver "Known limitations" en las
+secciones "Catalog", "Customers / Suppliers" y
+"Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 25 (Taxes, Warehouses, Pricing — Fase 2, bloque de cierre)
+
+Tercer y último bloque de Master Data, cerrando la Fase 2 por completo.
+Continuación directa de la sesión 24 dentro de la misma sesión de trabajo,
+a pedido explícito del usuario ("continua con tu proximo trabajo y deja
+terminada de una vez la fase 2").
+
+- **`apps/api/src/modules/taxes/`**: `Tax` (code, name, `rate` como
+  porcentaje en string decimal canónico — `"12.0000"` significa 12%,
+  `numeric(7,4)` en vez de reusar `numeric(14,4)` de dinero, una elección
+  deliberada ya que una tasa nunca necesita el rango de una cifra
+  monetaria). Deliberadamente **no** un motor de reglas fiscales — sin
+  lógica de jurisdicción, sin composición de impuestos, sin asociación a
+  Product/Sales todavía (MASTER_SPEC §31 sigue diferido). Mismo layout
+  domain/application/infrastructure/presentation/test-support que Catalog.
+- **`apps/api/src/modules/warehouses/`**: `Warehouse` (code, name,
+  addressLine, city, country, status — mismo shape de dirección plana que
+  Customer/Supplier). Pertenece directamente a `Company`, **sin** columna
+  `branch_id`/`location_id` — ninguna de las dos entidades existe todavía
+  en el schema, así que agregar FKs nullable hacia tablas inexistentes
+  habría sido scaffolding especulativo puro (MASTER_SPEC §59/§93).
+- **`apps/api/src/modules/pricing/`**: `PriceList` (code, name, currency
+  ISO 4217 sin validar contra una lista real, `validFrom`/`validUntil`
+  como `date` civil con la invariante `validFrom <= validUntil` validada
+  en el dominio — "Pricing/Price Lists con Decimal y vigencia" de
+  `docs/ROADMAP.md` §6 punto 4) y `PriceListItem` (referencia únicamente a
+  `Product`, nunca a `ProductVariant` — soportar precios por variante
+  habría exigido un índice único parcial que Prisma no puede expresar
+  declarativamente, sin caso de uso validado que lo justifique todavía;
+  ver el docstring de `PriceListItem` en `schema.prisma`). Sin columna de
+  estado propia: quitar un ítem es un `DELETE` real
+  (`RemovePriceListItemUseCase`), no una transición de ciclo de vida.
+- **Primera dependencia genuina entre módulos de negocio del código base**:
+  `AddPriceListItemUseCase` (Pricing) llama a `GetProductUseCase`, un caso
+  de uso nuevo agregado al contrato público de Catalog
+  (`apps/api/src/modules/catalog/application/use-cases/get-product.use-case.ts`,
+  exportado desde `modules/catalog/index.ts`) — no la interfaz cruda del
+  repositorio, para que el módulo consumidor reciba el límite de lectura
+  propio de Catalog en vez de acceso ad-hoc a su persistencia
+  (`docs/ARCHITECTURE.md` §6: "module A -> public contract of module B").
+  `PricingModule` importa `CatalogModule` directamente — dependencia
+  dirigida y libre de ciclos, Catalog no tiene conocimiento de Pricing.
+- 6 permisos nuevos: `taxes.read/.manage`, `warehouses.read/.manage`,
+  `pricing.price-lists.read/.manage`. Auditoría real en las 4 acciones de
+  Pricing (`pricing.price_list.created/.updated/.status_changed`,
+  `pricing.price_list_item.added/.updated/.removed`) más las esperadas de
+  Taxes/Warehouses.
+- Tabla nueva (migración
+  `20260831170111_pricing_taxes_warehouses_master_data`, **generada y
+  aplicada directamente contra Postgres real** vía `prisma migrate dev`,
+  aplicada limpiamente al primer intento pese a combinar tres módulos en
+  una sola migración). Detalle completo en `docs/DATABASE.md`
+  "Taxes / Warehouses / Pricing tables".
+- Contrato HTTP nuevo: `GET/POST /api/v1/taxes`, `PUT /:id`,
+  `PUT /:id/status` (mismo patrón para `/api/v1/warehouses`);
+  `GET/POST /api/v1/pricing/price-lists`, `PUT /:id`, `PUT /:id/status`,
+  `GET/POST /api/v1/pricing/price-lists/:id/items`,
+  `PUT .../:itemId`, `DELETE .../:itemId`.
+- **`@erp/api-client`**: ~20 tipos y ~19 métodos nuevos generados desde el
+  spec OpenAPI real, sin bugs de fidelidad de decoradores.
+- **UI** (`apps/erp-web/src/features/commercial/`, ruta nueva
+  `/commercial`, botón "Comercial" en el workspace): pestañas Impuestos/
+  Bodegas/Precios. A diferencia de Contactos (donde Customer/Supplier sí
+  comparten un componente genérico), aquí se escribieron tres paneles
+  dedicados — los tres shapes de campo son lo bastante distintos
+  (impuesto: tasa; bodega: dirección; lista de precios: moneda+vigencia+
+  ítems anidados) que forzarlos por un solo componente genérico habría
+  exigido plumbing dinámico de campos sin ahorrar duplicación real. El
+  panel de Precios incluye un modal anidado de ítems (mismo patrón que el
+  modal de variantes de Catálogo), con el selector de producto filtrando
+  productos `hasVariants` del lado del cliente para que el usuario nunca
+  intente una combinación que el backend rechazaría.
+- **Dos fallos reales de test (no de producción) encontrados y corregidos
+  durante la propia escritura de tests, no simulados**: (1) `FormField`
+  renderiza su `hint` dentro de la misma etiqueta `<label>` que el input,
+  así que el nombre accesible de "Tasa (%)" es en realidad la
+  concatenación de la etiqueta y el hint — un `getByLabelText` de
+  coincidencia exacta no lo encuentra; corregido con `{ exact: false }` en
+  el test, sin tocar el componente (el comportamiento de UI es correcto,
+  solo la aserción del test necesitaba ajustarse). (2) "Ciudad" aparecía
+  en el encabezado de columna, la celda del valor real y la etiqueta del
+  campo del modal de creación (montado permanentemente por `Tabs`) a la
+  vez — corregido escopando la aserción a la fila específica en vez de
+  una búsqueda de texto global, mismo patrón de lección ya aplicado en
+  sesiones anteriores.
+- Tests: 60 tests unitarios nuevos en `apps/api` (18 dominio, 33 casos de
+  uso, 3 wiring de módulo, 1 caso de uso nuevo de Catalog
+  `GetProductUseCase` con su propio test, repartidos entre Taxes/
+  Warehouses/Pricing) — 402 tests unitarios totales en `apps/api` (antes
+  336, más las 6 aserciones nuevas en `app.module.spec.ts`). Suite de
+  integración con un escenario real nuevo contra Postgres
+  (`apps/api/test/integration/pricing-taxes-warehouses.integration-spec.ts`):
+  unicidad real de código de impuesto, contrato de tres estados verificado
+  en Warehouse contra la DB real, la dependencia cruzada real
+  Pricing→Catalog (rechazo real de un producto `hasVariants` real creado
+  vía el `CreateProductUseCase` real, no un fixture de prueba), round-trip
+  de formato decimal verificado contra la DB real, aislamiento
+  cross-tenant — 24/24 en total (antes 23). 4 tests nuevos en
+  `apps/erp-web` (`commercial-page.spec.tsx`) — 28/28 en total (antes 24).
+  **E2E real nuevo** (`apps/e2e/tests/commercial.spec.ts`, Chromium vía
+  Testcontainers): crea un impuesto real y alterna su estado, crea una
+  bodega real, navega a Catálogo para crear un producto real, vuelve a
+  Comercial y crea una lista de precios real con vigencia, agrega y quita
+  un ítem de precio real — todo contra el backend real con las respuestas
+  HTTP verificadas, incluyendo el flujo cross-page realista (Catálogo →
+  Comercial) que un usuario real seguiría — 9/9 Playwright en total (antes
+  8).
+- **Smoke test manual verificado contra Docker/Postgres real** (además de
+  la suite automatizada): registro y provisioning reales → impuesto real
+  creado, código duplicado rechazado (`409 TAX_CODE_IN_USE`) → bodega real
+  creada → producto real sin variantes y producto real `hasVariants`
+  creados vía Catálogo real → lista de precios real con vigencia →
+  producto `hasVariants` rechazado (`409
+  PRICE_LIST_ITEM_PRODUCT_HAS_VARIANTS`) → producto inexistente rechazado
+  (`400 PRICE_LIST_ITEM_PRODUCT_NOT_FOUND`) → ítem real agregado,
+  precisión decimal confirmada vía `psql` directo contra
+  `numeric(14,4)`/`numeric(7,4)` (`"24.5000"`/`"12.0000"`, sin recorte de
+  ceros) → ítem actualizado → ítem duplicado rechazado (`409
+  PRICE_LIST_ITEM_ALREADY_EXISTS`) → ítem eliminado, `DELETE` real
+  confirmado vía `psql` (conteo de filas en 0, no solo excluido de
+  listados) → `GET /audit-entries` confirma las 12 entradas reales
+  esperadas de la sesión completa en orden cronológico inverso correcto.
+- **Nota operativa, no un bug de código**: Docker Desktop se detuvo entre
+  el bloque de Customers/Suppliers y este (mismo patrón ya documentado en
+  sesiones anteriores) — reiniciado exitosamente, los contenedores
+  `restart: unless-stopped` se recuperaron solos. Los procesos
+  persistentes `apps/api` y `apps/erp-web` (pero no `apps/worker`) se
+  cayeron silenciosamente durante ese reinicio de Docker — reconstruidos y
+  reiniciados antes de continuar.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (402 api + 27 events + 33 notifications + 6
+  worker + 13 api-client + 28 erp-web = 509), `pnpm --filter @erp/api
+  test:integration` (24/24 contra Postgres real), `pnpm --filter @erp/e2e
+  test:e2e` (9/9 Playwright) — todo verde. Una corrida de `pnpm test` a
+  nivel de monorepo mostró un fallo aislado por timeout en
+  `catalog-page.spec.tsx` bajo carga concurrente completa (contención de
+  recursos, no una regresión real) — confirmado descartándolo con dos
+  corridas limpias adicionales, una aislada de `apps/erp-web` y otra del
+  monorepo completo, ambas 100% verdes.
 
 ### Hecho — sesión 24 (Customers, Suppliers — Fase 2, segundo bloque)
 

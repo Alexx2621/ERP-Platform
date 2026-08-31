@@ -1,14 +1,14 @@
 # Project State
 
-Última actualización: 2026-08-31 (sesión 24), tras implementar Customers y
-Suppliers — segundo bloque de Fase 2 (Master Data), siguiendo al Catálogo
-de la sesión 23. Ver "Hecho — sesión 24" en `docs/WORK_QUEUE.md` para el
-detalle completo, incluyendo la decisión deliberada de mantener Customer/
-Supplier como entidades separadas (no un "Party" compartido) y un bug real
-de singularización de texto en la UI encontrado y corregido antes de
-llegar a producción. Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
-(reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como
-historial).
+Última actualización: 2026-08-31 (sesión 25), tras implementar Taxes,
+Warehouses y Pricing (Price Lists) — tercer y último bloque de Fase 2
+(Master Data), **cerrando la fase por completo**. Ver "Hecho — sesión 25"
+en `docs/WORK_QUEUE.md` para el detalle completo, incluyendo la primera
+dependencia genuina entre módulos de negocio del código base
+(Pricing → Catalog, vía el `GetProductUseCase` público de Catalog) y un
+smoke test manual completo verificado contra Postgres real. Modelo de
+trabajo vigente: `docs/WORK_QUEUE.md` (reemplaza
+`docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como historial).
 
 ## Development Ownership
 
@@ -25,15 +25,21 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
-PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23)**. Bloques
-completados: Catálogo (Units of Measure, Categories, Brands, Products,
-Product Variants — `apps/api/src/modules/catalog`, sesión 23) y Customers/
-Suppliers (`apps/api/src/modules/customers`, `apps/api/src/modules/
-suppliers`, sesión 24 — ver "Hecho — sesión 24" en `docs/WORK_QUEUE.md`).
-Pendiente del alcance de `docs/ARCHITECTURE.md` §5.2: Pricing (price
-lists/multi-tier), Taxes, Warehousing master data — cada uno
-explícitamente diferido en `docs/SECURITY.md` "Catalog" y "Customers /
-Suppliers", no simulado.
+PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23) y formalmente
+cerrada el 2026-08-31 (sesión 25)**, los tres bloques descritos en
+`docs/ARCHITECTURE.md` §5.2 completos: Catálogo (Units of Measure,
+Categories, Brands, Products, Product Variants — `apps/api/src/modules/
+catalog`, sesión 23), Customers/Suppliers (`apps/api/src/modules/
+customers`, `apps/api/src/modules/suppliers`, sesión 24) y Taxes/
+Warehouses/Pricing (`apps/api/src/modules/taxes`, `.../warehouses`,
+`.../pricing`, sesión 25 — ver "Hecho — sesión 25" en
+`docs/WORK_QUEUE.md`). Alcance deliberadamente diferido a fases futuras,
+no simulado: motor de reglas fiscales real, resolución de qué lista de
+precios aplica a una venta, precios de lista por variante, asociación
+Warehouse↔Branch/Location, import/export masivo — ver "Known limitations"
+en `docs/SECURITY.md` "Catalog", "Customers / Suppliers" y
+"Taxes / Warehouses / Pricing". Próxima fase no bloqueada: PHASE 3 —
+Inventory (`docs/ROADMAP.md` §7), salvo indicación distinta del usuario.
 
 PHASE 1 — Foundation, **formalmente cerrada el 2026-08-30 (sesión 22)**:
 primer vertical slice integrado y verificado de extremo a extremo —
@@ -745,9 +751,51 @@ bloqueen.
   un "ADR-009" que nunca se escribió — corregido para apuntar a la
   sección real de `docs/SECURITY.md`. Detalle completo en
   `docs/WORK_QUEUE.md` ("Hecho — sesión 24").
-- 438 tests unitarios pasando (api 336, api-client 12, erp-web 24) + 27 en
-  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 23
-  tests de integración con Postgres real + **8 tests E2E de Playwright
+- **Taxes, Warehouses, Pricing — Fase 2, bloque de cierre** (`apps/api/src/
+  modules/taxes`, `.../warehouses`, `.../pricing`, Claude, sesión 25):
+  `Tax` (code, name, `rate` como porcentaje en string decimal canónico,
+  `numeric(7,4)`), `Warehouse` (code, name, dirección plana, sin
+  Branch/Location porque ninguna existe todavía en el schema),
+  `PriceList` (code, name, currency, `validFrom`/`validUntil` como `date`
+  civil con vigencia validada en el dominio) y `PriceListItem`
+  (referencia solo a `Product`, nunca a `ProductVariant` — soportar
+  variantes habría exigido un índice único parcial que Prisma no expresa
+  declarativamente; sin columna de estado propia, quitar un ítem es un
+  `DELETE` real). **Primera dependencia genuina entre módulos de negocio
+  del código base**: `AddPriceListItemUseCase` (Pricing) llama al
+  `GetProductUseCase` público de Catalog (nuevo, agregado a su contrato
+  exportado), no a su repositorio crudo — `PricingModule` importa
+  `CatalogModule` directamente, dependencia dirigida y libre de ciclos.
+  6 permisos nuevos (`taxes.*`/`warehouses.*`/`pricing.price-lists.*`),
+  auditoría real en las 7 acciones nuevas. Tabla nueva (migración
+  `20260831170111_pricing_taxes_warehouses_master_data`, **generada y
+  aplicada directamente contra Postgres real**, combinando tres módulos
+  en una sola migración limpiamente al primer intento). Contrato HTTP
+  nuevo (`GET/POST /api/v1/taxes`, `/api/v1/warehouses`,
+  `/api/v1/pricing/price-lists` con ítems anidados). UI nueva
+  ("Comercial", `apps/erp-web/src/features/commercial`, ruta
+  `/commercial`) con pestañas Impuestos/Bodegas/Precios — tres paneles
+  dedicados en vez de uno genérico, ya que los tres shapes de campo
+  divergen demasiado para justificar la abstracción; el panel de Precios
+  incluye un modal anidado de ítems con selector de producto que filtra
+  `hasVariants` del lado del cliente. **Dos fallos reales de test (no de
+  producción) encontrados y corregidos durante la propia escritura de
+  tests**: el `hint` de `FormField` se concatena al nombre accesible de su
+  `<label>`, rompiendo una coincidencia exacta de `getByLabelText`; y
+  "Ciudad" colisionaba entre el encabezado de columna, la celda de valor y
+  la etiqueta del modal (montado permanentemente por `Tabs`) — ambos
+  corregidos ajustando las aserciones del test, no el código de
+  producción. **Verificado con un smoke test manual completo contra
+  Docker/Postgres real**: impuesto y bodega reales creados, producto
+  `hasVariants` real rechazado de una lista de precios, precisión decimal
+  confirmada vía `psql` directo contra `numeric(14,4)`/`numeric(7,4)` sin
+  recorte de ceros, `DELETE` real de un ítem confirmado con conteo de
+  filas en Postgres, y las 12 entradas de auditoría de la sesión completa
+  verificadas en orden. Detalle completo en `docs/WORK_QUEUE.md`
+  ("Hecho — sesión 25").
+- 509 tests unitarios pasando (api 402, api-client 13, erp-web 28) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 24
+  tests de integración con Postgres real + **9 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
@@ -756,7 +804,9 @@ bloqueen.
   `configuration.module.spec.ts`, `audit.module.spec.ts`,
   `files.module.spec.ts`, `platform-admin.module.spec.ts`,
   `app-registry.module.spec.ts`, `catalog.module.spec.ts`,
-  `customers.module.spec.ts`, `suppliers.module.spec.ts` en `apps/api`;
+  `customers.module.spec.ts`, `suppliers.module.spec.ts`,
+  `taxes.module.spec.ts`, `warehouses.module.spec.ts`,
+  `pricing.module.spec.ts` en `apps/api`;
   `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
@@ -817,27 +867,35 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Fase 2 (Master Data): bloques Catálogo (sesión 23) y Customers/Suppliers
-(sesión 24) completados e integrados (ver Completed arriba). Pendiente del
-alcance de `docs/ARCHITECTURE.md` §5.2: Pricing (price lists/multi-tier),
-Taxes, Warehousing master data.
+Ninguno activo — **Fase 2 (Master Data) quedó formalmente cerrada en la
+sesión 25**: los tres bloques (Catálogo, sesión 23; Customers/Suppliers,
+sesión 24; Taxes/Warehouses/Pricing, sesión 25) están completados e
+integrados (ver Completed arriba). El siguiente bloque no bloqueado es
+Fase 3 (Inventory) según `docs/ROADMAP.md` §7, salvo indicación distinta
+del usuario.
 
 ## Pending
 
 Ningún ítem de la cola original de Foundation queda pendiente
-(`docs/WORK_QUEUE.md`). También pendiente, sin bloquear Fase 2: ratificar
-ADR-001, ADR-002 y ADR-003 formalmente (ADR-004, ADR-005, ADR-006, ADR-007
-y ADR-008 ya están ratificados) — sus decisiones ya están implementadas y
-verificadas, solo falta el documento formal. La UI de RBAC (incluida la
-invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
-de Platform Administration (sesión 18), la UI de Apps (sesión 22), la UI
-de Catálogo (sesión 23) y la UI de Contactos/Customers/Suppliers (sesión
-24) ya están hechas e integradas (ver Completed); la UI de Files (subida/
-listado/descarga) y de Notifications (bandeja/badge de no leídas) todavía
-no se han construido — quedan como mejoras de UX sin dependencia de
-arquitectura, a retomar si el usuario las pide o cuando un módulo de
-negocio las necesite. Dentro de Fase 2: Pricing, Taxes, Warehousing
-master data (ver "In Progress").
+(`docs/WORK_QUEUE.md`), y ningún ítem del alcance de Fase 2 descrito en
+`docs/ARCHITECTURE.md` §5.2 queda pendiente. También pendiente, sin
+bloquear Fase 3: ratificar ADR-001, ADR-002 y ADR-003 formalmente
+(ADR-004, ADR-005, ADR-006, ADR-007 y ADR-008 ya están ratificados) — sus
+decisiones ya están implementadas y verificadas, solo falta el documento
+formal. La UI de RBAC (incluida la invitación de miembros), el E2E de
+sesión, la UI de Configuración, la UI de Platform Administration
+(sesión 18), la UI de Apps (sesión 22), la UI de Catálogo (sesión 23), la
+UI de Contactos/Customers/Suppliers (sesión 24) y la UI de Comercial/
+Taxes/Warehouses/Pricing (sesión 25) ya están hechas e integradas (ver
+Completed); la UI de Files (subida/listado/descarga) y de Notifications
+(bandeja/badge de no leídas) todavía no se han construido — quedan como
+mejoras de UX sin dependencia de arquitectura, a retomar si el usuario las
+pide o cuando un módulo de negocio las necesite. Alcance deliberadamente
+diferido a fases futuras dentro del propio dominio de Master Data (no
+bloquea el cierre de Fase 2, ver "Known limitations" en
+`docs/SECURITY.md`): motor de reglas fiscales real, resolución de lista de
+precios aplicable a una venta, precios de lista por variante, asociación
+Warehouse↔Branch/Location, import/export masivo.
 
 ## Production Status
 
@@ -1165,5 +1223,44 @@ cliente, aceptado sin conflicto (tablas genuinamente separadas) →
 (`customers.customer.created`/`.updated`/`.status_changed`,
 `suppliers.supplier.created`) con el actor y los valores correctos. Los
 datos de prueba de esta sesión permanecen en la base, por el mismo motivo
+`onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
+anteriores.
+
+**Sesión 25 (2026-08-31, Taxes/Warehouses/Pricing — Fase 2, cierre)**:
+migración `20260831170111_pricing_taxes_warehouses_master_data` (`taxes`,
+`warehouses`, `price_lists`, `price_list_items`) generada y **aplicada
+directamente contra Postgres real** vía `prisma migrate dev`, combinando
+tres módulos en una sola migración limpiamente al primer intento —
+`prisma migrate status` confirma las 15 migraciones aplicadas sin drift.
+Nota operativa real durante esta sesión: Docker Desktop se detuvo antes de
+poder generar esta migración (mismo patrón ya documentado en sesiones
+anteriores) — reiniciado exitosamente vía
+`Start-Process "$env:LOCALAPPDATA\Programs\DockerDesktop\Docker Desktop.exe"`,
+los contenedores `restart: unless-stopped` se recuperaron solos una vez el
+daemon volvió a estar arriba; los procesos persistentes `apps/api` y
+`apps/erp-web` (pero no `apps/worker`, que sobrevivió) se cayeron
+silenciosamente durante ese reinicio y fueron reconstruidos/reiniciados
+antes de continuar. Verificado con el servidor real reconstruido y un
+smoke test manual vía HTTP + `psql` directo: registro y provisioning con
+compañía real → impuesto real creado (`IVA`, `12.0000`) → código
+duplicado rechazado con `409 TAX_CODE_IN_USE` real → bodega real creada →
+unidad de medida y dos productos reales creados vía Catálogo real (uno
+sin variantes, uno `hasVariants`) → lista de precios real con vigencia
+(`validFrom`/`validUntil`) → intento de agregar el producto `hasVariants`
+real a la lista rechazado con `409
+PRICE_LIST_ITEM_PRODUCT_HAS_VARIANTS` real (la primera verificación en
+runtime de la dependencia cruzada real Pricing→Catalog, no un mock) →
+producto inexistente rechazado con `400
+PRICE_LIST_ITEM_PRODUCT_NOT_FOUND` → ítem real agregado
+(`"7.9900"`) → **precisión decimal confirmada directamente contra
+Postgres vía `psql`** para ambas tablas nuevas con campos monetarios
+(`price_list_items.price` → `"24.5000"`, `taxes.rate` → `"12.0000"`,
+ninguno recortado) → ítem actualizado (`"6.5000"`) → ítem duplicado
+rechazado con `409 PRICE_LIST_ITEM_ALREADY_EXISTS` real → ítem eliminado
+→ **`DELETE` real confirmado directamente contra Postgres** (`SELECT
+count(*)` en 0, no solo excluido de un listado) → `GET
+/api/v1/audit-entries` confirma las 12 entradas reales esperadas de la
+sesión completa, en el orden cronológico inverso correcto. Los datos de
+prueba de esta sesión permanecen en la base, por el mismo motivo
 `onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
 anteriores.

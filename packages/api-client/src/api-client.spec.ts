@@ -538,6 +538,92 @@ describe("ApiClient", () => {
     );
   });
 
+  it("uses the documented Taxes/Warehouses/Pricing endpoints, including the company header", async () => {
+    const tax = {
+      id: "tax-1",
+      code: "IVA",
+      name: "IVA",
+      rate: "12.0000",
+      status: "ACTIVE",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const warehouse = {
+      id: "wh-1",
+      code: "WH-01",
+      name: "Bodega Central",
+      addressLine: null,
+      city: null,
+      country: null,
+      status: "ACTIVE",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const priceList = {
+      id: "pl-1",
+      code: "WHOLESALE",
+      name: "Mayoreo",
+      currency: "USD",
+      validFrom: null,
+      validUntil: null,
+      status: "ACTIVE",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const priceListItem = {
+      id: "item-1",
+      priceListId: "pl-1",
+      productId: "product-1",
+      price: "24.9900",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([tax]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([warehouse]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(priceList), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(priceListItem), { status: 201 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listTaxes("access-token", "grupo-aurora", "company-1");
+    await client.listWarehouses("access-token", "grupo-aurora", "company-1");
+    await client.createPriceList("access-token", "grupo-aurora", "company-1", {
+      code: "WHOLESALE",
+      name: "Mayoreo",
+      currency: "USD",
+    });
+    await client.addPriceListItem("access-token", "grupo-aurora", "company-1", "pl-1", {
+      productId: "product-1",
+      price: "24.9900",
+    });
+    await client.removePriceListItem("access-token", "grupo-aurora", "company-1", "pl-1", "item-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/taxes", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/warehouses", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/pricing/price-lists",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/pricing/price-lists/pl-1/items",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/pricing/price-lists/pl-1/items/item-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

@@ -6,6 +6,7 @@ import { CreateUnitOfMeasureUseCase } from "./create-unit-of-measure.use-case";
 import { CreateProductUseCase } from "./create-product.use-case";
 import { UpdateProductUseCase } from "./update-product.use-case";
 import { ListProductsUseCase } from "./list-products.use-case";
+import { GetProductUseCase } from "./get-product.use-case";
 import { SetProductStatusUseCase } from "./set-product-status.use-case";
 import {
   ProductBarcodeAlreadyInUseError,
@@ -33,6 +34,7 @@ async function buildContext() {
     createProduct: new CreateProductUseCase(products, units, categories, brands),
     updateProduct: new UpdateProductUseCase(products, categories, brands),
     listProducts: new ListProductsUseCase(products),
+    getProduct: new GetProductUseCase(products),
     setStatus: new SetProductStatusUseCase(products),
   };
 }
@@ -264,5 +266,20 @@ describe("Product use cases", () => {
     });
     const updated = await setStatus.execute({ tenantId: "t1", companyId: "c1", id: product.id, status: "DISCONTINUED" });
     expect(updated.status).toBe("DISCONTINUED");
+  });
+
+  it("gets a product by id, scoped to tenant", async () => {
+    const { createProduct, getProduct, unit } = await buildContext();
+    const product = await createProduct.execute({
+      tenantId: "t1",
+      companyId: "c1",
+      code: "SKU-1",
+      name: "Camisa",
+      unitOfMeasureId: unit.id,
+      basePrice: "19.99",
+    });
+    expect(await getProduct.execute("t1", product.id)).not.toBeNull();
+    expect(await getProduct.execute("t2", product.id)).toBeNull();
+    expect(await getProduct.execute("t1", "missing-id")).toBeNull();
   });
 });

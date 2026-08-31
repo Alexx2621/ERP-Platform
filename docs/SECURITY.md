@@ -937,3 +937,67 @@ modules — see `docs/DATABASE.md` "Customers / Suppliers tables" and the
 - **No backfill of the 4 new `customers.*`/`suppliers.*` permissions for
   tenants provisioned before this change**, same accepted gap already
   documented for every prior permission addition.
+
+## Taxes / Warehouses / Pricing (Master Data — Phase 2, closing block, 2026-08-31)
+
+Scope: `Tax` (`apps/api/src/modules/taxes`), `Warehouse`
+(`apps/api/src/modules/warehouses`), `PriceList`/`PriceListItem`
+(`apps/api/src/modules/pricing`) — the third and final Phase 2 block. This
+section covers all three since they share the same Master Data threat
+model already established by Catalog/Customers/Suppliers; only what is
+genuinely new (the Pricing↔Catalog cross-module dependency, the
+hard-delete item model) gets its own analysis.
+
+### Assets
+
+- `taxes.read`/`.manage`, `warehouses.read`/`.manage`,
+  `pricing.price-lists.read`/`.manage` — 6 new permissions, same
+  read/manage split as every prior module. `pricing.price-lists.manage`
+  covers both `PriceList` CRUD and `PriceListItem` CRUD, matching how
+  `catalog.products.manage` already covers both `Product` and
+  `ProductVariant`.
+- `Tax.rate`, `PriceListItem.price` — the third and fourth genuinely
+  monetary/rate-bearing fields in this codebase (after `Product.basePrice`/
+  `.baseCost` and `ProductVariant.price`/`.cost`), same canonical-decimal-
+  string discipline applied from the start this time (no repeat of the
+  Catalog session's `.toString()` bug — verified directly against
+  Postgres in this block's own smoke test before ever being at risk of it).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A request without an active company context writes or reads a tax/warehouse/price list | `requireCompanyId(ctx)` (duplicated per module, same helper pattern as every other Master Data module) throws `400 COMPANY_CONTEXT_REQUIRED` before any use case runs. |
+| A tax/warehouse/price list from Company A is read, updated, or its status toggled by a request scoped to Company B in the same tenant | Every Update/SetStatus use case checks `entity.companyId !== input.companyId` and throws the same `NotFoundError` a genuinely-missing entity would — verified against real Postgres with two real companies under one tenant (`UpdateWarehouseUseCase` specifically, in the integration suite). |
+| A tenant-scoped `PriceList`/`PriceListItem` id is guessed or reused across tenants | `PrismaPriceListRepository.findById` uses the real `@@unique([tenantId, id])` compound key — a mismatched tenant simply finds no row, not an application-level filter that could be forgotten. |
+| A price list item is added for a product that doesn't exist, or belongs to a different company | `AddPriceListItemUseCase` calls the real cross-module `GetProductUseCase` and checks `product.companyId !== input.companyId`, throwing `PriceListItemProductNotFoundError` — verified against real Postgres with a real product genuinely scoped to a different company. |
+| A price list item is added for a `hasVariants` product, which this slice cannot price correctly (no per-variant list pricing) | `AddPriceListItemUseCase` checks `product.hasVariants` and rejects with `PriceListItemProductHasVariantsError` — verified with a real Catalog product created via the real `CreateProductUseCase`, not a hand-built fixture. |
+| Two items for the same product are added to the same price list | Real database-level `@@unique([tenantId, priceListId, productId])` backs the application check — verified against real Postgres, not just an in-memory fake. |
+| A price list's `validFrom` is set after its `validUntil` | Domain-level check in `PriceList.create`/`.update`, rejected before any write — `validFrom === validUntil` is explicitly allowed (a single-day promotion is a real use case). |
+| Removing a price list item leaves an orphaned or recoverable row | `RemovePriceListItemUseCase` performs a genuine `DELETE` (`PrismaPriceListItemRepository.remove`, `deleteMany` scoped to `(tenantId, id)` as defense in depth even though the use case already verified ownership) — verified against real Postgres that the row count drops to zero, not just that it's excluded from listings. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No tax rules engine.** `Tax` is a flat rate lookup — no jurisdiction
+  logic, no compound/cascading tax composition (e.g. a state tax computed
+  on top of a federal tax), no per-product-category applicability rules,
+  no association with `Product`/`Sales` yet at all. MASTER_SPEC §31's "Tax
+  Engine desacoplado" remains fully deferred; this is master data a future
+  engine could reference, not the engine itself.
+- **No per-variant price list pricing.** A `hasVariants` product cannot be
+  added to a price list in this slice — see the schema.prisma docstring on
+  `PriceListItem` for the concrete reason (a partial unique index Prisma
+  cannot express declaratively, with no validated use case to justify the
+  complexity yet).
+- **No price list resolution/application logic.** Nothing in this codebase
+  yet picks a `PriceList` for a given sale based on date, customer, or
+  channel — that is Sales-phase (Phase 4) business logic. This slice is
+  storage only, the same split already used for Typed Configuration.
+- **No Branch/Location association for `Warehouse`.** Neither entity
+  exists in this schema yet; see the schema.prisma docstring on
+  `Warehouse`.
+- **`currency` and `country` are unvalidated free strings**, same accepted
+  gap already documented for Customer/Supplier.
+- **No backfill of the 6 new permissions for tenants provisioned before
+  this change**, same accepted gap already documented for every prior
+  permission addition.

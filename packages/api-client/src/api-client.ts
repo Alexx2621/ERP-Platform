@@ -1,5 +1,6 @@
 import type {
   AcceptMembershipInvitationInput,
+  AddPriceListItemInput,
   AddProductVariantInput,
   AppConfigurationResponse,
   AppDefinitionResponse,
@@ -12,10 +13,13 @@ import type {
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
+  CreatePriceListInput,
   CreateProductInput,
   CreateRoleInput,
   CreateSupplierInput,
+  CreateTaxInput,
   CreateUnitOfMeasureInput,
+  CreateWarehouseInput,
   CustomerResponse,
   EffectiveSettingResponse,
   InviteMembershipInput,
@@ -27,6 +31,8 @@ import type {
   PlatformSettingResponse,
   PlatformSettingValueResponse,
   PlatformUserResponse,
+  PriceListItemResponse,
+  PriceListResponse,
   ProductResponse,
   ProductVariantResponse,
   ProvisionTenantInput,
@@ -39,14 +45,18 @@ import type {
   SetMasterDataStatusInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
+  SetPriceListStatusInput,
   SetProductStatusInput,
   SetProductVariantStatusInput,
   SetSettingValueInput,
   SetSupplierStatusInput,
+  SetTaxStatusInput,
+  SetWarehouseStatusInput,
   SessionResponse,
   SettingDefinitionResponse,
   SettingValueResponse,
   SupplierResponse,
+  TaxResponse,
   TenantAppResponse,
   TenantExecutionContext,
   TenantSummary,
@@ -54,11 +64,16 @@ import type {
   UpdateBrandInput,
   UpdateCategoryInput,
   UpdateCustomerInput,
+  UpdatePriceListInput,
+  UpdatePriceListItemInput,
   UpdateProductInput,
   UpdateProductVariantInput,
   UpdateSupplierInput,
+  UpdateTaxInput,
   UpdateUnitOfMeasureInput,
+  UpdateWarehouseInput,
   UserPreferenceResponse,
+  WarehouseResponse,
 } from "./contracts.js";
 
 const DEFAULT_API_BASE_URL = "/api/v1";
@@ -874,6 +889,226 @@ export class ApiClient {
       companyId,
       body: input,
     });
+  }
+
+  async listTaxes(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<TaxResponse[]> {
+    return this.request<TaxResponse[]>("/taxes", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createTax(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateTaxInput,
+  ): Promise<TaxResponse> {
+    return this.request<TaxResponse>("/taxes", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async updateTax(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateTaxInput,
+  ): Promise<TaxResponse> {
+    return this.request<TaxResponse>(`/taxes/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setTaxStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetTaxStatusInput,
+  ): Promise<TaxResponse> {
+    return this.request<TaxResponse>(`/taxes/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listWarehouses(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<WarehouseResponse[]> {
+    return this.request<WarehouseResponse[]>("/warehouses", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createWarehouse(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateWarehouseInput,
+  ): Promise<WarehouseResponse> {
+    return this.request<WarehouseResponse>("/warehouses", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateWarehouse(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateWarehouseInput,
+  ): Promise<WarehouseResponse> {
+    return this.request<WarehouseResponse>(`/warehouses/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setWarehouseStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetWarehouseStatusInput,
+  ): Promise<WarehouseResponse> {
+    return this.request<WarehouseResponse>(`/warehouses/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPriceLists(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<PriceListResponse[]> {
+    return this.request<PriceListResponse[]>("/pricing/price-lists", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createPriceList(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePriceListInput,
+  ): Promise<PriceListResponse> {
+    return this.request<PriceListResponse>("/pricing/price-lists", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updatePriceList(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdatePriceListInput,
+  ): Promise<PriceListResponse> {
+    return this.request<PriceListResponse>(`/pricing/price-lists/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setPriceListStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetPriceListStatusInput,
+  ): Promise<PriceListResponse> {
+    return this.request<PriceListResponse>(`/pricing/price-lists/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPriceListItems(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    priceListId: string,
+    signal?: AbortSignal,
+  ): Promise<PriceListItemResponse[]> {
+    return this.request<PriceListItemResponse[]>(`/pricing/price-lists/${encodeURIComponent(priceListId)}/items`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addPriceListItem(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    priceListId: string,
+    input: AddPriceListItemInput,
+  ): Promise<PriceListItemResponse> {
+    return this.request<PriceListItemResponse>(`/pricing/price-lists/${encodeURIComponent(priceListId)}/items`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updatePriceListItem(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    priceListId: string,
+    itemId: string,
+    input: UpdatePriceListItemInput,
+  ): Promise<PriceListItemResponse> {
+    return this.request<PriceListItemResponse>(
+      `/pricing/price-lists/${encodeURIComponent(priceListId)}/items/${encodeURIComponent(itemId)}`,
+      { method: "PUT", accessToken, tenantSlug, companyId, body: input },
+    );
+  }
+
+  async removePriceListItem(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    priceListId: string,
+    itemId: string,
+  ): Promise<void> {
+    await this.request<void>(
+      `/pricing/price-lists/${encodeURIComponent(priceListId)}/items/${encodeURIComponent(itemId)}`,
+      { method: "DELETE", accessToken, tenantSlug, companyId },
+    );
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

@@ -57,6 +57,9 @@ import {
 } from "./modules/catalog";
 import { CustomersController, CreateCustomerUseCase } from "./modules/customers";
 import { SuppliersController, CreateSupplierUseCase } from "./modules/suppliers";
+import { TaxesController, CreateTaxUseCase } from "./modules/taxes";
+import { WarehousesController, CreateWarehouseUseCase } from "./modules/warehouses";
+import { PriceListsController, CreatePriceListUseCase } from "./modules/pricing";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -125,6 +128,12 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(CreateCustomerUseCase)).toBeInstanceOf(CreateCustomerUseCase);
     expect(moduleRef.get(SuppliersController)).toBeInstanceOf(SuppliersController);
     expect(moduleRef.get(CreateSupplierUseCase)).toBeInstanceOf(CreateSupplierUseCase);
+    expect(moduleRef.get(TaxesController)).toBeInstanceOf(TaxesController);
+    expect(moduleRef.get(CreateTaxUseCase)).toBeInstanceOf(CreateTaxUseCase);
+    expect(moduleRef.get(WarehousesController)).toBeInstanceOf(WarehousesController);
+    expect(moduleRef.get(CreateWarehouseUseCase)).toBeInstanceOf(CreateWarehouseUseCase);
+    expect(moduleRef.get(PriceListsController)).toBeInstanceOf(PriceListsController);
+    expect(moduleRef.get(CreatePriceListUseCase)).toBeInstanceOf(CreatePriceListUseCase);
 
     await moduleRef.close();
   });

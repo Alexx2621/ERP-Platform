@@ -2,10 +2,14 @@
 
 Estado: **Aceptada para Foundation (Fase 1), implementada y verificada
 contra infraestructura real de extremo a extremo — sesión 22, 2026-08-30.
-Ver "Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. El
-alcance descrito aquí para Business Apps/Channels (§5.2) sigue vigente
-como diseño de referencia para las fases futuras del roadmap, todavía sin
-implementar.**
+Ver "Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. Dentro
+de Business Apps/Channels (§5.2), el sub-alcance de Master Data (Party/
+Customers, Suppliers, Product Catalog, Pricing, Taxes, Warehousing master
+data) está implementado y cerrado — Fase 2, sesión 25, 2026-08-31. El
+resto del alcance descrito en §5.2 (Inventory, Sales, Purchasing,
+Payments, Accounting, CRM, Manufacturing, Reporting/BI, Channels,
+Integrations) sigue vigente como diseño de referencia para las fases
+futuras del roadmap, todavía sin implementar.**
 
 Alcance: arquitectura objetivo de la primera versión y Foundation
 

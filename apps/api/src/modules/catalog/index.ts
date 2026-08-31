@@ -12,6 +12,7 @@ export { CreateBrandUseCase } from "./application/use-cases/create-brand.use-cas
 export { ListBrandsUseCase } from "./application/use-cases/list-brands.use-case";
 export { CreateProductUseCase } from "./application/use-cases/create-product.use-case";
 export { ListProductsUseCase } from "./application/use-cases/list-products.use-case";
+export { GetProductUseCase } from "./application/use-cases/get-product.use-case";
 export { AddProductVariantUseCase } from "./application/use-cases/add-product-variant.use-case";
 export { ListProductVariantsUseCase } from "./application/use-cases/list-product-variants.use-case";
 export * from "./application/errors";

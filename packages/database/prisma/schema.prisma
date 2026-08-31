@@ -124,6 +124,10 @@ model Tenant {
   productVariants ProductVariant[]
   customers       Customer[]
   suppliers       Supplier[]
+  taxes           Tax[]
+  warehouses      Warehouse[]
+  priceLists      PriceList[]
+  priceListItems  PriceListItem[]
 
   @@map("tenants")
 }
@@ -212,6 +216,9 @@ model Company {
   products       Product[]
   customers      Customer[]
   suppliers      Supplier[]
+  taxes          Tax[]
+  warehouses     Warehouse[]
+  priceLists     PriceList[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -803,12 +810,13 @@ model Product {
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company       Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  category      Category?        @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
-  brand         Brand?           @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
-  unitOfMeasure UnitOfMeasure    @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
-  variants      ProductVariant[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  category       Category?        @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  brand          Brand?           @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  unitOfMeasure  UnitOfMeasure    @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
+  variants       ProductVariant[]
+  priceListItems PriceListItem[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -914,4 +922,116 @@ model Supplier {
   @@unique([tenantId, companyId, taxId])
   @@index([tenantId, companyId])
   @@map("suppliers")
+}
+
+/// Master-data tax rate lookup — a rate Products/Sales lines can reference
+/// later (Phase 4). Deliberately not a rules engine: no jurisdiction logic,
+/// no compound/cascading tax composition, no product-category applicability
+/// rules (MASTER_SPEC §31 "Tax Engine desacoplado" is explicitly deferred —
+/// see docs/SECURITY.md "Taxes"). `rate` is a percentage value (e.g.
+/// "12.0000" means 12%), not a fraction.
+model Tax {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  code      String           @db.VarChar(50)
+  name      String           @db.VarChar(150)
+  rate      Decimal          @db.Decimal(7, 4)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("taxes")
+}
+
+/// Master-data warehouse lookup. `docs/ARCHITECTURE.md` §6's conceptual
+/// model allows an optional Branch/Location association, but neither Branch
+/// nor Location exist as entities anywhere in this schema yet — adding
+/// nullable FKs to tables that don't exist would be pure speculative
+/// scaffolding (MASTER_SPEC §59/§93). Warehouse belongs directly to Company
+/// for this slice; a Branch/Location association can be added additively
+/// once either entity is actually built.
+model Warehouse {
+  id          String           @id @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  code        String           @db.VarChar(50)
+  name        String           @db.VarChar(150)
+  addressLine String?          @map("address_line") @db.VarChar(255)
+  city        String?          @db.VarChar(100)
+  country     String?          @db.VarChar(2)
+  status      MasterDataStatus @default(ACTIVE)
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("warehouses")
+}
+
+/// A named price scheme with an optional validity window (`docs/ROADMAP.md`
+/// §6 item 4, "Pricing/Price Lists con Decimal y vigencia"). Resolving which
+/// price list applies to a given sale on a given date is Sales-phase
+/// business logic (Phase 4) — this module only stores the lists and their
+/// line items, the same "storage now, business rules later" split already
+/// used for Typed Configuration in Foundation.
+model PriceList {
+  id         String           @id @db.Uuid
+  tenantId   String           @map("tenant_id") @db.Uuid
+  companyId  String           @map("company_id") @db.Uuid
+  code       String           @db.VarChar(50)
+  name       String           @db.VarChar(150)
+  currency   String           @db.VarChar(3)
+  validFrom  DateTime?        @map("valid_from") @db.Date
+  validUntil DateTime?        @map("valid_until") @db.Date
+  status     MasterDataStatus @default(ACTIVE)
+  version    Int              @default(1)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  items   PriceListItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("price_lists")
+}
+
+/// One product's price within a PriceList. Deliberately references `Product`
+/// only, not `ProductVariant` — supporting per-variant list pricing would
+/// need a nullable-FK uniqueness scheme (a partial unique index Prisma
+/// cannot express declaratively) for no validated use case yet. A
+/// `hasVariants` product simply cannot be added to a price list in this
+/// slice — see docs/SECURITY.md "Pricing" for the full reasoning. Hard
+/// `DELETE` (not a status toggle) is correct here: a price list line has no
+/// lifecycle of its own the way a standalone master-data entity does.
+model PriceListItem {
+  id          String   @id @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  priceListId String   @map("price_list_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  price       Decimal  @db.Decimal(14, 4)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  priceList PriceList @relation(fields: [tenantId, priceListId], references: [tenantId, id], onDelete: Cascade)
+  product   Product   @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, priceListId, productId])
+  @@index([tenantId, priceListId])
+  @@index([tenantId, productId])
+  @@map("price_list_items")
 }

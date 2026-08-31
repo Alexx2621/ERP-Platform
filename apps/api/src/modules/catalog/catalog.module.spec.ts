@@ -13,6 +13,7 @@ import { CreateUnitOfMeasureUseCase } from "./application/use-cases/create-unit-
 import { CreateCategoryUseCase } from "./application/use-cases/create-category.use-case";
 import { CreateBrandUseCase } from "./application/use-cases/create-brand.use-case";
 import { CreateProductUseCase } from "./application/use-cases/create-product.use-case";
+import { GetProductUseCase } from "./application/use-cases/get-product.use-case";
 import { AddProductVariantUseCase } from "./application/use-cases/add-product-variant.use-case";
 
 // Same StubInfraModule pattern as app-registry.module.spec.ts: CatalogModule
@@ -59,6 +60,7 @@ describe("CatalogModule wiring", () => {
     expect(moduleRef.get(CreateCategoryUseCase)).toBeInstanceOf(CreateCategoryUseCase);
     expect(moduleRef.get(CreateBrandUseCase)).toBeInstanceOf(CreateBrandUseCase);
     expect(moduleRef.get(CreateProductUseCase)).toBeInstanceOf(CreateProductUseCase);
+    expect(moduleRef.get(GetProductUseCase)).toBeInstanceOf(GetProductUseCase);
     expect(moduleRef.get(AddProductVariantUseCase)).toBeInstanceOf(AddProductVariantUseCase);
 
     await moduleRef.close();

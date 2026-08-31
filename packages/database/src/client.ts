@@ -32,6 +32,10 @@ export type {
   ProductVariant,
   Customer,
   Supplier,
+  Tax,
+  Warehouse,
+  PriceList,
+  PriceListItem,
 } from "../generated/prisma/client";
 export {
   UserStatus,

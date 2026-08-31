@@ -28,6 +28,7 @@ import { SetBrandStatusUseCase } from "./application/use-cases/set-brand-status.
 import { CreateProductUseCase } from "./application/use-cases/create-product.use-case";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.use-case";
 import { ListProductsUseCase } from "./application/use-cases/list-products.use-case";
+import { GetProductUseCase } from "./application/use-cases/get-product.use-case";
 import { SetProductStatusUseCase } from "./application/use-cases/set-product-status.use-case";
 import { AddProductVariantUseCase } from "./application/use-cases/add-product-variant.use-case";
 import { UpdateProductVariantUseCase } from "./application/use-cases/update-product-variant.use-case";
@@ -70,6 +71,7 @@ import { ProductsController } from "./presentation/products.controller";
     CreateProductUseCase,
     UpdateProductUseCase,
     ListProductsUseCase,
+    GetProductUseCase,
     SetProductStatusUseCase,
     AddProductVariantUseCase,
     UpdateProductVariantUseCase,
@@ -85,6 +87,7 @@ import { ProductsController } from "./presentation/products.controller";
     ListBrandsUseCase,
     CreateProductUseCase,
     ListProductsUseCase,
+    GetProductUseCase,
     AddProductVariantUseCase,
     ListProductVariantsUseCase,
   ],
