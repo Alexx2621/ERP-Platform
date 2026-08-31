@@ -9,13 +9,15 @@ import { CreateWarehouseUseCase } from "./application/use-cases/create-warehouse
 import { UpdateWarehouseUseCase } from "./application/use-cases/update-warehouse.use-case";
 import { ListWarehousesUseCase } from "./application/use-cases/list-warehouses.use-case";
 import { SetWarehouseStatusUseCase } from "./application/use-cases/set-warehouse-status.use-case";
+import { GetWarehouseUseCase } from "./application/use-cases/get-warehouse.use-case";
 import { WarehousesController } from "./presentation/warehouses.controller";
 
 /**
  * Phase 2 (Master Data) module — sibling of Taxes/Customers/Suppliers/
  * Catalog, deliberately outside `core/` (docs/ARCHITECTURE.md §5.3-§5.4).
- * Nothing depends on Warehouses yet, so there is no module-loading cycle
- * risk.
+ * Inventory (Phase 3) imports this module for `GetWarehouseUseCase`, a
+ * directed, cycle-free dependency (docs/ARCHITECTURE.md §6) — Warehouses
+ * itself has zero knowledge of Inventory.
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
@@ -26,7 +28,8 @@ import { WarehousesController } from "./presentation/warehouses.controller";
     UpdateWarehouseUseCase,
     ListWarehousesUseCase,
     SetWarehouseStatusUseCase,
+    GetWarehouseUseCase,
   ],
-  exports: [CreateWarehouseUseCase, ListWarehousesUseCase],
+  exports: [CreateWarehouseUseCase, ListWarehousesUseCase, GetWarehouseUseCase],
 })
 export class WarehousesModule {}

@@ -30,11 +30,12 @@ export interface ProductProps {
 
 /**
  * Kit/Bundle types and lot/serial/expiration tracking (MASTER_SPEC §19/§20)
- * are deliberately out of scope — nothing downstream (Inventory/Sales,
- * Phase 3-4) consumes them yet. `basePrice`/`baseCost` are the product's own
- * price when `hasVariants` is false; each `ProductVariant` carries its own
- * price/cost when `hasVariants` is true — see docs/DECISIONS.md ADR-009 for
- * why multi-tier Price Lists are deferred rather than built now.
+ * are deliberately out of scope — nothing downstream consumes them yet.
+ * `basePrice`/`baseCost` are the product's own price when `hasVariants` is
+ * false; each `ProductVariant` carries its own price/cost when `hasVariants`
+ * is true. Multi-tier price lists live in the separate `pricing` module
+ * (`PriceList`/`PriceListItem`, product-only — see that module's own
+ * docstrings for why variant-level list pricing is still deferred).
  */
 export class Product {
   private constructor(private readonly props: ProductProps) {}

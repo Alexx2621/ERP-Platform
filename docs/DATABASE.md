@@ -857,3 +857,184 @@ generated and applied via
 `prisma migrate dev --name pricing_taxes_warehouses_master_data` against
 the real `erp_platform` Postgres container; applied cleanly on the first
 attempt.
+
+## Inventory tables (Phase 3, 2026-08-31)
+
+Scope: `docs/ROADMAP.md` §7 — Movement Ledger, on-hand/reserved/available
+projection, reservations/releases, adjustments, and transfers with
+explicit state. `apps/api/src/modules/inventory`. Warehouse
+locations/bins and lot/serial/expiration tracking are deliberately **not**
+built — `docs/ROADMAP.md` §7 scopes both as "solo según alcance
+aprobado", and no such approval exists; see docs/SECURITY.md "Inventory".
+
+### `inventory_movements`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | Append-only — no update/delete path exists anywhere in the application layer. |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `warehouse_id` | `uuid` | → `warehouses(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `product_id` | `uuid` | → `products(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `product_variant_id` | `uuid?` | → `product_variants(tenantId, id)`, `ON DELETE RESTRICT`. `NULL` for a non-variant product. |
+| `type` | `InventoryMovementType` | `RECEIPT` \| `ISSUE` \| `ADJUSTMENT` \| `TRANSFER_OUT` \| `TRANSFER_IN` \| `TRANSFER_CANCELLED` \| `RESERVATION` \| `RELEASE`. |
+| `quantity` | `numeric(14,4)` | **Signed.** The exact delta this row applies — no separate direction column that could drift out of sync with `type`. |
+| `reason` | `varchar(500)?` | Required by the domain for `ADJUSTMENT`; optional/typically null otherwise. |
+| `reference_type` | `InventoryMovementReferenceType?` | `TRANSFER` \| `RESERVATION` \| `MANUAL` — this module's own internal callers only, not a free-form field (contrast with `inventory_reservations.reference_type` below). |
+| `reference_id` | `uuid?` | The `inventory_transfers.id`/`inventory_reservations.id` that caused this row, when applicable. No formal FK — the reference is polymorphic across two possible target tables, same reasoning already used for `audit_entries.resource_id`/`outbox_messages` payload references. |
+| `correlation_id` | `varchar(100)` | **Not** `uuid` — a real bug caught by this module's own integration test (see below). |
+| `created_by_user_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT`. |
+| `created_at` | `timestamptz(6)` | Doubles as the transaction's `now` for the balance row it updates — see `PrismaInventoryBalanceRepository.applyMovement`. |
+
+`@@index([tenantId, companyId, warehouseId, productId, productVariantId])`,
+`@@index([tenantId, referenceType, referenceId])`. No `@@unique([tenantId,
+id])` — nothing references this table via a composite FK.
+
+**Real bug found and fixed by this module's own integration test, before
+the first commit**: `correlation_id` was originally declared `@db.Uuid`.
+`CorrelationIdMiddleware` echoes back an incoming `X-Correlation-Id` header
+verbatim when the client supplies one (`req.correlationId = incoming &&
+incoming.length > 0 ? incoming : randomUUID()`) — a caller-supplied
+correlation id is not guaranteed to be UUID-shaped. Every other table with
+a `correlationId` column (`audit_entries`, `outbox_messages`) already uses
+`varchar(100)`; `inventory_movements` was the only one that didn't.
+Corrected in the same migration before it was ever shared, and re-verified
+against real Postgres with a literal non-UUID correlation id.
+
+### `inventory_balances`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `warehouse_id` / `product_id` / `product_variant_id` | `uuid` / `uuid` / `uuid?` | Same shape as `inventory_movements`. |
+| `on_hand_quantity` | `numeric(14,4)` | Physical stock in the warehouse. Never negative (enforced in the repository, not just the domain — see below). |
+| `reserved_quantity` | `numeric(14,4)` | Stock earmarked but not physically moved. Never negative, and never greater than `on_hand_quantity` (same enforcement). |
+| `version` | `int` | Incremented on every `applyMovement` call — an optimistic-concurrency-style audit trail of how many changes this row has seen, though the row lock (below) is what actually makes concurrent writes safe, not this counter. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+**No `available_quantity` column and no `in_transit` column.**
+`available = onHandQuantity - reservedQuantity` is always computed at read
+time (`InventoryBalance.availableQuantity`, `apps/api/src/modules/
+inventory/domain/inventory-balance.entity.ts`) — storing it would create a
+third value that could drift out of sync with the two it derives from.
+`in_transit` is likewise never stored: it is a query over `inventory_
+transfers` rows with `status = IN_TRANSIT` for a warehouse, not a balance
+bucket (see `inventory_transfers` below for why creating a transfer
+already decrements the source's `on_hand_quantity`).
+
+**Two hand-written partial unique indexes, not a plain `@@unique`** — the
+one genuinely new schema technique this module needed:
+
+```sql
+CREATE UNIQUE INDEX "inventory_balances_variant_unique"
+  ON "inventory_balances"("tenant_id", "warehouse_id", "product_variant_id")
+  WHERE "product_variant_id" IS NOT NULL;
+CREATE UNIQUE INDEX "inventory_balances_product_unique"
+  ON "inventory_balances"("tenant_id", "warehouse_id", "product_id")
+  WHERE "product_variant_id" IS NULL;
+```
+
+Postgres treats every `NULL` in a unique index as distinct from every
+other `NULL`; a plain `@@unique([tenantId, warehouseId, productId,
+productVariantId])` would therefore let the same non-variant product
+accumulate unlimited balance rows in one warehouse (each insert's `NULL`
+`product_variant_id` would never collide with the previous one). Prisma's
+schema DSL cannot express a partial/filtered index, so this pair was
+written directly into the migration SQL — the first migration in this
+codebase to require hand-editing beyond what `prisma migrate dev`
+generates on its own. Because neither index has a name Prisma's client
+knows about, `findUnique`/`upsert` cannot target them: the balance
+repository's row lock and first-insert path use raw SQL
+(`$queryRaw`/manually built `where`) instead — see
+`PrismaInventoryBalanceRepository.applyMovement`'s own docstring for the
+full locking strategy, and docs/SECURITY.md "Inventory" for the
+concurrency threat model.
+
+**The single invariant that makes concurrent writes safe**, enforced
+inside a `SELECT ... FOR UPDATE`-locked transaction on every write:
+
+```
+nextOnHand >= 0 AND nextReserved >= 0 AND nextOnHand >= nextReserved
+```
+
+This one check — not a type-specific branch — is what uniformly prevents
+oversell (`ISSUE`/`TRANSFER_OUT` past available stock), negative
+reservations, and reserving beyond on-hand. Verified against real
+concurrent writers, not just reasoned about: `apps/api/test/integration/
+inventory.integration-spec.ts` fires seven concurrent `RecordIssueUseCase`
+calls against ten units of real on-hand stock (real Postgres, real `FOR
+UPDATE` contention across genuinely concurrent connections) and asserts
+exactly five succeed, exactly two are rejected with
+`InsufficientInventoryError`, and the final on-hand is exactly `0.0000` —
+never negative — repeated for concurrent `RESERVATION`s against on-hand
+stock. This is `docs/ROADMAP.md` §7's own exit criteria ("Pruebas
+concurrentes no permiten oversell/reservas negativas"), verified directly.
+
+### `inventory_transfers`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `product_id` / `product_variant_id` | `uuid` / `uuid?` | |
+| `source_warehouse_id` / `destination_warehouse_id` | `uuid` / `uuid` | Both → `warehouses(tenantId, id)`, `ON DELETE RESTRICT`, two named relations (`TransferSource`/`TransferDestination`) since Prisma requires disambiguating two FKs to the same target table. Domain-validated to be different warehouses. |
+| `quantity` | `numeric(14,4)` | **Unsigned** — the requested transfer amount, not a ledger delta (contrast with `inventory_movements.quantity`). |
+| `status` | `InventoryTransferStatus` | `IN_TRANSIT` (default) → `COMPLETED` \| `CANCELLED`, both terminal. |
+| `version` | `int` | |
+| `created_at` / `completed_at` / `cancelled_at` | `timestamptz(6)` / `timestamptz(6)?` / `timestamptz(6)?` | |
+
+Creating a transfer immediately posts a `TRANSFER_OUT` at the source —
+stock leaves `on_hand_quantity` right away, not just an "intent" — so an
+`IN_TRANSIT` transfer is genuinely in motion, never double-counted with
+the source's own on-hand. `complete()` posts `TRANSFER_IN` at the
+destination; `cancel()` posts `TRANSFER_CANCELLED` at the source,
+reversing the original `TRANSFER_OUT` — the original row is never edited
+or deleted (MASTER_SPEC §20: reversal, not mutation, of the ledger).
+
+### `inventory_reservations`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `warehouse_id` / `product_id` / `product_variant_id` | `uuid` / `uuid` / `uuid?` | |
+| `quantity` | `numeric(14,4)` | Unsigned, same reasoning as `inventory_transfers.quantity`. |
+| `status` | `InventoryReservationStatus` | `ACTIVE` (default) → `RELEASED`, terminal. Only *full* release is supported — no partial release of a larger reservation. |
+| `reference_type` / `reference_id` | `varchar(50)?` / `varchar(100)?` | **Free-form strings, not an enum** — unlike `inventory_movements.reference_type`, this describes *why* the reservation exists to a caller outside this module (a future Sales order, say). No such module exists yet to constrain against. |
+| `version` | `int` | |
+| `created_at` / `released_at` | `timestamptz(6)` / `timestamptz(6)?` | |
+
+Never touches `on_hand_quantity` directly — only `reserved_quantity`, via
+a `RESERVATION` movement on creation and a `RELEASE` movement on release.
+
+### Accepted non-transactional trade-off
+
+Creating a reservation/transfer applies its ledger movement (and the
+balance-row invariant check) **before** saving the reservation/transfer
+row itself — so a rejected write (insufficient stock) never leaves an
+orphaned row. The reverse ordering is used for completing/cancelling a
+transfer: the movement (always a pure positive addition there, so it can
+never be rejected) is applied first, and the transfer's own status update
+follows — keeping the ledger, this module's real source of truth, correct
+even in the rare case the second write fails. Both directions accept the
+same class of gap already present elsewhere in this codebase (e.g.
+ADR-008's Owner-role seeding not sharing a transaction with tenant
+provisioning): two sequential writes, not one atomic transaction spanning
+two different repositories' tables. Growing every repository interface to
+accept an externally supplied Prisma transaction client — the only way to
+close this gap — was judged disproportionate to a failure window this
+narrow (MASTER_SPEC §59/§93); see each write use case's own docstring in
+`apps/api/src/modules/inventory/application/use-cases/`.
+
+### Migration
+
+`packages/database/prisma/migrations/20260831175237_inventory_ledger/` —
+generated via `prisma migrate diff --from-config-datasource --to-schema
+prisma/schema.prisma --script` (not `prisma migrate dev --create-only`,
+which fails in this non-interactive environment when it needs to show an
+interactive warning prompt — a real workaround, not a shortcut: the
+generated SQL is identical to what `migrate dev` would have produced,
+minus the two hand-added partial indexes and the `correlation_id` type
+fix), then applied via `prisma migrate deploy`. Applied cleanly against
+both the real `erp_platform` Postgres container and the ephemeral
+Testcontainers Postgres used by the integration/E2E suites.

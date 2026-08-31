@@ -2,6 +2,7 @@ import type {
   AcceptMembershipInvitationInput,
   AddPriceListItemInput,
   AddProductVariantInput,
+  AdjustInventoryInput,
   AppConfigurationResponse,
   AppDefinitionResponse,
   AssignRoleInput,
@@ -15,14 +16,24 @@ import type {
   CreateCustomerInput,
   CreatePriceListInput,
   CreateProductInput,
+  CreateReservationInput,
   CreateRoleInput,
   CreateSupplierInput,
   CreateTaxInput,
+  CreateTransferInput,
   CreateUnitOfMeasureInput,
   CreateWarehouseInput,
   CustomerResponse,
   EffectiveSettingResponse,
+  InventoryBalanceResponse,
+  InventoryMovementResponse,
+  InventoryReservationResponse,
+  InventoryTransferResponse,
   InviteMembershipInput,
+  ListInventoryBalancesFilter,
+  ListInventoryMovementsFilter,
+  ListInventoryReservationsFilter,
+  ListInventoryTransfersFilter,
   LoginInput,
   MembershipResponse,
   MembershipWithUserResponse,
@@ -37,6 +48,8 @@ import type {
   ProductVariantResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
+  RecordIssueInput,
+  RecordReceiptInput,
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
@@ -1109,6 +1122,195 @@ export class ApiClient {
       `/pricing/price-lists/${encodeURIComponent(priceListId)}/items/${encodeURIComponent(itemId)}`,
       { method: "DELETE", accessToken, tenantSlug, companyId },
     );
+  }
+
+  async listInventoryBalances(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListInventoryBalancesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<InventoryBalanceResponse[]> {
+    return this.request<InventoryBalanceResponse[]>(`/inventory/balances${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listInventoryMovements(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListInventoryMovementsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<InventoryMovementResponse[]> {
+    return this.request<InventoryMovementResponse[]>(`/inventory/movements${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async recordInventoryReceipt(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: RecordReceiptInput,
+  ): Promise<InventoryMovementResponse> {
+    return this.request<InventoryMovementResponse>("/inventory/movements/receipt", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async recordInventoryIssue(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: RecordIssueInput,
+  ): Promise<InventoryMovementResponse> {
+    return this.request<InventoryMovementResponse>("/inventory/movements/issue", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async adjustInventory(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: AdjustInventoryInput,
+  ): Promise<InventoryMovementResponse> {
+    return this.request<InventoryMovementResponse>("/inventory/movements/adjustment", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listInventoryReservations(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListInventoryReservationsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<InventoryReservationResponse[]> {
+    return this.request<InventoryReservationResponse[]>(`/inventory/reservations${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createInventoryReservation(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateReservationInput,
+  ): Promise<InventoryReservationResponse> {
+    return this.request<InventoryReservationResponse>("/inventory/reservations", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async releaseInventoryReservation(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+  ): Promise<InventoryReservationResponse> {
+    return this.request<InventoryReservationResponse>(`/inventory/reservations/${encodeURIComponent(id)}/release`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listInventoryTransfers(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListInventoryTransfersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<InventoryTransferResponse[]> {
+    return this.request<InventoryTransferResponse[]>(`/inventory/transfers${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createInventoryTransfer(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateTransferInput,
+  ): Promise<InventoryTransferResponse> {
+    return this.request<InventoryTransferResponse>("/inventory/transfers", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async completeInventoryTransfer(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+  ): Promise<InventoryTransferResponse> {
+    return this.request<InventoryTransferResponse>(`/inventory/transfers/${encodeURIComponent(id)}/complete`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async cancelInventoryTransfer(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+  ): Promise<InventoryTransferResponse> {
+    return this.request<InventoryTransferResponse>(`/inventory/transfers/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  /** Builds a `?key=value&...` query string from a flat filter object, skipping undefined/empty values. */
+  private buildQuery(filter: object): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter as Record<string, unknown>)) {
+      if (value !== undefined && value !== "") {
+        params.set(key, String(value));
+      }
+    }
+    const query = params.toString();
+    return query ? `?${query}` : "";
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

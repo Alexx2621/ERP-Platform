@@ -1210,6 +1210,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List on-hand/reserved/available balances for the active company. */
+        get: operations["InventoryController_listBalancesHandler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the append-only inventory ledger for the active company. */
+        get: operations["InventoryController_listMovementsHandler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/movements/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post a receipt: stock arriving into a warehouse with no formal transfer. */
+        post: operations["InventoryController_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/movements/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post an issue: stock leaving a warehouse with no formal transfer. */
+        post: operations["InventoryController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/movements/adjustment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post a manual correction to on-hand stock. Always requires a reason. */
+        post: operations["InventoryController_adjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List inventory reservations for the active company. */
+        get: operations["InventoryController_listReservationsHandler"];
+        put?: never;
+        /** Earmark stock without moving it physically. */
+        post: operations["InventoryController_createReservationHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/reservations/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a reservation's entire quantity back into available stock. */
+        post: operations["InventoryController_releaseReservationHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List inventory transfers for the active company. */
+        get: operations["InventoryController_listTransfersHandler"];
+        put?: never;
+        /** Move stock between two warehouses of the active company. Posts a TRANSFER_OUT at the source immediately. */
+        post: operations["InventoryController_createTransferHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an IN_TRANSIT transfer as arrived: posts a TRANSFER_IN at the destination. */
+        post: operations["InventoryController_completeTransferHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/transfers/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an IN_TRANSIT transfer: posts a TRANSFER_CANCELLED at the source, reversing the original TRANSFER_OUT. */
+        post: operations["InventoryController_cancelTransferHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2011,6 +2183,132 @@ export interface components {
         UpdatePriceListItemDto: {
             /** @example 24.9900 */
             price: string;
+        };
+        InventoryBalanceResponseDto: {
+            id: string;
+            warehouseId: string;
+            productId: string;
+            productVariantId: string | null;
+            /** @example 125.0000 */
+            onHandQuantity: string;
+            /** @example 20.0000 */
+            reservedQuantity: string;
+            /**
+             * @description onHandQuantity - reservedQuantity, always computed.
+             * @example 105.0000
+             */
+            availableQuantity: string;
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        InventoryMovementResponseDto: {
+            id: string;
+            warehouseId: string;
+            productId: string;
+            productVariantId: string | null;
+            /** @enum {string} */
+            type: "RECEIPT" | "ISSUE" | "ADJUSTMENT" | "TRANSFER_OUT" | "TRANSFER_IN" | "TRANSFER_CANCELLED" | "RESERVATION" | "RELEASE";
+            /**
+             * @description Signed — the exact delta this row applied.
+             * @example -5.0000
+             */
+            quantity: string;
+            reason: string | null;
+            /** @enum {string|null} */
+            referenceType: "TRANSFER" | "RESERVATION" | "MANUAL" | null;
+            referenceId: string | null;
+            correlationId: string;
+            createdByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecordReceiptDto: {
+            warehouseId: string;
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @example 50.0000 */
+            quantity: string;
+            reason?: string;
+        };
+        RecordIssueDto: {
+            warehouseId: string;
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @example 5.0000 */
+            quantity: string;
+            reason?: string;
+        };
+        AdjustInventoryDto: {
+            warehouseId: string;
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @enum {string} */
+            direction: "INCREASE" | "DECREASE";
+            /** @example 3.0000 */
+            quantity: string;
+            /** @description Mandatory — every adjustment must explain the correction (MASTER_SPEC §10). */
+            reason: string;
+        };
+        InventoryReservationResponseDto: {
+            id: string;
+            warehouseId: string;
+            productId: string;
+            productVariantId: string | null;
+            /** @example 10.0000 */
+            quantity: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "RELEASED";
+            referenceType: string | null;
+            referenceId: string | null;
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            releasedAt: string | null;
+        };
+        CreateReservationDto: {
+            warehouseId: string;
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @example 10.0000 */
+            quantity: string;
+            /** @description Free-form — describes what is holding this stock (e.g. a future Sales order id/type). */
+            referenceType?: string;
+            referenceId?: string;
+        };
+        InventoryTransferResponseDto: {
+            id: string;
+            productId: string;
+            productVariantId: string | null;
+            sourceWarehouseId: string;
+            destinationWarehouseId: string;
+            /** @example 25.0000 */
+            quantity: string;
+            /** @enum {string} */
+            status: "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreateTransferDto: {
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            sourceWarehouseId: string;
+            destinationWarehouseId: string;
+            /** @example 25.0000 */
+            quantity: string;
         };
     };
     responses: never;
@@ -4460,6 +4758,370 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    InventoryController_listBalancesHandler: {
+        parameters: {
+            query?: {
+                warehouseId?: string;
+                productId?: string;
+                /** @description Narrows to one specific variant. */
+                productVariantId?: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryBalanceResponseDto"][];
+                };
+            };
+        };
+    };
+    InventoryController_listMovementsHandler: {
+        parameters: {
+            query?: {
+                warehouseId?: string;
+                productId?: string;
+                productVariantId?: string;
+                referenceType?: "TRANSFER" | "RESERVATION" | "MANUAL";
+                referenceId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMovementResponseDto"][];
+                };
+            };
+        };
+    };
+    InventoryController_receipt: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordReceiptDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMovementResponseDto"];
+                };
+            };
+        };
+    };
+    InventoryController_issue: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordIssueDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMovementResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_adjustment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustInventoryDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMovementResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_listReservationsHandler: {
+        parameters: {
+            query?: {
+                warehouseId?: string;
+                productId?: string;
+                status?: "ACTIVE" | "RELEASED";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationResponseDto"][];
+                };
+            };
+        };
+    };
+    InventoryController_createReservationHandler: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReservationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_releaseReservationHandler: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationResponseDto"];
+                };
+            };
+        };
+    };
+    InventoryController_listTransfersHandler: {
+        parameters: {
+            query?: {
+                warehouseId?: string;
+                productId?: string;
+                status?: "IN_TRANSIT" | "COMPLETED" | "CANCELLED";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransferResponseDto"][];
+                };
+            };
+        };
+    };
+    InventoryController_createTransferHandler: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTransferDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransferResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryController_completeTransferHandler: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransferResponseDto"];
+                };
+            };
+        };
+    };
+    InventoryController_cancelTransferHandler: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTransferResponseDto"];
+                };
             };
         };
     };

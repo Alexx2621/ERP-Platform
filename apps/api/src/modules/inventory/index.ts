@@ -1,0 +1,10 @@
+/** Public contract of the Inventory module. Other modules must only import from here. */
+export { InventoryMovement, type InventoryMovementProps } from "./domain/inventory-movement.entity";
+export { InventoryBalance, type InventoryBalanceProps } from "./domain/inventory-balance.entity";
+export { InventoryTransfer, type InventoryTransferProps } from "./domain/inventory-transfer.entity";
+export { InventoryReservation, type InventoryReservationProps } from "./domain/inventory-reservation.entity";
+export { ListInventoryBalancesUseCase } from "./application/use-cases/list-inventory-balances.use-case";
+export { ListInventoryMovementsUseCase } from "./application/use-cases/list-inventory-movements.use-case";
+export * from "./application/errors";
+export { InventoryController } from "./presentation/inventory.controller";
+export { InventoryModule } from "./inventory.module";

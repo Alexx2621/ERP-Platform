@@ -15,6 +15,7 @@ export { ListProductsUseCase } from "./application/use-cases/list-products.use-c
 export { GetProductUseCase } from "./application/use-cases/get-product.use-case";
 export { AddProductVariantUseCase } from "./application/use-cases/add-product-variant.use-case";
 export { ListProductVariantsUseCase } from "./application/use-cases/list-product-variants.use-case";
+export { GetProductVariantUseCase } from "./application/use-cases/get-product-variant.use-case";
 export * from "./application/errors";
 export { UnitsOfMeasureController } from "./presentation/units-of-measure.controller";
 export { CategoriesController } from "./presentation/categories.controller";

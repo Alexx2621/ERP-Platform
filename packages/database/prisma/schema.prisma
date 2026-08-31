@@ -34,14 +34,15 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  credential     UserCredential?
-  sessions       Session[]
-  memberships    Membership[]
-  preferences    UserPreference[]
-  auditEntries   AuditEntry[]
-  outboxMessages OutboxMessage[]
-  ownedFiles     FileObject[]
-  notifications  Notification[]
+  credential         UserCredential?
+  sessions           Session[]
+  memberships        Membership[]
+  preferences        UserPreference[]
+  auditEntries       AuditEntry[]
+  outboxMessages     OutboxMessage[]
+  ownedFiles         FileObject[]
+  notifications      Notification[]
+  inventoryMovements InventoryMovement[]
 
   @@map("users")
 }
@@ -105,29 +106,33 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  memberships     Membership[]
-  organizations   Organization[]
-  companies       Company[]
-  roles           Role[]
-  roleAssignments RoleAssignment[]
-  settingValues   SettingValue[]
-  auditEntries    AuditEntry[]
-  outboxMessages  OutboxMessage[]
-  fileObjects     FileObject[]
-  notifications   Notification[]
-  inboxMessages   InboxMessage[]
-  tenantApps      TenantApp[]
-  unitsOfMeasure  UnitOfMeasure[]
-  categories      Category[]
-  brands          Brand[]
-  products        Product[]
-  productVariants ProductVariant[]
-  customers       Customer[]
-  suppliers       Supplier[]
-  taxes           Tax[]
-  warehouses      Warehouse[]
-  priceLists      PriceList[]
-  priceListItems  PriceListItem[]
+  memberships           Membership[]
+  organizations         Organization[]
+  companies             Company[]
+  roles                 Role[]
+  roleAssignments       RoleAssignment[]
+  settingValues         SettingValue[]
+  auditEntries          AuditEntry[]
+  outboxMessages        OutboxMessage[]
+  fileObjects           FileObject[]
+  notifications         Notification[]
+  inboxMessages         InboxMessage[]
+  tenantApps            TenantApp[]
+  unitsOfMeasure        UnitOfMeasure[]
+  categories            Category[]
+  brands                Brand[]
+  products              Product[]
+  productVariants       ProductVariant[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  taxes                 Tax[]
+  warehouses            Warehouse[]
+  priceLists            PriceList[]
+  priceListItems        PriceListItem[]
+  inventoryMovements    InventoryMovement[]
+  inventoryBalances     InventoryBalance[]
+  inventoryTransfers    InventoryTransfer[]
+  inventoryReservations InventoryReservation[]
 
   @@map("tenants")
 }
@@ -204,21 +209,25 @@ model Company {
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  organization   Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
-  settingValues  SettingValue[]
-  auditEntries   AuditEntry[]
-  outboxMessages OutboxMessage[]
-  fileObjects    FileObject[]
-  unitsOfMeasure UnitOfMeasure[]
-  categories     Category[]
-  brands         Brand[]
-  products       Product[]
-  customers      Customer[]
-  suppliers      Supplier[]
-  taxes          Tax[]
-  warehouses     Warehouse[]
-  priceLists     PriceList[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  organization          Organization           @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
+  settingValues         SettingValue[]
+  auditEntries          AuditEntry[]
+  outboxMessages        OutboxMessage[]
+  fileObjects           FileObject[]
+  unitsOfMeasure        UnitOfMeasure[]
+  categories            Category[]
+  brands                Brand[]
+  products              Product[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  taxes                 Tax[]
+  warehouses            Warehouse[]
+  priceLists            PriceList[]
+  inventoryMovements    InventoryMovement[]
+  inventoryBalances     InventoryBalance[]
+  inventoryTransfers    InventoryTransfer[]
+  inventoryReservations InventoryReservation[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -810,13 +819,17 @@ model Product {
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company        Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  category       Category?        @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
-  brand          Brand?           @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
-  unitOfMeasure  UnitOfMeasure    @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
-  variants       ProductVariant[]
-  priceListItems PriceListItem[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  category              Category?              @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  brand                 Brand?                 @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  unitOfMeasure         UnitOfMeasure          @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
+  variants              ProductVariant[]
+  priceListItems        PriceListItem[]
+  inventoryMovements    InventoryMovement[]
+  inventoryBalances     InventoryBalance[]
+  inventoryTransfers    InventoryTransfer[]
+  inventoryReservations InventoryReservation[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -849,6 +862,12 @@ model ProductVariant {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
 
+  inventoryMovements    InventoryMovement[]
+  inventoryBalances     InventoryBalance[]
+  inventoryTransfers    InventoryTransfer[]
+  inventoryReservations InventoryReservation[]
+
+  @@unique([tenantId, id])
   @@unique([tenantId, sku])
   @@unique([tenantId, productId, attributes])
   @@index([tenantId, productId])
@@ -974,6 +993,13 @@ model Warehouse {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
+  inventoryMovements     InventoryMovement[]
+  inventoryBalances      InventoryBalance[]
+  transfersAsSource      InventoryTransfer[]    @relation("TransferSource")
+  transfersAsDestination InventoryTransfer[]    @relation("TransferDestination")
+  inventoryReservations  InventoryReservation[]
+
+  @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, companyId])
   @@map("warehouses")
@@ -1034,4 +1060,187 @@ model PriceListItem {
   @@index([tenantId, priceListId])
   @@index([tenantId, productId])
   @@map("price_list_items")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory (Phase 3, docs/ROADMAP.md §7). A sellable unit is either a
+// `Product` (when `hasVariants` is false) or a `ProductVariant` (when true) —
+// `productVariantId` is nullable and its presence/absence is validated
+// against the real product at the application layer (the same cross-module
+// `GetProductUseCase`/`GetProductVariantUseCase` pattern established for
+// Pricing). Deliberately out of scope for this slice, per "solo según
+// alcance aprobado" in docs/ROADMAP.md §7: warehouse locations/bins and
+// lot/serial/expiration tracking — see docs/SECURITY.md "Inventory".
+// ---------------------------------------------------------------------------
+
+enum InventoryMovementType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  TRANSFER_CANCELLED
+  RESERVATION
+  RELEASE
+}
+
+enum InventoryMovementReferenceType {
+  TRANSFER
+  RESERVATION
+  MANUAL
+}
+
+/// Append-only ledger — the single source of truth for every balance change
+/// (docs/ROADMAP.md §7 exit criteria: "Cada cambio de saldo tiene ledger y
+/// reconciliación"). Never updated or deleted; a mistake is corrected by
+/// posting a new compensating movement, never by editing history
+/// ("Reversal en vez de editar/eliminar movimientos"). `quantity` is signed
+/// — its sign is validated against `type` at the domain layer (e.g. `ISSUE`
+/// must be negative, `RECEIPT` must be positive), so the on-hand/reserved
+/// delta for a given balance row is always exactly `SUM(quantity)` over the
+/// relevant rows, with no separate direction column to keep in sync.
+model InventoryMovement {
+  id               String                          @id @db.Uuid
+  tenantId         String                          @map("tenant_id") @db.Uuid
+  companyId        String                          @map("company_id") @db.Uuid
+  warehouseId      String                          @map("warehouse_id") @db.Uuid
+  productId        String                          @map("product_id") @db.Uuid
+  productVariantId String?                         @map("product_variant_id") @db.Uuid
+  type             InventoryMovementType
+  quantity         Decimal                         @db.Decimal(14, 4)
+  reason           String?                         @db.VarChar(500)
+  referenceType    InventoryMovementReferenceType? @map("reference_type")
+  referenceId      String?                         @map("reference_id") @db.Uuid
+  correlationId    String                          @map("correlation_id") @db.VarChar(100)
+  createdByUserId  String                          @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  warehouse      Warehouse       @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  product        Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+  createdBy      User            @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, companyId, warehouseId, productId, productVariantId])
+  @@index([tenantId, referenceType, referenceId])
+  @@map("inventory_movements")
+}
+
+/// A materialized, reconcilable projection — never the source of truth
+/// (`InventoryMovement` is). `onHandQuantity`/`reservedQuantity` are kept in
+/// sync transactionally alongside every `InventoryMovement` insert via a
+/// row-locked read-check-write (same `SELECT ... FOR UPDATE` pattern already
+/// used by the outbox dispatcher's claim mechanism), and can always be
+/// recomputed from scratch by summing the ledger for the same
+/// (tenant, warehouse, product, variant) — that recomputation is the
+/// reconciliation story this table's own correctness rests on.
+/// `available = onHandQuantity - reservedQuantity` is a computed value in
+/// the API response, never stored redundantly. There is no `inTransit`
+/// column — an in-transit quantity is simply the sum of `InventoryTransfer`
+/// rows in `IN_TRANSIT` status for the relevant source warehouse, a query
+/// concept rather than a third balance bucket to keep synchronized.
+model InventoryBalance {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  warehouseId      String   @map("warehouse_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  productVariantId String?  @map("product_variant_id") @db.Uuid
+  onHandQuantity   Decimal  @default(0) @map("on_hand_quantity") @db.Decimal(14, 4)
+  reservedQuantity Decimal  @default(0) @map("reserved_quantity") @db.Decimal(14, 4)
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  warehouse      Warehouse       @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  product        Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+
+  // NOTE: the real "at most one balance row per sellable unit per warehouse"
+  // constraint is enforced by two hand-added partial unique indexes in this
+  // model's migration (Prisma cannot express a `WHERE` clause on `@@unique`
+  // declaratively) — see docs/DATABASE.md "Inventory tables".
+  @@index([tenantId, companyId, warehouseId])
+  @@index([tenantId, productId])
+  @@map("inventory_balances")
+}
+
+enum InventoryTransferStatus {
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+/// A transfer between two warehouses with **explicit state**
+/// (docs/ROADMAP.md §7). Creating one immediately posts a `TRANSFER_OUT`
+/// movement at the source warehouse (stock leaves on-hand there right away —
+/// this is what makes it meaningfully "in transit"); completing it posts a
+/// `TRANSFER_IN` at the destination; cancelling it while `IN_TRANSIT` posts a
+/// `TRANSFER_CANCELLED` back at the source, never edits the original
+/// `TRANSFER_OUT` row.
+model InventoryTransfer {
+  id                     String                  @id @db.Uuid
+  tenantId               String                  @map("tenant_id") @db.Uuid
+  companyId              String                  @map("company_id") @db.Uuid
+  productId              String                  @map("product_id") @db.Uuid
+  productVariantId       String?                 @map("product_variant_id") @db.Uuid
+  sourceWarehouseId      String                  @map("source_warehouse_id") @db.Uuid
+  destinationWarehouseId String                  @map("destination_warehouse_id") @db.Uuid
+  quantity               Decimal                 @db.Decimal(14, 4)
+  status                 InventoryTransferStatus @default(IN_TRANSIT)
+  version                Int                     @default(1)
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt            DateTime?               @map("completed_at") @db.Timestamptz(6)
+  cancelledAt            DateTime?               @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company              Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  product              Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant       ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+  sourceWarehouse      Warehouse       @relation("TransferSource", fields: [tenantId, sourceWarehouseId], references: [tenantId, id], onDelete: Restrict)
+  destinationWarehouse Warehouse       @relation("TransferDestination", fields: [tenantId, destinationWarehouseId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, sourceWarehouseId, status])
+  @@map("inventory_transfers")
+}
+
+enum InventoryReservationStatus {
+  ACTIVE
+  RELEASED
+}
+
+/// Earmarks on-hand stock as unavailable for new promises without physically
+/// moving it — `RESERVATION`/`RELEASE` affect `InventoryBalance.reservedQuantity`,
+/// never `onHandQuantity`. `referenceType`/`referenceId` are free-form
+/// (unlike `InventoryMovement`'s closed enum) because the real consumer of
+/// a reservation — a future Sales Order — doesn't exist as a module yet;
+/// constraining this to a real FK today would be speculative.
+model InventoryReservation {
+  id               String                     @id @db.Uuid
+  tenantId         String                     @map("tenant_id") @db.Uuid
+  companyId        String                     @map("company_id") @db.Uuid
+  warehouseId      String                     @map("warehouse_id") @db.Uuid
+  productId        String                     @map("product_id") @db.Uuid
+  productVariantId String?                    @map("product_variant_id") @db.Uuid
+  quantity         Decimal                    @db.Decimal(14, 4)
+  status           InventoryReservationStatus @default(ACTIVE)
+  referenceType    String?                    @map("reference_type") @db.VarChar(50)
+  referenceId      String?                    @map("reference_id") @db.VarChar(100)
+  version          Int                        @default(1)
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt       DateTime?                  @map("released_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  warehouse      Warehouse       @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  product        Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, companyId, warehouseId, status])
+  @@index([tenantId, productId, status])
+  @@map("inventory_reservations")
 }

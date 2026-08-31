@@ -624,6 +624,194 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Inventory endpoints, including multi-param query filters", async () => {
+    const balance = {
+      id: "bal-1",
+      warehouseId: "wh-1",
+      productId: "product-1",
+      productVariantId: null,
+      onHandQuantity: "100.0000",
+      reservedQuantity: "20.0000",
+      availableQuantity: "80.0000",
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const movement = {
+      id: "mov-1",
+      warehouseId: "wh-1",
+      productId: "product-1",
+      productVariantId: null,
+      type: "RECEIPT",
+      quantity: "100.0000",
+      reason: null,
+      referenceType: "MANUAL",
+      referenceId: null,
+      correlationId: "corr-1",
+      createdByUserId: "user-1",
+      createdAt: "2026-08-31T00:00:00.000Z",
+    };
+    const reservation = {
+      id: "res-1",
+      warehouseId: "wh-1",
+      productId: "product-1",
+      productVariantId: null,
+      quantity: "20.0000",
+      status: "ACTIVE",
+      referenceType: null,
+      referenceId: null,
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      releasedAt: null,
+    };
+    const transfer = {
+      id: "transfer-1",
+      productId: "product-1",
+      productVariantId: null,
+      sourceWarehouseId: "wh-1",
+      destinationWarehouseId: "wh-2",
+      quantity: "15.0000",
+      status: "IN_TRANSIT",
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      completedAt: null,
+      cancelledAt: null,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([balance]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([movement]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(movement), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(movement), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(movement), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([reservation]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(reservation), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...reservation, status: "RELEASED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([transfer]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(transfer), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...transfer, status: "COMPLETED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...transfer, status: "CANCELLED" }), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listInventoryBalances("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-1",
+      productId: "product-1",
+    });
+    await client.listInventoryMovements("access-token", "grupo-aurora", "company-1", { limit: 50 });
+    await client.recordInventoryReceipt("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-1",
+      productId: "product-1",
+      quantity: "100.0000",
+    });
+    await client.recordInventoryIssue("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-1",
+      productId: "product-1",
+      quantity: "5.0000",
+    });
+    await client.adjustInventory("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-1",
+      productId: "product-1",
+      direction: "DECREASE",
+      quantity: "1.0000",
+      reason: "Conteo físico",
+    });
+    await client.listInventoryReservations("access-token", "grupo-aurora", "company-1");
+    await client.createInventoryReservation("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-1",
+      productId: "product-1",
+      quantity: "20.0000",
+    });
+    await client.releaseInventoryReservation("access-token", "grupo-aurora", "company-1", "res-1");
+    await client.listInventoryTransfers("access-token", "grupo-aurora", "company-1", {
+      warehouseId: "wh-2",
+      status: "IN_TRANSIT",
+    });
+    await client.createInventoryTransfer("access-token", "grupo-aurora", "company-1", {
+      productId: "product-1",
+      sourceWarehouseId: "wh-1",
+      destinationWarehouseId: "wh-2",
+      quantity: "15.0000",
+    });
+    await client.completeInventoryTransfer("access-token", "grupo-aurora", "company-1", "transfer-1");
+    await client.cancelInventoryTransfer("access-token", "grupo-aurora", "company-1", "transfer-1");
+
+    // Multi-param query strings are built in a stable, deterministic order.
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/inventory/balances?warehouseId=wh-1&productId=product-1",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/inventory/movements?limit=50",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/inventory/movements/receipt",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/inventory/movements/issue",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/v1/inventory/movements/adjustment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          warehouseId: "wh-1",
+          productId: "product-1",
+          direction: "DECREASE",
+          quantity: "1.0000",
+          reason: "Conteo físico",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "/api/v1/inventory/reservations",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "/api/v1/inventory/reservations",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      "/api/v1/inventory/reservations/res-1/release",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      "/api/v1/inventory/transfers?warehouseId=wh-2&status=IN_TRANSIT",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
+      "/api/v1/inventory/transfers",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      11,
+      "/api/v1/inventory/transfers/transfer-1/complete",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      12,
+      "/api/v1/inventory/transfers/transfer-1/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

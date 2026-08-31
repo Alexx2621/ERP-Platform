@@ -1001,3 +1001,74 @@ hard-delete item model) gets its own analysis.
 - **No backfill of the 6 new permissions for tenants provisioned before
   this change**, same accepted gap already documented for every prior
   permission addition.
+
+## Inventory (Phase 3, 2026-08-31)
+
+Scope: `apps/api/src/modules/inventory` — Movement Ledger,
+on-hand/reserved/available balances, reservations/releases, and transfers
+with explicit state. The first module in this codebase where correctness
+depends on genuine concurrency control, not just tenant/company scoping —
+this section's threat model centers on that.
+
+### Assets
+
+- `inventory.balances.read`, `inventory.movements.read`/`.manage`,
+  `inventory.reservations.read`/`.manage`, `inventory.transfers.read`/
+  `.manage` — 7 new permissions.
+- `InventoryMovement.quantity`, `InventoryBalance.onHandQuantity`/
+  `.reservedQuantity`, `InventoryTransfer.quantity`,
+  `InventoryReservation.quantity` — the first genuinely concurrency-
+  sensitive numeric fields in this codebase; a bug here means real
+  oversell (promising stock that does not exist), not just a display
+  glitch.
+- The ledger itself: `inventory_movements` is the only append-only,
+  audit-adjacent table in Master Data so far (mirroring `audit_entries`'
+  own append-only guarantee) — its integrity is the module's real source
+  of truth, more load-bearing than the `inventory_balances` projection
+  built from it.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| Two concurrent requests both issue/reserve stock from the same (warehouse, product) balance, each individually valid but together driving on-hand or available negative (oversell) | `PrismaInventoryBalanceRepository.applyMovement` locks the target balance row with `SELECT ... FOR UPDATE` inside a transaction before checking the invariant, so a second concurrent writer blocks until the first commits and sees the updated figures — not a check-then-write race. Verified against **real concurrent Postgres connections**, not reasoned about in isolation: `apps/api/test/integration/inventory.integration-spec.ts` fires 7 concurrent issues of 2 units each against 10 real units of on-hand stock and asserts exactly 5 succeed, exactly 2 are rejected, and on-hand never goes negative — repeated for concurrent reservations. This is `docs/ROADMAP.md` §7's own exit criteria, verified directly rather than assumed from the code reading correct. |
+| Two concurrent requests are both the *first* movement ever posted for a (warehouse, product) pair, so neither sees an existing balance row to lock | Both attempt to `INSERT` into `inventory_balances`; the hand-written partial unique index (see docs/DATABASE.md "Inventory tables") lets exactly one succeed, and Postgres blocks the second `INSERT` until the winner commits, then raises a real `P2002` conflict — the loser's entire transaction (including the ledger row it already inserted) rolls back atomically and retries as an `UPDATE` path, bounded to 3 attempts. Same shape as `PrismaInboxMessageRepository.tryClaim` (ADR-008). |
+| A movement is recorded against a warehouse or product belonging to a different company | `ResolveWarehouseTargetUseCase`/`ResolveProductTargetUseCase` (shared by every write use case) check `warehouse.companyId !== companyId` / `product.companyId !== companyId` and throw the same `NotFoundError` a genuinely-missing entity would — verified against real Postgres with a real warehouse/product scoped to a different company. |
+| A movement is recorded against a product with inventory tracking disabled, or a `hasVariants` product with no variant specified (or a non-variant product with a variant id supplied) | `ResolveProductTargetUseCase` enforces all three cases explicitly (`ProductInventoryNotTrackedError`, `ProductVariantRequiredError`, `ProductVariantNotAllowedError`) before any ledger write is attempted. |
+| A variant id that belongs to a *different* product than the one specified is supplied | `ResolveProductTargetUseCase` checks `variant.productId !== product.id`, not just that the variant exists at all — `ProductVariant` carries no `companyId` of its own (it is scoped through its parent `Product`), so this check is what actually prevents cross-product variant confusion. |
+| Reserved stock is issued or transferred out from under the reservation holder | The single balance invariant (`onHand >= reserved`, enforced under the same row lock as oversell prevention) rejects any `ISSUE`/`TRANSFER_OUT`/downward `ADJUSTMENT` that would drop on-hand below the currently-reserved quantity — verified with a real reservation followed by a real issue attempt that exceeds only-just-available stock. |
+| A reservation is released, or a transfer is completed/cancelled, by a request scoped to a different company | `ReleaseReservationUseCase`/`CompleteTransferUseCase`/`CancelTransferUseCase` all check `entity.companyId !== input.companyId` and throw the same `NotFoundError` a genuinely-missing entity would (IDOR-resistant, same pattern as every prior module). |
+| A transfer is completed or cancelled twice, or a reservation is released twice | Both transitions require the entity's current state (`IN_TRANSIT` / `ACTIVE`); a second attempt is rejected with `InventoryTransferNotInTransitError`/`InventoryReservationNotActiveError`, not silently treated as a no-op — a double-release or double-complete would double-count the movement otherwise. |
+| A transfer is created between a warehouse and itself | Both the domain entity (`InventoryTransfer.create`) and the use case (`CreateTransferUseCase`, before any warehouse lookup) reject this — `SameWarehouseTransferError`, mapped to `400`. |
+| A caller submits a zero, negative, or malformed quantity where a positive value is required | DTOs enforce the shape (`@Matches(/^\d+(\.\d{1,4})?$/)`) before any use case runs, giving a proper `400` — a deliberate improvement over this codebase's earlier convention (Pricing/Catalog) of only checking shape loosely at the DTO layer and letting the domain's stricter check surface as a generic `500`. |
+| A financially/operationally significant correction (`ADJUSTMENT`) is posted with no explanation | `InventoryMovement.create` requires a non-empty `reason` for every `ADJUSTMENT` row (domain-level, cannot be bypassed by any use case), and `AdjustInventoryDto.reason` is itself mandatory at the transport layer — belt and suspenders, not redundant: the DTO gives a clean `400`, the domain check is what actually prevents a malformed direct call from slipping through. |
+| The ledger itself is edited or deleted after the fact, hiding what really happened | `InventoryMovementRepository` exposes no `save`/`update`/`delete` method at all from the application layer's point of view — the only write path is `InventoryBalanceRepository.applyMovement`, which only ever `INSERT`s a new row, mirroring `audit_entries`' own append-only guarantee. A transfer cancellation is always a **new** `TRANSFER_CANCELLED` row, never a mutation of the original `TRANSFER_OUT`. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No warehouse locations/bins, no lot/serial/expiration tracking.**
+  `docs/ROADMAP.md` §7 explicitly scopes both as "solo según alcance
+  aprobado" and no such approval exists — MASTER_SPEC §20's fuller vision
+  (multiple locations, lots, serials, expirations, picking/packing) stays
+  fully deferred. This slice tracks stock at (warehouse, product/variant)
+  granularity only.
+- **No partial reservation release.** Releasing a reservation always frees
+  its entire `quantity`; partial fulfillment tracking belongs to whatever
+  module actually consumes reservations (Sales, Phase 4), not to
+  Inventory itself.
+- **A narrow, accepted non-transactional window** between applying a
+  reservation/transfer's ledger movement and saving its own
+  reservation/transfer row (and the reverse ordering for
+  complete/cancel) — see docs/DATABASE.md "Inventory tables" → "Accepted
+  non-transactional trade-off" for the full reasoning and why growing
+  every repository interface to accept an externally supplied transaction
+  client was judged disproportionate to this specific, narrow risk.
+- **No connection to Sales, Purchasing, or POS yet** — nothing in this
+  codebase calls `RecordReceiptUseCase`/`RecordIssueUseCase`/
+  `CreateReservationUseCase` except direct API/UI callers. Purchasing
+  (Phase 5) and Sales (Phase 4) are expected to become real callers of
+  this module's use cases, the same way Pricing became Catalog's first
+  real cross-module consumer.
+- **No backfill of the 7 new permissions for tenants provisioned before
+  this change**, same accepted gap already documented for every prior
+  permission addition.

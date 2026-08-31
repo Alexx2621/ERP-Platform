@@ -67,4 +67,20 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "pricing.price-lists.manage",
     description: "Create, edit and archive price lists and manage their items.",
   },
+  { key: "inventory.balances.read", description: "View the company's on-hand/reserved/available inventory balances." },
+  { key: "inventory.movements.read", description: "View the company's inventory movement ledger." },
+  {
+    key: "inventory.movements.manage",
+    description: "Post inventory receipts, issues and adjustments.",
+  },
+  { key: "inventory.reservations.read", description: "View the company's inventory reservations." },
+  {
+    key: "inventory.reservations.manage",
+    description: "Create and release inventory reservations.",
+  },
+  { key: "inventory.transfers.read", description: "View the company's inventory transfers." },
+  {
+    key: "inventory.transfers.manage",
+    description: "Create, complete and cancel inventory transfers between warehouses.",
+  },
 ];

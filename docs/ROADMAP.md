@@ -5,8 +5,15 @@ implementadas y cerradas formalmente — sesión 22, 2026-08-30. Ver
 "Revisión de cierre de Foundation" en `docs/PROJECT_STATE.md`. Fase 2
 (Master Data) implementada y cerrada formalmente — sesión 25, 2026-08-31,
 en tres bloques (Catálogo, sesión 23; Customers/Suppliers, sesión 24;
-Taxes/Warehouses/Pricing, sesión 25). Las fases 3-12 siguen como propuesta
-de roadmap sin implementar.**
+Taxes/Warehouses/Pricing, sesión 25). Fase 3 (Inventory) implementada y
+cerrada formalmente — sesión 26, 2026-08-31: Movement Ledger, balances
+on-hand/reservado/disponible, reservas/liberaciones, ajustes y
+transferencias con estado explícito, con seguridad de concurrencia real
+verificada contra Postgres real (`docs/DATABASE.md`/`docs/SECURITY.md`
+"Inventory"). Deliberadamente fuera de alcance por falta de aprobación
+explícita (`docs/ROADMAP.md` §7): ubicaciones/bins de bodega,
+lote/serie/vencimiento. Las fases 4-12 siguen como propuesta de roadmap
+sin implementar.**
 
 Estrategia: fases con exit criteria, sin fechas artificiales
 

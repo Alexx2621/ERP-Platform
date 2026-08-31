@@ -34,6 +34,7 @@ import { AddProductVariantUseCase } from "./application/use-cases/add-product-va
 import { UpdateProductVariantUseCase } from "./application/use-cases/update-product-variant.use-case";
 import { ListProductVariantsUseCase } from "./application/use-cases/list-product-variants.use-case";
 import { SetProductVariantStatusUseCase } from "./application/use-cases/set-product-variant-status.use-case";
+import { GetProductVariantUseCase } from "./application/use-cases/get-product-variant.use-case";
 import { UnitsOfMeasureController } from "./presentation/units-of-measure.controller";
 import { CategoriesController } from "./presentation/categories.controller";
 import { BrandsController } from "./presentation/brands.controller";
@@ -77,6 +78,7 @@ import { ProductsController } from "./presentation/products.controller";
     UpdateProductVariantUseCase,
     ListProductVariantsUseCase,
     SetProductVariantStatusUseCase,
+    GetProductVariantUseCase,
   ],
   exports: [
     CreateUnitOfMeasureUseCase,
@@ -90,6 +92,7 @@ import { ProductsController } from "./presentation/products.controller";
     GetProductUseCase,
     AddProductVariantUseCase,
     ListProductVariantsUseCase,
+    GetProductVariantUseCase,
   ],
 })
 export class CatalogModule {}

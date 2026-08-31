@@ -179,6 +179,49 @@ export type PriceListItemResponse = components["schemas"]["PriceListItemResponse
 export type AddPriceListItemInput = components["schemas"]["AddPriceListItemDto"];
 export type UpdatePriceListItemInput = components["schemas"]["UpdatePriceListItemDto"];
 
+export type InventoryBalanceResponse = components["schemas"]["InventoryBalanceResponseDto"];
+export type InventoryMovementType = components["schemas"]["InventoryMovementResponseDto"]["type"];
+export type InventoryMovementResponse = components["schemas"]["InventoryMovementResponseDto"];
+export type RecordReceiptInput = components["schemas"]["RecordReceiptDto"];
+export type RecordIssueInput = components["schemas"]["RecordIssueDto"];
+export type InventoryAdjustmentDirection = components["schemas"]["AdjustInventoryDto"]["direction"];
+export type AdjustInventoryInput = components["schemas"]["AdjustInventoryDto"];
+export type InventoryReservationStatus = components["schemas"]["InventoryReservationResponseDto"]["status"];
+export type InventoryReservationResponse = components["schemas"]["InventoryReservationResponseDto"];
+export type CreateReservationInput = components["schemas"]["CreateReservationDto"];
+export type InventoryTransferStatus = components["schemas"]["InventoryTransferResponseDto"]["status"];
+export type InventoryTransferResponse = components["schemas"]["InventoryTransferResponseDto"];
+export type CreateTransferInput = components["schemas"]["CreateTransferDto"];
+
+export interface ListInventoryBalancesFilter {
+  warehouseId?: string;
+  productId?: string;
+  productVariantId?: string;
+}
+
+export interface ListInventoryMovementsFilter {
+  warehouseId?: string;
+  productId?: string;
+  productVariantId?: string;
+  referenceType?: "TRANSFER" | "RESERVATION" | "MANUAL";
+  referenceId?: string;
+  limit?: number;
+}
+
+export interface ListInventoryReservationsFilter {
+  warehouseId?: string;
+  productId?: string;
+  status?: InventoryReservationStatus;
+  limit?: number;
+}
+
+export interface ListInventoryTransfersFilter {
+  warehouseId?: string;
+  productId?: string;
+  status?: InventoryTransferStatus;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

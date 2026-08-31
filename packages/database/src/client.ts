@@ -36,6 +36,10 @@ export type {
   Warehouse,
   PriceList,
   PriceListItem,
+  InventoryMovement,
+  InventoryBalance,
+  InventoryTransfer,
+  InventoryReservation,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -52,6 +56,10 @@ export {
   MasterDataStatus,
   ProductType,
   ProductStatus,
+  InventoryMovementType,
+  InventoryMovementReferenceType,
+  InventoryTransferStatus,
+  InventoryReservationStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

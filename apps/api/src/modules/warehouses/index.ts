@@ -2,6 +2,7 @@
 export { Warehouse, type WarehouseProps } from "./domain/warehouse.entity";
 export { CreateWarehouseUseCase } from "./application/use-cases/create-warehouse.use-case";
 export { ListWarehousesUseCase } from "./application/use-cases/list-warehouses.use-case";
+export { GetWarehouseUseCase } from "./application/use-cases/get-warehouse.use-case";
 export * from "./application/errors";
 export { WarehousesController } from "./presentation/warehouses.controller";
 export { WarehousesModule } from "./warehouses.module";

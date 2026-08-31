@@ -22,21 +22,179 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 2 (Master Data) está completa** — los tres bloques descritos en
-`docs/ARCHITECTURE.md` §5.2 están cerrados: Catálogo (sesión 23),
-Customers/Suppliers (sesión 24) y Taxes/Warehouses/Pricing (sesión 25, ver
-"Hecho — sesión 25" abajo). El siguiente trabajo no bloqueado es Fase 3
-(Inventory) según `docs/ROADMAP.md` §7, salvo que el usuario indique otra
-prioridad. Alcance deliberadamente fuera de Fase 2 y diferido a fases
-futuras (no simulado): un motor de reglas fiscales real (Sales/Phase 4),
-resolución de qué lista de precios aplica a una venta (Sales/Phase 4),
-precios de lista por variante (requeriría un índice único parcial que
-Prisma no expresa declarativamente), asociación Warehouse↔Branch/Location
-(ninguna de las dos entidades existe todavía), e import/export masivo
-(MASTER_SPEC §83, mencionado también en `docs/ROADMAP.md` §6 punto 6 pero
-fuera del alcance de Master Data en sí) — ver "Known limitations" en las
-secciones "Catalog", "Customers / Suppliers" y
+**Fase 3 (Inventory) está completa** — ver "Hecho — sesión 26" abajo. El
+siguiente trabajo no bloqueado es Fase 4 (Sales) según `docs/ROADMAP.md`
+§8, salvo que el usuario indique otra prioridad. Alcance deliberadamente
+fuera de Fase 3 y diferido (no simulado, sin aprobación explícita per
+`docs/ROADMAP.md` §7): ubicaciones/bins de bodega, lote/serie/vencimiento,
+conexión real desde Sales/Purchasing/POS (todavía no existen) a
+`RecordReceiptUseCase`/`RecordIssueUseCase`/`CreateReservationUseCase` —
+ver "Known limitations" en la sección "Inventory" de `docs/SECURITY.md`.
+Alcance fuera de Fase 2 y aún diferido de sesiones previas, sin cambios:
+un motor de reglas fiscales real (Sales/Phase 4), resolución de qué lista
+de precios aplica a una venta (Sales/Phase 4), precios de lista por
+variante, asociación Warehouse↔Branch/Location, e import/export masivo —
+ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 26 (Inventory — Fase 3, completa de una vez)
+
+Fase 3 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("avanza y termina toda la fase 3 de una vez"): Movement Ledger,
+balances on-hand/reservado/disponible, reservas/liberaciones, ajustes y
+transferencias con estado explícito — los cuatro entregables de
+`docs/ROADMAP.md` §7 — con la garantía de concurrencia de sus exit
+criteria ("Pruebas concurrentes no permiten oversell/reservas negativas")
+verificada contra Postgres real, no solo razonada.
+
+- **`apps/api/src/modules/inventory/`** (módulo nuevo, cuarto bloque de
+  negocio del código base): `InventoryMovement` (fila de ledger
+  append-only, `quantity` decimal **con signo** — el delta de saldo de
+  cualquier fila es siempre exactamente su propio valor, sin columna de
+  dirección separada que pudiera desincronizarse; `RECEIPT`/
+  `TRANSFER_IN`/`TRANSFER_CANCELLED`/`RESERVATION` siempre positivos,
+  `ISSUE`/`TRANSFER_OUT`/`RELEASE` siempre negativos, `ADJUSTMENT`
+  cualquier signo pero exige `reason`), `InventoryBalance` (proyección
+  reconciliable, nunca la fuente de verdad por sí misma —
+  `availableQuantity = onHandQuantity - reservedQuantity` siempre
+  calculado, jamás persistido; tampoco existe columna `inTransit`, es una
+  consulta sobre `InventoryTransfer` con `status = IN_TRANSIT`),
+  `InventoryTransfer` (`IN_TRANSIT → COMPLETED | CANCELLED`, ambos
+  terminales; crear una transferencia descuenta el origen de inmediato vía
+  `TRANSFER_OUT`, no es solo una "intención"), `InventoryReservation`
+  (aparta existencias sin moverlas físicamente, solo libera la cantidad
+  completa — sin liberación parcial en este slice).
+- **El dominio nunca importa `Prisma.Decimal`** (`docs/ARCHITECTURE.md`
+  §6): `domain/decimal.ts` implementa aritmética decimal exacta con
+  `BigInt` escalado (4 dígitos de fracción) — primera vez que un módulo de
+  este código base necesita *calcular* con decimales dentro del dominio
+  (no solo validarlos/pasarlos), sin acoplarse a Prisma para lograrlo.
+- **La invariante única que hace todo el módulo concurrency-safe**,
+  aplicada bajo `SELECT ... FOR UPDATE` en `PrismaInventoryBalanceRepository.applyMovement`:
+  `nextOnHand >= 0 AND nextReserved >= 0 AND nextOnHand >= nextReserved`.
+  Un solo chequeo — no una rama por tipo de movimiento — es lo que
+  previene de forma uniforme el oversell (`ISSUE`/`TRANSFER_OUT` más allá
+  de lo disponible), reservas negativas, y reservar más allá de lo
+  existente. **Verificado con escritores concurrentes reales contra
+  Postgres real**, no solo razonado: `apps/api/test/integration/
+  inventory.integration-spec.ts` dispara 7 `RecordIssueUseCase`
+  concurrentes de 2 unidades cada uno contra 10 unidades reales de
+  existencia, confirma exactamente 5 éxitos y 2 rechazos con
+  `InsufficientInventoryError`, y el saldo final exactamente `0.0000` —
+  nunca negativo —, repetido para `CreateReservationUseCase` concurrentes.
+  Esta es la prueba directa del exit criteria de `docs/ROADMAP.md` §7.
+- **Tracking a nivel de variante, a diferencia de Pricing**: Pricing
+  (sesión 25) deliberadamente no soportó precios por variante por
+  la complejidad de un índice único parcial sin caso de uso validado que
+  la justificara. Para Inventory, el seguimiento a nivel de variante SÍ es
+  central al valor real del módulo, así que esta vez se resolvió el
+  problema correctamente: dos índices únicos parciales escritos a mano en
+  la migración (`inventory_balances_variant_unique`/`_product_unique`,
+  ver `docs/DATABASE.md` "Inventory tables"), ya que Postgres trata cada
+  `NULL` de un índice único como distinto de otro `NULL` y un `@@unique`
+  plano habría permitido que un mismo producto sin variantes acumulara
+  filas de balance sin límite en una bodega.
+- **Segunda dependencia genuina entre módulos de negocio** (tras
+  Pricing→Catalog en sesión 25): Inventory importa `CatalogModule`
+  (`GetProductUseCase` + `GetProductVariantUseCase`, este último nuevo,
+  agregado al contrato público de Catalog) y `WarehousesModule`
+  (`GetWarehouseUseCase`, también nuevo, agregado al contrato público de
+  Warehouses) — ambas dependencias dirigidas y libres de ciclos; ni
+  Catalog ni Warehouses conocen Inventory.
+- **Bug real de schema encontrado y corregido por el propio test de
+  integración de este módulo, antes del primer commit**:
+  `InventoryMovement.correlationId` se declaró inicialmente `@db.Uuid`,
+  pero `CorrelationIdMiddleware` acepta el header `X-Correlation-Id` tal
+  cual lo envíe el cliente cuando existe, sin garantizar formato UUID —
+  las otras dos tablas con `correlationId` (`audit_entries`,
+  `outbox_messages`) ya usaban `varchar(100)`. Corregido en el propio
+  schema y en la migración antes de compartirla, columna alterada también
+  en la base de desarrollo persistente, cliente Prisma regenerado, y
+  re-verificado.
+- 7 permisos nuevos: `inventory.balances.read`,
+  `inventory.movements.read`/`.manage`,
+  `inventory.reservations.read`/`.manage`,
+  `inventory.transfers.read`/`.manage`. Auditoría real en las 7 acciones
+  de escritura (`inventory.movement.receipt`/`.issue`/`.adjustment`,
+  `inventory.reservation.created`/`.released`,
+  `inventory.transfer.created`/`.completed`/`.cancelled`).
+- Tabla nueva (migración `20260831175237_inventory_ledger` — **generada
+  vía `prisma migrate diff --script` en vez de `prisma migrate dev
+  --create-only`**, que falla en este entorno no interactivo cuando
+  necesita mostrar un prompt de advertencia; la técnica —diff crudo +
+  directorio de migración manual + `prisma migrate deploy`— queda
+  documentada como reutilizable para el mismo obstáculo en el futuro).
+  Aplicada limpiamente tanto contra la base de desarrollo persistente como
+  contra el Postgres efímero de Testcontainers.
+- Contrato HTTP nuevo, un solo controlador (`InventoryController`, 12
+  rutas bajo `/api/v1/inventory`): `GET .../balances`, `GET .../movements`,
+  `POST .../movements/receipt`/`/issue`/`/adjustment`,
+  `GET/POST .../reservations`, `POST .../reservations/:id/release`,
+  `GET/POST .../transfers`, `POST .../transfers/:id/complete`/`/cancel`.
+- **`@erp/api-client`**: ~15 tipos y 12 métodos nuevos generados desde el
+  spec OpenAPI real, sin bugs de fidelidad de decoradores (todos los
+  campos nullable llevaban `type: String` desde el primer borrador,
+  aplicando la lección de la sesión 21 proactivamente). Nuevo helper
+  privado `buildQuery()` para construir query strings multi-parámetro
+  (ningún método anterior del SDK necesitaba más de un filtro opcional a
+  la vez).
+- **UI** (`apps/erp-web/src/features/inventory/`, ruta nueva `/inventory`,
+  botón "Inventario" en el workspace): 4 pestañas (Existencias/
+  Movimientos/Reservas/Transferencias) sobre `warehouses`/`products`
+  cargados una sola vez a nivel de página y compartidos. Componente
+  reutilizable `ProductAndVariantFields` (selector de producto +, solo si
+  `hasVariants`, carga perezosa de sus variantes) compartido por los 5
+  formularios que necesitan apuntar a una unidad vendible (Recepción,
+  Salida, Ajuste, crear Reserva, crear Transferencia) — duplicación real
+  eliminada, no una abstracción especulativa. **Dos bugs reales
+  encontrados y corregidos durante la propia escritura de tests, no
+  simulados**: (1) dos tests que cambiaban de pestaña con
+  `getByRole` síncrono antes de que el fetch async de bodegas/productos
+  resolviera — corregido a `findByRole`; (2) los paneles de Reservas/
+  Transferencias recargaban la lista completa tras crear en vez de anexar
+  el objeto recién creado (la convención ya establecida por
+  `PriceListsPanel` y el resto del código base) — con un mock de lista
+  estático esto ocultaba el ítem recién creado; corregido a append
+  optimista, alineando el patrón con el resto de la UI.
+- Tests: 78 tests unitarios nuevos en `apps/api` (dominio: aritmética
+  BigInt, validación de signo por tipo de movimiento, transiciones de
+  estado de transfer/reservation; aplicación: resolvers cross-module,
+  Receipt/Issue/Adjustment incluyendo rechazo de oversell, Reservation/
+  Release incluyendo rechazo de sobre-reserva, Transfer create/complete/
+  cancel, los 4 casos de uso de listado) — 480 tests unitarios totales en
+  `apps/api`. **2 tests de integración nuevos contra Postgres real**
+  (`apps/api/test/integration/inventory.integration-spec.ts`): un
+  escenario comprehensivo (round-trip decimal, tracking a nivel de
+  variante, ciclo de vida completo de transferencia, aislamiento
+  cross-tenant) y el escenario de concurrencia real descrito arriba — 28
+  tests de integración totales (antes 26). 5 tests nuevos en
+  `apps/erp-web` (`inventory-page.spec.tsx`) — 32/32 en total (antes 28).
+  1 test nuevo en `@erp/api-client` (`api-client.spec.ts`, cubre los 12
+  métodos + construcción de query multi-parámetro) — 14/14 en total (antes
+  13). **E2E real nuevo** (`apps/e2e/tests/inventory.spec.ts`, Chromium vía
+  Testcontainers): crea producto real vía Catálogo, dos bodegas reales vía
+  Comercial, registra una recepción real, intenta una salida que produce
+  oversell real (`409`, error visible en la UI), verifica el ledger real,
+  crea y libera una reserva real (confirmando el efecto en disponible),
+  crea una transferencia real y la completa (confirmando la llegada a
+  destino) — 10/10 Playwright en total (antes 9), **corrida limpia contra
+  la infraestructura efímera real** tras detener los servidores
+  persistentes (mismo protocolo ya documentado en sesión 18).
+- **Smoke test manual adicional verificado contra Docker/Postgres real**
+  (además de la suite automatizada): registro y provisioning reales →
+  producto, bodega y recepción reales con decimales de 4 dígitos
+  (`"33.3300"`) → salida real → oversell real rechazado (`409`) → saldo
+  final confirmado por HTTP (`"30.0000"`) → **precisión decimal y tipo de
+  `correlation_id` confirmados directamente contra Postgres vía `psql`**
+  (sin recorte de ceros, columna `varchar(100)` aceptando un valor real no
+  UUID) → `GET /audit-entries` confirma las 2 entradas reales esperadas
+  (`inventory.movement.receipt`/`.issue`).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (480 api + 27 events + 33 notifications + 6
+  worker + 14 api-client + 32 erp-web = 592), `pnpm --filter @erp/api
+  test:integration` (28/28 contra Postgres real), `pnpm --filter @erp/e2e
+  test:e2e` (10/10 Playwright, corrida limpia contra infraestructura
+  efímera) — todo verde.
 
 ### Hecho — sesión 25 (Taxes, Warehouses, Pricing — Fase 2, bloque de cierre)
 
