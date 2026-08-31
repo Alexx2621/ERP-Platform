@@ -25,6 +25,11 @@ export type {
   AppDefinition,
   TenantApp,
   AppConfiguration,
+  UnitOfMeasure,
+  Category,
+  Brand,
+  Product,
+  ProductVariant,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -38,6 +43,9 @@ export {
   NotificationDeliveryStatus,
   AppKind,
   TenantAppStatus,
+  MasterDataStatus,
+  ProductType,
+  ProductStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

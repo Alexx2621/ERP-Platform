@@ -47,6 +47,14 @@ import { ListUsersUseCase } from "./core/users";
 import { ListPlatformSettingsUseCase } from "./core/configuration";
 import { ListPlatformAuditEntriesUseCase } from "./core/audit";
 import { AppsController, EnableAppUseCase, DisableAppUseCase, ListTenantAppsUseCase } from "./core/app-registry";
+import {
+  UnitsOfMeasureController,
+  CategoriesController,
+  BrandsController,
+  ProductsController,
+  CreateProductUseCase,
+  AddProductVariantUseCase,
+} from "./modules/catalog";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -105,6 +113,12 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(EnableAppUseCase)).toBeInstanceOf(EnableAppUseCase);
     expect(moduleRef.get(DisableAppUseCase)).toBeInstanceOf(DisableAppUseCase);
     expect(moduleRef.get(ListTenantAppsUseCase)).toBeInstanceOf(ListTenantAppsUseCase);
+    expect(moduleRef.get(UnitsOfMeasureController)).toBeInstanceOf(UnitsOfMeasureController);
+    expect(moduleRef.get(CategoriesController)).toBeInstanceOf(CategoriesController);
+    expect(moduleRef.get(BrandsController)).toBeInstanceOf(BrandsController);
+    expect(moduleRef.get(ProductsController)).toBeInstanceOf(ProductsController);
+    expect(moduleRef.get(CreateProductUseCase)).toBeInstanceOf(CreateProductUseCase);
+    expect(moduleRef.get(AddProductVariantUseCase)).toBeInstanceOf(AddProductVariantUseCase);
 
     await moduleRef.close();
   });

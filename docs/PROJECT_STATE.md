@@ -1,17 +1,16 @@
 # Project State
 
-Última actualización: 2026-08-29 (sesión 21), tras generar
-`@erp/api-client` desde el spec OpenAPI real (`openapi-typescript` contra
-`/api/docs-json`) — cierra el último ítem original de `docs/WORK_QUEUE.md`.
-De paso se encontraron y corrigieron dos huecos reales de documentación
-(`TenantsController.listMine()`/`current()` sin DTO decorado) y un bug de
-fidelidad de decoradores Swagger en 6 archivos (`@ApiProperty({nullable:
-true})` sin `type:` explícito perdía el tipo real en el spec generado).
-`packages/api-client/src/contracts.ts` ahora deriva cada tipo público de
-`components["schemas"][...]` en vez de mantenerse duplicado a mano, sin
-cambiar ningún nombre exportado. Modelo de trabajo vigente:
-`docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`,
-que quedan como historial).
+Última actualización: 2026-08-31 (sesión 23), tras implementar el módulo
+Catálogo (Units of Measure, Categories, Brands, Products, Product
+Variants) — primer bloque de Fase 2 (Master Data) y primer módulo de
+negocio real de la plataforma (`apps/api/src/modules/catalog`, sibling de
+`core/`). Ver "Hecho — sesión 23" en `docs/WORK_QUEUE.md` para el detalle
+completo, incluyendo dos bugs reales encontrados y corregidos (pérdida de
+datos en actualizaciones parciales; recorte de ceros decimales al leer de
+Postgres) y dos bugs reales de re-render en la UI encontrados durante la
+verificación E2E. Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
+(reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como
+historial).
 
 ## Development Ownership
 
@@ -27,6 +26,14 @@ participar en una tarea aislada con asignación explícita, alcance cerrado y
 revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
+
+PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23)**. Primer
+bloque completado: Catálogo (Units of Measure, Categories, Brands,
+Products, Product Variants — `apps/api/src/modules/catalog`, ver "Hecho —
+sesión 23" en `docs/WORK_QUEUE.md`). Pendiente del alcance de
+`docs/ARCHITECTURE.md` §5.2: Customers, Suppliers, Pricing (price lists/
+multi-tier), Taxes, Warehousing master data — cada uno explícitamente
+diferido en `docs/SECURITY.md` "Catalog", no simulado.
 
 PHASE 1 — Foundation, **formalmente cerrada el 2026-08-30 (sesión 22)**:
 primer vertical slice integrado y verificado de extremo a extremo —
@@ -663,9 +670,47 @@ bloqueen.
   Docker persistente (limpiadas al terminar el smoke test — la única de
   las tablas de Foundation sin un `onDelete: Restrict` que lo impidiera).
   Detalle completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 22").
-- 332 tests unitarios pasando (api 237, api-client 10, erp-web 19) + 27 en
-  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 21
-  tests de integración con Postgres real + **6 tests E2E de Playwright
+- **Catálogo — Fase 2, primer módulo de negocio** (`apps/api/src/modules/
+  catalog`, Claude, sesión 23): `UnitOfMeasure`, `Category` (árbol
+  auto-referenciado vía `parentId`), `Brand`, `Product` (con las
+  invariantes precio-vs-variantes de MASTER_SPEC §19), `ProductVariant`
+  (SKU único a nivel tenant, atributos JSON dinámicos). Primer módulo bajo
+  `apps/api/src/modules/` (sibling de `core/`, nunca dentro de él) y
+  primeros campos monetarios reales del código base (`basePrice`/
+  `baseCost`/`price`/`cost`, strings decimales canónicas, nunca `float`).
+  A diferencia de Foundation, `companyId` es obligatorio, no opcional.
+  8 permisos nuevos (`catalog.*.read`/`.manage`), auditoría real en las 5
+  entidades. Tablas nuevas (migración `20260831040628_catalog_master_data`,
+  **generada y aplicada directamente contra Postgres real**), incluyendo
+  un índice único real sobre una columna `jsonb`
+  (`ProductVariant.attributes`). **Dos bugs reales encontrados y
+  corregidos mediante smoke test manual contra Postgres real, no
+  detectados por tests unitarios**: recorte de ceros decimales al leer de
+  Postgres (`.toString()` de Decimal.js → corregido a `.toFixed(4)`), y
+  pérdida de datos en actualizaciones parciales (un campo omitido se
+  borraba a `null` en vez de preservarse — corregido con un contrato de
+  tres estados omitir/`""`/valor). UI nueva (`apps/erp-web/src/features/
+  catalog`, ruta `/catalog`): pestañas Unidades/Categorías/Marcas/
+  Productos, con un componente genérico `SimpleMasterDataPanel<T>`
+  reutilizado por los tres primeros. **Dos bugs reales de re-render
+  encontrados durante la verificación E2E**: ids/names de formulario
+  colisionando entre pestañas simultáneamente montadas (corregido con un
+  prop `fieldPrefix`), y un ciclo de refetch/pérdida de estado optimista
+  causado por estado compartido entre el padre `CatalogPage` y sus tres
+  paneles hijos (corregido memoizando `load`/`create`/`setStatus` con
+  `useCallback` sin depender del campo que cambiaba en cada tecleo). Un
+  tercer bug encontrado por el E2E: `ProductsPanel` cargaba sus selects de
+  unidad/categoría/marca solo al montar, antes de que el usuario pudiera
+  haber creado ninguno — corregido con el mismo patrón "recargar al
+  activarse la pestaña" ya usado por `AuditPanel` de platform-admin
+  (sesión 18). **Verificado con un E2E de Playwright real** (Chromium):
+  crea unidad/categoría/marca reales, activa/desactiva estado, crea un
+  producto sin variantes con precio base y uno con variantes, agrega una
+  variante real con atributos JSON — todo contra el backend real. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 23").
+- 398 tests unitarios pasando (api 300, api-client 11, erp-web 21) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 22
+  tests de integración con Postgres real + **7 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
@@ -673,7 +718,7 @@ bloqueen.
   `tenants.module.spec.ts`, `access-control.module.spec.ts`,
   `configuration.module.spec.ts`, `audit.module.spec.ts`,
   `files.module.spec.ts`, `platform-admin.module.spec.ts`,
-  `app-registry.module.spec.ts` en `apps/api`;
+  `app-registry.module.spec.ts`, `catalog.module.spec.ts` en `apps/api`;
   `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
@@ -734,10 +779,11 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — Foundation quedó formalmente cerrada en la sesión 22 (ver
-"Revisión de cierre de Foundation" arriba). El siguiente bloque es Fase 2
-(Master Data): Customers, Suppliers, Product Catalog, Pricing, Taxes,
-Warehousing master data (`docs/ARCHITECTURE.md` §5.2).
+Fase 2 (Master Data), sesión 23: bloque Catálogo (Units of Measure,
+Categories, Brands, Products, Product Variants) completado e integrado
+(ver Completed arriba). Pendiente del alcance de `docs/ARCHITECTURE.md`
+§5.2: Customers, Suppliers, Pricing (price lists/multi-tier), Taxes,
+Warehousing master data.
 
 ## Pending
 
@@ -747,11 +793,13 @@ ADR-001, ADR-002 y ADR-003 formalmente (ADR-004, ADR-005, ADR-006, ADR-007
 y ADR-008 ya están ratificados) — sus decisiones ya están implementadas y
 verificadas, solo falta el documento formal. La UI de RBAC (incluida la
 invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
-de Platform Administration (sesión 18) y la UI de Apps (sesión 22) ya
-están hechas e integradas (ver Completed); la UI de Files (subida/listado/
-descarga) y de Notifications (bandeja/badge de no leídas) todavía no se
-han construido — quedan como mejoras de UX sin dependencia de arquitectura,
-a retomar si el usuario las pide o cuando un módulo de negocio las necesite.
+de Platform Administration (sesión 18), la UI de Apps (sesión 22) y la UI
+de Catálogo (sesión 23) ya están hechas e integradas (ver Completed); la
+UI de Files (subida/listado/descarga) y de Notifications (bandeja/badge de
+no leídas) todavía no se han construido — quedan como mejoras de UX sin
+dependencia de arquitectura, a retomar si el usuario las pide o cuando un
+módulo de negocio las necesite. Dentro de Fase 2: Customers, Suppliers,
+Pricing, Taxes, Warehousing master data (ver "In Progress").
 
 ## Production Status
 
@@ -1038,3 +1086,26 @@ tablas nuevas tiene un `onDelete: Restrict` hacia `users` que lo
 impidiera, a diferencia de `audit_entries.user_id`. El usuario/tenant de
 prueba de este smoke test sí permanecen en la base, por el mismo motivo ya
 documentado en sesiones anteriores.
+
+**Sesión 23 (2026-08-31, Catálogo — Fase 2)**: migración
+`20260831040628_catalog_master_data` (`units_of_measure`, `categories`,
+`brands`, `products`, `product_variants`) generada y **aplicada
+directamente contra Postgres real** vía `prisma migrate dev` —
+`prisma migrate status` confirma las 13 migraciones aplicadas sin drift.
+Verificado con el servidor real reconstruido y un smoke test manual vía
+HTTP: registro y provisioning con compañía real → creación real de una
+unidad de medida, una categoría, una marca → creación de un producto
+sellable sin variantes con `basePrice` → `GET` confirma el valor exacto
+persistido → **confirmado el bug real de formato decimal** comparando la
+respuesta HTTP (`"24.99"`) contra una consulta `psql` directa a la columna
+`numeric(14,4)` (`24.9900`) — corregido a `.toFixed(4)` y re-verificado
+(`"24.9900"` en ambos lados tras el fix y el reinicio del servidor) →
+creación de un producto `hasVariants` con una variante real (`price`,
+`cost`, `attributes` JSON) → **confirmado el bug real de pérdida de datos
+en actualización parcial**: `PUT` de la variante enviando solo `price`
+borraba `cost` a `null` — corregido con el contrato de tres estados
+(omitir/`""`/valor) y re-verificado con un `PUT` que preserva `cost` al
+omitirlo y otro que lo limpia enviando `""`. Aislamiento cross-company
+confirmado (una categoría de otra compañía del mismo tenant rechazada) y
+cross-tenant confirmado (un segundo tenant real no ve ningún registro del
+primero). Toda la data de prueba fue limpiada al terminar.

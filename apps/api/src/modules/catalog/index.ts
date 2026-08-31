@@ -1,0 +1,22 @@
+/** Public contract of the Catalog module. Other modules must only import from here. */
+export { UnitOfMeasure, type UnitOfMeasureProps } from "./domain/unit-of-measure.entity";
+export { Category, type CategoryProps } from "./domain/category.entity";
+export { Brand, type BrandProps } from "./domain/brand.entity";
+export { Product, type ProductProps, type ProductType, type ProductStatus } from "./domain/product.entity";
+export { ProductVariant, type ProductVariantProps } from "./domain/product-variant.entity";
+export { CreateUnitOfMeasureUseCase } from "./application/use-cases/create-unit-of-measure.use-case";
+export { ListUnitsOfMeasureUseCase } from "./application/use-cases/list-units-of-measure.use-case";
+export { CreateCategoryUseCase } from "./application/use-cases/create-category.use-case";
+export { ListCategoriesUseCase } from "./application/use-cases/list-categories.use-case";
+export { CreateBrandUseCase } from "./application/use-cases/create-brand.use-case";
+export { ListBrandsUseCase } from "./application/use-cases/list-brands.use-case";
+export { CreateProductUseCase } from "./application/use-cases/create-product.use-case";
+export { ListProductsUseCase } from "./application/use-cases/list-products.use-case";
+export { AddProductVariantUseCase } from "./application/use-cases/add-product-variant.use-case";
+export { ListProductVariantsUseCase } from "./application/use-cases/list-product-variants.use-case";
+export * from "./application/errors";
+export { UnitsOfMeasureController } from "./presentation/units-of-measure.controller";
+export { CategoriesController } from "./presentation/categories.controller";
+export { BrandsController } from "./presentation/brands.controller";
+export { ProductsController } from "./presentation/products.controller";
+export { CatalogModule } from "./catalog.module";

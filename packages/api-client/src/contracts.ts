@@ -102,6 +102,55 @@ export type SetAppConfigurationInput = Omit<components["schemas"]["SetAppConfigu
   value: unknown;
 };
 
+export type MasterDataStatus = components["schemas"]["UnitOfMeasureResponseDto"]["status"];
+export type UnitOfMeasureResponse = components["schemas"]["UnitOfMeasureResponseDto"];
+export type CreateUnitOfMeasureInput = components["schemas"]["CreateUnitOfMeasureDto"];
+export type UpdateUnitOfMeasureInput = components["schemas"]["UpdateUnitOfMeasureDto"];
+export type SetMasterDataStatusInput = components["schemas"]["SetUnitOfMeasureStatusDto"];
+
+export type CategoryResponse = components["schemas"]["CategoryResponseDto"];
+export type CreateCategoryInput = components["schemas"]["CreateCategoryDto"];
+export type UpdateCategoryInput = components["schemas"]["UpdateCategoryDto"];
+
+export type BrandResponse = components["schemas"]["BrandResponseDto"];
+export type CreateBrandInput = components["schemas"]["CreateBrandDto"];
+export type UpdateBrandInput = components["schemas"]["UpdateBrandDto"];
+
+export type ProductType = components["schemas"]["ProductResponseDto"]["type"];
+export type ProductStatus = components["schemas"]["ProductResponseDto"]["status"];
+export type ProductResponse = components["schemas"]["ProductResponseDto"];
+export type SetProductStatusInput = components["schemas"]["SetProductStatusDto"];
+export type SetProductVariantStatusInput = components["schemas"]["SetProductVariantStatusDto"];
+
+/**
+ * `trackInventory`/`sellable`/`purchasable`/`hasVariants`/`publishOnline`
+ * are genuinely optional on the wire (each has a server-side default —
+ * confirmed against the raw OpenAPI spec's own `required` array) but
+ * `openapi-typescript` renders a boolean property with a JSON-Schema
+ * `default` as non-optional in the generated TS type. Restoring them to
+ * optional here matches the real API contract instead of forcing every
+ * caller to pass all five.
+ */
+export type CreateProductInput = Omit<
+  components["schemas"]["CreateProductDto"],
+  "trackInventory" | "sellable" | "purchasable" | "hasVariants" | "publishOnline"
+> &
+  Partial<
+    Pick<
+      components["schemas"]["CreateProductDto"],
+      "trackInventory" | "sellable" | "purchasable" | "hasVariants" | "publishOnline"
+    >
+  >;
+export type UpdateProductInput = components["schemas"]["UpdateProductDto"];
+
+export type AddProductVariantInput = Omit<components["schemas"]["AddProductVariantDto"], "attributes"> & {
+  attributes: Record<string, string>;
+};
+export type UpdateProductVariantInput = components["schemas"]["UpdateProductVariantDto"];
+export type ProductVariantResponse = Omit<components["schemas"]["ProductVariantResponseDto"], "attributes"> & {
+  attributes: Record<string, string>;
+};
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

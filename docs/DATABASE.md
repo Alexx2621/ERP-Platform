@@ -584,3 +584,128 @@ generated and applied via `prisma migrate dev --name app_registry_foundation`
 against the real `erp_platform` Postgres container, confirmed applying
 cleanly both there and against the ephemeral Testcontainers instance used by
 `apps/api/test/integration`.
+
+## Catalog tables (Master Data — Phase 2, 2026-08-31)
+
+Scope: `docs/ARCHITECTURE.md` §5.2 "Master Data" — first Phase 2 module,
+first business module ever placed under `apps/api/src/modules/` (a sibling
+of `core/`, not inside it — `docs/ARCHITECTURE.md` §5.3-§5.4). Unlike every
+Foundation table, `company_id` is **required, non-nullable** here: a
+product/unit/category/brand genuinely belongs to exactly one company, not
+an optional scope refinement. Applied to the real running PostgreSQL
+instance via `prisma migrate dev` (not just diffed).
+
+### `MasterDataStatus` / `ProductType` / `ProductStatus` enums
+
+`MasterDataStatus` (`ACTIVE`/`INACTIVE`) is shared by `UnitOfMeasure`,
+`Category`, `Brand`, `ProductVariant`. `Product` has its own richer
+`ProductStatus` (`ACTIVE`/`INACTIVE`/`DISCONTINUED`). `ProductType`
+(`PHYSICAL_GOOD`/`SERVICE`/`DIGITAL_PRODUCT`/`RAW_MATERIAL`) is deliberately
+narrow — Kit/Bundle product types are out of scope for this slice (see
+`docs/SECURITY.md` "Catalog" for the full list of deferred Master Data
+scope).
+
+### `units_of_measure`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` | `uuid` | FK → `tenants.id`. `@@unique([tenantId, id])` — required so `products.unit_of_measure_id` can reference this table with a tenant-scoped composite FK, the same pattern used everywhere else in this schema to make a cross-tenant reference structurally impossible, not just application-filtered. |
+| `company_id` | `uuid` | FK → `companies(tenantId, id)`, **required**. |
+| `code` | `varchar(60)` | |
+| `name` | `varchar(150)` | |
+| `symbol` | `varchar(20)` | e.g. `u`, `kg`, `L` — always present, unlike `category`/`brand`'s optional fields. |
+| `status` | `MasterDataStatus` | |
+| `version` | `int` | Optimistic-concurrency counter, bumped on every mutation (`docs/ARCHITECTURE.md` §8.3). |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])` — code uniqueness is scoped to the
+company, not the tenant: two companies under the same tenant may each have
+their own `"UN"`.
+
+### `categories`
+
+Same shape as `units_of_measure` minus `symbol`, plus a self-referencing
+`parent_id uuid?` (FK → `categories(tenantId, id)`, relation name
+`CategoryParent`) for a two-level-or-deeper tree. `Category.create`/
+`.reparent()` both reject a category being its own parent at the domain
+layer; the database does not enforce acyclicity beyond that single-level
+check (a longer cycle through several `reparent()` calls is not currently
+blocked — see `docs/SECURITY.md` "Catalog" known gaps).
+`@@unique([tenantId, id])` (required for the self-FK) and
+`@@unique([tenantId, companyId, code])`, same as `units_of_measure`.
+
+### `brands`
+
+Same shape as `units_of_measure` minus `symbol`. `@@unique([tenantId, id])`
+(required so `products.brand_id` can reference it with a tenant-scoped
+composite FK) and `@@unique([tenantId, companyId, code])`.
+
+### `products`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | `@@unique([tenantId, id])` — required so `product_variants.product_id` can reference this table tenant-scoped. |
+| `tenant_id` / `company_id` | `uuid` | Required, same pattern as above. |
+| `category_id` / `brand_id` / `unit_of_measure_id` | `uuid?` / `uuid?` / `uuid` | All three via composite `(tenantId, ...Id) → (tenantId, id)` FKs — a product can never reference another tenant's category/brand/unit even by mistake. `unitOfMeasure` is required; `category`/`brand` are optional. |
+| `code` | `varchar(60)` | |
+| `name` | `varchar(200)` | |
+| `description` | `text?` | |
+| `type` | `ProductType` | |
+| `track_inventory` / `sellable` / `purchasable` / `has_variants` / `publish_online` | `boolean` | Server-side defaults (`false` for `hasVariants`/`publishOnline`, `true` for the rest) — the reason the SDK's `CreateProductInput` type had to be corrected in `packages/api-client/src/contracts.ts` (see that file's own docstring): `openapi-typescript` renders a boolean with a JSON-Schema `default` as non-optional even though the real API contract makes it optional. |
+| `barcode` | `varchar(64)?` | |
+| `base_price` / `base_cost` | `numeric(14,4)?` | **The first real monetary fields in this codebase.** `NULL` when `hasVariants=true` (price lives per-variant instead) — enforced by `Product.create`'s domain invariant, which also requires `basePrice` to be present when `!hasVariants && sellable`. Represented in the domain/application layers as canonical decimal **strings**, never a JS `number` (MASTER_SPEC §30/§82) — see "Decimal formatting" below. |
+| `status` | `ProductStatus` | |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])` and
+`@@unique([tenantId, companyId, barcode])` — both scoped to company, same
+reasoning as the other Catalog tables.
+
+### `product_variants`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` | `uuid` | |
+| `product_id` | `uuid` | FK → `products(tenantId, id)`, tenant-scoped composite. |
+| `sku` | `varchar(80)` | |
+| `barcode` | `varchar(64)?` | |
+| `attributes` | `jsonb` | `Record<string, string>` (e.g. `{"color":"Azul","talla":"M"}`) — genuinely open-ended/dynamic (MASTER_SPEC §19's variant model), the one deliberate JSONB use in this module, consistent with `docs/ARCHITECTURE.md` §57's "JSONB only where flexibility is genuinely needed." Postgres supports a real unique index over a `jsonb` column via its canonical internal key ordering — confirmed working by the migration applying cleanly. |
+| `price` | `numeric(14,4)` | Required — a variant always carries its own price (unlike `Product.basePrice`, which is optional and product-type-dependent). |
+| `cost` | `numeric(14,4)?` | |
+| `status` | `MasterDataStatus` | |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, sku])` (SKU uniqueness is tenant-wide, not just
+per-product — matching how barcodes/SKUs work in real inventory systems)
+and `@@unique([tenantId, productId, attributes])` (the same attribute
+combination — e.g. `{color: Azul, talla: M}` — can't be registered twice
+for the same product).
+
+### Decimal formatting — a real bug found and fixed this session
+
+`PrismaProductRepository`/`PrismaProductVariantRepository` initially
+converted Prisma's `Decimal` fields back to domain strings with
+`.toString()`. Decimal.js's `.toString()` strips trailing zeros
+(`"24.9900"` → `"24.99"`), which silently disagreed with what
+`numeric(14,4)` actually stores and with what a fresh `create()` response
+echoes back — confirmed by a direct `psql` query showing `24.9900` in the
+column while the API returned `"24.99"`. Fixed to `.toFixed(4)`, which uses
+Decimal.js's own arbitrary-precision arithmetic (never a JS `number`) to
+pad to the column's declared scale. Re-verified via the integration suite
+(explicit DB-round-trip assertions) and a fresh HTTP smoke test.
+
+### Migration
+
+`packages/database/prisma/migrations/20260831040628_catalog_master_data/` —
+generated and applied via `prisma migrate dev --name catalog_master_data`
+against the real `erp_platform` Postgres container. Two schema issues were
+caught by Prisma's own validator before the migration could even be
+generated: `Brand` initially lacked `@@unique([tenantId, id])` (needed for
+`Product.brand`'s composite FK), and `UnitOfMeasure`'s relation from
+`Product.unitOfMeasure` was initially a bare `references: [id]` (not
+tenant-scoped) — both fixed before generating, so no unsafe intermediate
+migration was ever applied.

@@ -43,4 +43,15 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "apps.manage",
     description: "Enable or disable apps for the tenant, and set their configuration.",
   },
+  { key: "catalog.units-of-measure.read", description: "View the company's units of measure." },
+  { key: "catalog.units-of-measure.manage", description: "Create, edit and archive units of measure." },
+  { key: "catalog.categories.read", description: "View the company's product categories." },
+  { key: "catalog.categories.manage", description: "Create, edit and archive product categories." },
+  { key: "catalog.brands.read", description: "View the company's brands." },
+  { key: "catalog.brands.manage", description: "Create, edit and archive brands." },
+  { key: "catalog.products.read", description: "View the company's products and variants." },
+  {
+    key: "catalog.products.manage",
+    description: "Create, edit and archive products and their variants.",
+  },
 ];

@@ -654,6 +654,266 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/units-of-measure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's units of measure. */
+        get: operations["UnitsOfMeasureController_list"];
+        put?: never;
+        /** Create a unit of measure for the active company. */
+        post: operations["UnitsOfMeasureController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/units-of-measure/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a unit of measure. */
+        put: operations["UnitsOfMeasureController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/units-of-measure/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a unit of measure. */
+        put: operations["UnitsOfMeasureController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's categories. */
+        get: operations["CategoriesController_list"];
+        put?: never;
+        /** Create a category, optionally nested under a parent. */
+        post: operations["CategoriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename or re-parent a category. */
+        put: operations["CategoriesController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/categories/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a category. */
+        put: operations["CategoriesController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's brands. */
+        get: operations["BrandsController_list"];
+        put?: never;
+        /** Create a brand for the active company. */
+        post: operations["BrandsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/brands/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a brand. */
+        put: operations["BrandsController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/brands/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a brand. */
+        put: operations["BrandsController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's products. */
+        get: operations["ProductsController_list"];
+        put?: never;
+        /** Create a product for the active company. */
+        post: operations["ProductsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a product's editable fields. */
+        put: operations["ProductsController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a product's lifecycle status. */
+        put: operations["ProductsController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a product's variants. */
+        get: operations["ProductsController_listProductVariants"];
+        put?: never;
+        /** Add a sellable variant to a hasVariants product. */
+        post: operations["ProductsController_addProductVariant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/variants/{variantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reprice a product variant. */
+        put: operations["ProductsController_updateProductVariant"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/products/{id}/variants/{variantId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a product variant. */
+        put: operations["ProductsController_updateProductVariantStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1001,6 +1261,206 @@ export interface components {
         SetAppConfigurationDto: {
             /** @description Any JSON-serializable value. */
             value: Record<string, never>;
+        };
+        UnitOfMeasureResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            symbol: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateUnitOfMeasureDto: {
+            /** @example UN */
+            code: string;
+            /** @example Unidad */
+            name: string;
+            /** @example u */
+            symbol: string;
+        };
+        UpdateUnitOfMeasureDto: {
+            name: string;
+            symbol: string;
+        };
+        SetUnitOfMeasureStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        CategoryResponseDto: {
+            id: string;
+            parentId: string | null;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateCategoryDto: {
+            /** @example ELECTRONICS */
+            code: string;
+            /** @example Electrónica */
+            name: string;
+            /** @description Parent category id. */
+            parentId?: string;
+        };
+        UpdateCategoryDto: {
+            name: string;
+            /** @description Set to null to detach from any parent. */
+            parentId?: string | null;
+        };
+        SetCategoryStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        BrandResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateBrandDto: {
+            /** @example ACME */
+            code: string;
+            /** @example Acme Inc. */
+            name: string;
+        };
+        UpdateBrandDto: {
+            name: string;
+        };
+        SetBrandStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        ProductResponseDto: {
+            id: string;
+            categoryId: string | null;
+            brandId: string | null;
+            unitOfMeasureId: string;
+            code: string;
+            name: string;
+            description: string | null;
+            /** @enum {string} */
+            type: "PHYSICAL_GOOD" | "SERVICE" | "DIGITAL_PRODUCT" | "RAW_MATERIAL";
+            trackInventory: boolean;
+            sellable: boolean;
+            purchasable: boolean;
+            hasVariants: boolean;
+            publishOnline: boolean;
+            barcode: string | null;
+            basePrice: string | null;
+            baseCost: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE" | "DISCONTINUED";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateProductDto: {
+            /** @example SKU-001 */
+            code: string;
+            /** @example Camisa de algodón */
+            name: string;
+            description?: string;
+            /** @enum {string} */
+            type?: "PHYSICAL_GOOD" | "SERVICE" | "DIGITAL_PRODUCT" | "RAW_MATERIAL";
+            /** @description Unit of measure id. */
+            unitOfMeasureId: string;
+            categoryId?: string;
+            brandId?: string;
+            barcode?: string;
+            /**
+             * @description Decimal string; required if sellable and hasVariants is false.
+             * @example 19.9900
+             */
+            basePrice?: string;
+            /** @example 9.5000 */
+            baseCost?: string;
+            /** @default true */
+            trackInventory: boolean;
+            /** @default true */
+            sellable: boolean;
+            /** @default true */
+            purchasable: boolean;
+            /** @default false */
+            hasVariants: boolean;
+            /** @default false */
+            publishOnline: boolean;
+        };
+        UpdateProductDto: {
+            name: string;
+            /** @description Omit to keep, "" to clear. */
+            description?: string;
+            /** @description Omit to keep, "" to clear. */
+            categoryId?: string;
+            /** @description Omit to keep, "" to clear. */
+            brandId?: string;
+            /** @description Omit to keep, "" to clear. */
+            barcode?: string;
+            /** @description Omit to keep, "" to clear, or a decimal string to replace. */
+            basePrice?: string;
+            /** @description Omit to keep, "" to clear, or a decimal string to replace. */
+            baseCost?: string;
+            trackInventory: boolean;
+            sellable: boolean;
+            purchasable: boolean;
+            publishOnline: boolean;
+        };
+        SetProductStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE" | "DISCONTINUED";
+        };
+        ProductVariantResponseDto: {
+            id: string;
+            productId: string;
+            sku: string;
+            barcode: string | null;
+            attributes: Record<string, never>;
+            price: string;
+            cost: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AddProductVariantDto: {
+            /** @example SKU-001-BLU-M */
+            sku: string;
+            barcode?: string;
+            /**
+             * @example {
+             *       "color": "Azul",
+             *       "size": "M"
+             *     }
+             */
+            attributes: Record<string, never>;
+            /** @example 24.9900 */
+            price: string;
+            /** @example 12.0000 */
+            cost?: string;
+        };
+        UpdateProductVariantDto: {
+            price: string;
+            /** @description Omit to keep, "" to clear, or a decimal string to replace. */
+            cost?: string;
+        };
+        SetProductVariantStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
         };
     };
     responses: never;
@@ -2212,6 +2672,572 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    UnitsOfMeasureController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOfMeasureResponseDto"][];
+                };
+            };
+        };
+    };
+    UnitsOfMeasureController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUnitOfMeasureDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOfMeasureResponseDto"];
+                };
+            };
+        };
+    };
+    UnitsOfMeasureController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUnitOfMeasureDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOfMeasureResponseDto"];
+                };
+            };
+        };
+    };
+    UnitsOfMeasureController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUnitOfMeasureStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOfMeasureResponseDto"];
+                };
+            };
+        };
+    };
+    CategoriesController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"][];
+                };
+            };
+        };
+    };
+    CategoriesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCategoryDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"];
+                };
+            };
+        };
+    };
+    CategoriesController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCategoryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"];
+                };
+            };
+        };
+    };
+    CategoriesController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCategoryStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryResponseDto"];
+                };
+            };
+        };
+    };
+    BrandsController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponseDto"][];
+                };
+            };
+        };
+    };
+    BrandsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBrandDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponseDto"];
+                };
+            };
+        };
+    };
+    BrandsController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBrandDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponseDto"];
+                };
+            };
+        };
+    };
+    BrandsController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBrandStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetProductStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_listProductVariants: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductVariantResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductsController_addProductVariant: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddProductVariantDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductVariantResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_updateProductVariant: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+                variantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductVariantDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductVariantResponseDto"];
+                };
+            };
+        };
+    };
+    ProductsController_updateProductVariantStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+                variantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetProductVariantStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductVariantResponseDto"];
+                };
             };
         };
     };

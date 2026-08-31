@@ -22,14 +22,153 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-Ningún ítem pendiente de la cola original de Foundation — el último
-(App Registry mínimo) se cerró en la sesión 22. El siguiente trabajo es
-Fase 2 (Master Data): Customers, Suppliers, Product Catalog, Pricing,
-Taxes, Warehousing master data (`docs/ARCHITECTURE.md` §5.2). Antes de
-iniciarla, revisar `docs/ARCHITECTURE.md`/`docs/MULTITENANCY.md`/
-`docs/ROADMAP.md` (ver "Revisión de cierre de Foundation" en
-`docs/PROJECT_STATE.md`, sesión 22) para confirmar que ninguna decisión de
-Fase 2 quede bloqueada por un hueco de Foundation sin resolver.
+Fase 2 (Master Data) está en curso. El primer bloque (Catálogo — Units of
+Measure, Categories, Brands, Products, Product Variants) se cerró en la
+sesión 23 (ver "Hecho — sesión 23" abajo). Quedan pendientes del alcance de
+Fase 2 descrito en `docs/ARCHITECTURE.md` §5.2: Customers, Suppliers,
+Pricing (price lists/multi-tier), Taxes, y Warehousing master data — cada
+uno deliberadamente diferido, no simulado, ver "Known limitations" en la
+sección "Catalog" de `docs/SECURITY.md`.
+
+### Hecho — sesión 23 (Catálogo — Fase 2, primer módulo de negocio)
+
+Primer módulo de negocio real de la plataforma (`apps/api/src/modules/`,
+sibling de `core/`, nunca dentro de él — `docs/ARCHITECTURE.md` §5.3-§5.4).
+Cubre Units of Measure, Categories (árbol auto-referenciado), Brands,
+Products y Product Variants — el resto del alcance de Master Data
+(Customers, Suppliers, Pricing, Taxes, Warehousing) queda para bloques
+siguientes de la misma Fase 2, documentado explícitamente como diferido en
+`docs/SECURITY.md` "Catalog" en vez de omitido en silencio.
+
+- **`apps/api/src/modules/catalog/`** (módulo nuevo, domain/application/
+  infrastructure/presentation completos): `UnitOfMeasure`/`Category`
+  (árbol vía `parentId` auto-referenciado, valida no-ser-su-propio-padre)/
+  `Brand` (CRUD simple, código+nombre+estado), `Product` (con las
+  invariantes: un producto `hasVariants` no puede tener `basePrice`/
+  `baseCost` propios; un producto vendible sin variantes SÍ requiere
+  `basePrice`), `ProductVariant` (SKU único a nivel tenant, `attributes`
+  JSON dinámico tipo `{"color":"Azul","talla":"M"}`, precio propio
+  requerido). A diferencia de Foundation, `companyId` es **obligatorio, no
+  opcional** — un producto pertenece genuinamente a una empresa, no a un
+  refinamiento de alcance; `requireCompanyId(ctx)` rechaza con
+  `400 COMPANY_CONTEXT_REQUIRED` cualquier request sin `X-Company-Id`.
+- **Primeros campos monetarios reales del código base**
+  (`Product.basePrice`/`.baseCost`, `ProductVariant.price`/`.cost`):
+  representados en dominio como strings decimales canónicas (nunca
+  `number` de JS, MASTER_SPEC §30/§82), validadas con `assertValidDecimal`.
+  **Bug real encontrado y corregido**: `PrismaProductRepository`/
+  `PrismaProductVariantRepository` usaban `.toString()` de Decimal.js, que
+  recorta ceros finales (`"24.9900"` volvía como `"24.99"`, confirmado
+  contra `numeric(14,4)` real vía `psql` directo) — corregido a
+  `.toFixed(4)`. Detalle completo en `docs/DATABASE.md` "Catalog tables".
+- **Bug real de pérdida de datos encontrado y corregido** (smoke test
+  manual, no detectado por tests unitarios que siempre enviaban todos los
+  campos): un `PUT` parcial (omitiendo un campo opcional) borraba ese
+  campo a `null` en vez de dejarlo intacto — riesgo real para `baseCost`/
+  `cost`, usados en cálculo de margen. Corregido con un contrato de tres
+  estados: **omitir** el campo → sin cambios; enviarlo como **`""`** →
+  limpiar a `null` explícitamente; enviar un **valor real** → reemplazar.
+  DTOs relajados de `@IsNumberString()` a
+  `@ValidateIf((o) => o.field !== "") @IsNumberString()` para que `""`
+  pase la validación en vez de rechazarse como entrada malformada. Tests
+  de regresión agregados; re-verificado contra Postgres real y un nuevo
+  smoke test HTTP.
+- 8 permisos nuevos: `catalog.units-of-measure.read/.manage`,
+  `catalog.categories.read/.manage`, `catalog.brands.read/.manage`,
+  `catalog.products.read/.manage`. Auditoría real en los 5 tipos de
+  entidad (`catalog.*.created/.updated/.status_changed`).
+- Tablas nuevas (migración `20260831040628_catalog_master_data`,
+  **generada y aplicada directamente contra Postgres real** vía
+  `prisma migrate dev`): `units_of_measure`, `categories`, `brands`,
+  `products`, `product_variants` — todas con FKs compuestas
+  `(tenantId, ...) → (tenantId, id)` tenant-scoped (nunca una referencia
+  cruzada estructuralmente posible), uniques scoped a compañía para código/
+  barcode, y un índice único real sobre una columna `jsonb`
+  (`ProductVariant.attributes`) confirmado funcionando. Detalle completo
+  en `docs/DATABASE.md` "Catalog tables".
+- Contrato HTTP nuevo: `GET/POST /api/v1/catalog/units-of-measure`,
+  `PUT .../:id`, `PUT .../:id/status` (mismo patrón para `/categories` y
+  `/brands`), `GET/POST /api/v1/products`, `PUT /:id`, `PUT /:id/status`,
+  `GET/POST /api/v1/products/:id/variants`, `PUT .../:variantId`,
+  `PUT .../:variantId/status`.
+- **`@erp/api-client`**: ~20 tipos y ~21 métodos nuevos generados desde el
+  spec OpenAPI real (mismo flujo `openapi-typescript` de la sesión 21).
+  **Quirk real de `openapi-typescript` documentado y resuelto**: una
+  propiedad boolean con `default` en JSON-Schema se genera como no-opcional
+  en TS pese a ser genuinamente opcional en la API real (confirmado
+  inspeccionando el `required` del spec crudo) — `CreateProductInput` en
+  `contracts.ts` corrige esto explícitamente con un `Omit<...> &
+  Partial<Pick<...>>` documentado.
+- **UI** (`apps/erp-web/src/features/catalog/`): `catalog-page.tsx`
+  (`CatalogPage`, pestañas Unidades/Categorías/Marcas/Productos; guarda
+  contra falta de `companyId` con un aviso claro; `SimpleMasterDataPanel<T>`
+  genérico reutilizado por Units/Categories/Brands — excepción justificada
+  a la regla anti-abstracción, ya que triplicar ~150 líneas casi idénticas
+  sí sería duplicación real), `products-panel.tsx` (`ProductsPanel`, crea
+  productos con selects de unidad/categoría/marca, modal de variantes con
+  textarea JSON para atributos). Ruta nueva `/catalog`, botón "Catálogo" en
+  el workspace.
+- **Dos bugs reales de re-render encontrados y corregidos durante la
+  propia verificación E2E, no simulados**:
+  1. Los tres paneles `SimpleMasterDataPanel` (Unidades/Categorías/Marcas)
+     usaban el mismo `id`/`name` literal (`"simple-master-data-form"`,
+     `"code"`, `"name"`) — inválido en HTML cuando los tres coexisten
+     montados a la vez (`Tabs` mantiene todos los paneles montados,
+     comportamiento ya documentado de una sesión anterior). Corregido con
+     una prop `fieldPrefix` que genera ids/names únicos por instancia.
+  2. Más grave: el campo "Símbolo" (extra de Unidades) vivía como estado
+     en el componente padre `CatalogPage`, así que cada tecleo re-renderizaba
+     el padre y recreaba las funciones `load`/`create`/`setStatus` inline
+     pasadas a los TRES paneles — como `reload` de cada panel depende de
+     `load` vía `useCallback`, esto disparaba un refetch en cada tecleo, y
+     el `setSymbol("")` posterior a crear disparaba un refetch final que
+     **borraba el elemento recién creado** con la lista stale devuelta por
+     el mock/servidor. Corregido memoizando `load`/`create`/`setStatus`
+     con `useCallback` (dependencias estables, sin `symbol`) y leyendo el
+     símbolo más reciente vía `useRef` en vez de clausura de estado;
+     requirió extraer `CatalogWorkspace` como componente interno (los
+     hooks no pueden llamarse después del `return` condicional por falta
+     de `companyId` en `CatalogPage`).
+  3. Un tercer bug de la misma familia, encontrado por el E2E real (no por
+     los tests unitarios con mocks estáticos): `ProductsPanel` cargaba
+     units/categories/brands **una sola vez al montar** — pero como `Tabs`
+     monta todos los paneles desde el primer render de la página, ese
+     montaje ocurre antes de que el usuario cree ninguna unidad/categoría/
+     marca en sus propias pestañas, dejando los selects de "Nuevo producto"
+     permanentemente vacíos (botón deshabilitado) hasta recargar la página
+     completa. Corregido con el mismo patrón ya usado por `AuditPanel` de
+     platform-admin (sesión 18): se sube `activeTab` al padre, se pasa
+     `active={activeTab === "products"}` a `ProductsPanel`, y su efecto de
+     carga se re-ejecuta cada vez que la pestaña se activa, no solo al
+     montar.
+- Tests: 69 tests unitarios nuevos en `apps/api` (dominio, casos de uso,
+  wiring de módulo — incluye 3 tests de regresión del bug de actualización
+  parcial) — 300 tests unitarios totales en `apps/api` (antes 231). Suite
+  de integración con un escenario real nuevo contra Postgres
+  (`apps/api/test/integration/catalog.integration-spec.ts`): 2 tenants, 2
+  compañías bajo el mismo tenant, rechazo de categoría cross-company,
+  producto `hasVariants` con barcode duplicado rechazado (constraint real
+  de DB), SKU duplicado rechazado, round-trip de formato decimal
+  verificado contra la DB real (`"24.9900"`/`"12.0000"`), aislamiento
+  cross-tenant confirmado — 22/22 en total (antes 21). 2 tests nuevos en
+  `apps/erp-web` (`catalog-page.spec.tsx`) — 21/21 en total (antes 19).
+  **E2E real nuevo** (`apps/e2e/tests/catalog.spec.ts`, Chromium vía
+  Testcontainers): crea unidad/categoría/marca reales, activa/desactiva una
+  unidad, crea un producto sin variantes con precio base, crea un producto
+  con variantes, agrega una variante real con atributos JSON y precio, todo
+  contra el backend real con las respuestas HTTP verificadas — 7/7
+  Playwright en total (antes 6).
+- Documentación actualizada: `docs/DATABASE.md` ("Catalog tables", incluye
+  la sección del bug de formato decimal), `docs/SECURITY.md` ("Catalog",
+  modelo de amenazas completo + huecos conocidos: sin Price Lists, sin
+  Kit/Bundle, sin lot/serial/expiration, sin motor de impuestos, sin
+  import/export masivo, sin catálogo de atributos, ciclos de reparent
+  multi-nivel no bloqueados).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (300 api + 27 events + 33 notifications + 6
+  worker + 11 api-client + 21 erp-web = 398), `pnpm --filter @erp/api
+  test:integration` (22/22 contra Postgres real), `pnpm --filter @erp/e2e
+  test:e2e` (7/7 Playwright) — todo verde.
 
 ### Hecho — sesión 22 (App Registry mínimo — ADR-005, cierra Foundation)
 

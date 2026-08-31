@@ -117,6 +117,11 @@ model Tenant {
   notifications   Notification[]
   inboxMessages   InboxMessage[]
   tenantApps      TenantApp[]
+  unitsOfMeasure  UnitOfMeasure[]
+  categories      Category[]
+  brands          Brand[]
+  products        Product[]
+  productVariants ProductVariant[]
 
   @@map("tenants")
 }
@@ -195,10 +200,14 @@ model Company {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   organization   Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
-  settingValues  SettingValue[]
-  auditEntries   AuditEntry[]
-  outboxMessages OutboxMessage[]
-  fileObjects    FileObject[]
+  settingValues   SettingValue[]
+  auditEntries    AuditEntry[]
+  outboxMessages  OutboxMessage[]
+  fileObjects     FileObject[]
+  unitsOfMeasure  UnitOfMeasure[]
+  categories      Category[]
+  brands          Brand[]
+  products        Product[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -655,4 +664,181 @@ model AppConfiguration {
 
   @@unique([tenantAppId, key])
   @@map("app_configurations")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Master Data (docs/ARCHITECTURE.md §5.2). First business-owned
+// tables: unlike Foundation, `company_id` here is NOT nullable — master data
+// genuinely belongs to exactly one company (MASTER_SPEC §19: "Product puede
+// pertenecer a company"), not an optional scope refinement. Money/quantity
+// fields use `numeric` (never float, MASTER_SPEC §30/§82); the domain layer
+// represents them as canonical decimal strings (see ProductProps) to avoid
+// depending on Prisma's Decimal type outside infrastructure.
+// ---------------------------------------------------------------------------
+
+enum MasterDataStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Code-owned master data, company-scoped (docs/MASTER_SPEC.md Fase 2).
+model UnitOfMeasure {
+  id        String            @id @db.Uuid
+  tenantId  String            @map("tenant_id") @db.Uuid
+  companyId String            @map("company_id") @db.Uuid
+  code      String            @db.VarChar(20)
+  name      String            @db.VarChar(100)
+  symbol    String            @db.VarChar(10)
+  status    MasterDataStatus  @default(ACTIVE)
+  version   Int               @default(1)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company  Company   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("units_of_measure")
+}
+
+/// Self-referencing tree (docs/MASTER_SPEC.md Fase 2). `parentId` uses the
+/// same composite-FK-to-self pattern as other tenant-scoped self relations
+/// in this schema — `@@unique([tenantId, id])` exists purely to let the
+/// parent FK stay tenant-safe.
+model Category {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  parentId  String?          @map("parent_id") @db.Uuid
+  code      String           @db.VarChar(50)
+  name      String           @db.VarChar(150)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company  Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  parent   Category?  @relation("CategoryParent", fields: [tenantId, parentId], references: [tenantId, id], onDelete: Restrict)
+  children Category[] @relation("CategoryParent")
+  products Product[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@index([tenantId, parentId])
+  @@map("categories")
+}
+
+model Brand {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  code      String           @db.VarChar(50)
+  name      String           @db.VarChar(150)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company  Company   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("brands")
+}
+
+enum ProductType {
+  PHYSICAL_GOOD
+  SERVICE
+  DIGITAL_PRODUCT
+  RAW_MATERIAL
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+/// Kit/Bundle product types and lot/serial/expiration tracking
+/// (MASTER_SPEC §19/§20) are deliberately out of scope for this first Master
+/// Data pass — nothing in Foundation or this phase consumes them yet
+/// (Inventory/Sales, Phase 3-4). `base_price`/`base_cost` are the product's
+/// own price when `has_variants` is false; a variant's own price/cost
+/// override these when `has_variants` is true. Multi-tier/customer-specific
+/// Price Lists (docs/ARCHITECTURE.md §5.2 "Pricing") are also deferred —
+/// see docs/DECISIONS.md ADR-009.
+model Product {
+  id              String           @id @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  companyId       String           @map("company_id") @db.Uuid
+  categoryId      String?          @map("category_id") @db.Uuid
+  brandId         String?          @map("brand_id") @db.Uuid
+  unitOfMeasureId String           @map("unit_of_measure_id") @db.Uuid
+  code            String           @db.VarChar(50)
+  name            String           @db.VarChar(200)
+  description     String?
+  type            ProductType      @default(PHYSICAL_GOOD)
+  trackInventory  Boolean          @default(true) @map("track_inventory")
+  sellable        Boolean          @default(true)
+  purchasable     Boolean          @default(true)
+  hasVariants     Boolean          @default(false) @map("has_variants")
+  publishOnline   Boolean          @default(false) @map("publish_online")
+  barcode         String?          @db.VarChar(64)
+  basePrice       Decimal?         @map("base_price") @db.Decimal(14, 4)
+  baseCost        Decimal?         @map("base_cost") @db.Decimal(14, 4)
+  status          ProductStatus    @default(ACTIVE)
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  category      Category?        @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  brand         Brand?           @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure    @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
+  variants      ProductVariant[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@unique([tenantId, companyId, barcode])
+  @@index([tenantId, companyId])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, brandId])
+  @@map("products")
+}
+
+/// A sellable SKU for a `hasVariants` product (MASTER_SPEC §19: "Camisa →
+/// Azul/S, Azul/M, ..."). `attributes` is JSONB deliberately — variant
+/// dimensions (color, size, ...) are genuinely open-ended per product and a
+/// normalized EAV schema would be premature with no second consumer yet
+/// (docs/ARCHITECTURE.md §57).
+model ProductVariant {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  productId String           @map("product_id") @db.Uuid
+  sku       String           @db.VarChar(64)
+  barcode   String?          @db.VarChar(64)
+  attributes Json            @default("{}")
+  price     Decimal          @db.Decimal(14, 4)
+  cost      Decimal?         @db.Decimal(14, 4)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, productId, attributes])
+  @@index([tenantId, productId])
+  @@map("product_variants")
 }

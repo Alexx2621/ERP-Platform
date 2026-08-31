@@ -1,12 +1,19 @@
 import type {
   AcceptMembershipInvitationInput,
+  AddProductVariantInput,
   AppConfigurationResponse,
   AppDefinitionResponse,
   AssignRoleInput,
   ApiErrorEnvelope,
   AuditEntryResponse,
   AuthenticatedUser,
+  BrandResponse,
+  CategoryResponse,
+  CreateBrandInput,
+  CreateCategoryInput,
+  CreateProductInput,
   CreateRoleInput,
+  CreateUnitOfMeasureInput,
   EffectiveSettingResponse,
   InviteMembershipInput,
   LoginInput,
@@ -17,14 +24,19 @@ import type {
   PlatformSettingResponse,
   PlatformSettingValueResponse,
   PlatformUserResponse,
+  ProductResponse,
+  ProductVariantResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
   SetAppConfigurationInput,
+  SetMasterDataStatusInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
+  SetProductStatusInput,
+  SetProductVariantStatusInput,
   SetSettingValueInput,
   SessionResponse,
   SettingDefinitionResponse,
@@ -32,6 +44,12 @@ import type {
   TenantAppResponse,
   TenantExecutionContext,
   TenantSummary,
+  UnitOfMeasureResponse,
+  UpdateBrandInput,
+  UpdateCategoryInput,
+  UpdateProductInput,
+  UpdateProductVariantInput,
+  UpdateUnitOfMeasureInput,
   UserPreferenceResponse,
 } from "./contracts.js";
 
@@ -447,6 +465,294 @@ export class ApiClient {
         tenantSlug,
         body: input,
       },
+    );
+  }
+
+  async listUnitsOfMeasure(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<UnitOfMeasureResponse[]> {
+    return this.request<UnitOfMeasureResponse[]>("/catalog/units-of-measure", {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createUnitOfMeasure(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateUnitOfMeasureInput,
+  ): Promise<UnitOfMeasureResponse> {
+    return this.request<UnitOfMeasureResponse>("/catalog/units-of-measure", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateUnitOfMeasure(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateUnitOfMeasureInput,
+  ): Promise<UnitOfMeasureResponse> {
+    return this.request<UnitOfMeasureResponse>(`/catalog/units-of-measure/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setUnitOfMeasureStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetMasterDataStatusInput,
+  ): Promise<UnitOfMeasureResponse> {
+    return this.request<UnitOfMeasureResponse>(`/catalog/units-of-measure/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listCategories(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<CategoryResponse[]> {
+    return this.request<CategoryResponse[]>("/catalog/categories", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createCategory(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateCategoryInput,
+  ): Promise<CategoryResponse> {
+    return this.request<CategoryResponse>("/catalog/categories", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateCategory(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateCategoryInput,
+  ): Promise<CategoryResponse> {
+    return this.request<CategoryResponse>(`/catalog/categories/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setCategoryStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetMasterDataStatusInput,
+  ): Promise<CategoryResponse> {
+    return this.request<CategoryResponse>(`/catalog/categories/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listBrands(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<BrandResponse[]> {
+    return this.request<BrandResponse[]>("/catalog/brands", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createBrand(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateBrandInput,
+  ): Promise<BrandResponse> {
+    return this.request<BrandResponse>("/catalog/brands", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateBrand(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateBrandInput,
+  ): Promise<BrandResponse> {
+    return this.request<BrandResponse>(`/catalog/brands/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setBrandStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetMasterDataStatusInput,
+  ): Promise<BrandResponse> {
+    return this.request<BrandResponse>(`/catalog/brands/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listProducts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductResponse[]> {
+    return this.request<ProductResponse[]>("/products", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createProduct(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateProductInput,
+  ): Promise<ProductResponse> {
+    return this.request<ProductResponse>("/products", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateProduct(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateProductInput,
+  ): Promise<ProductResponse> {
+    return this.request<ProductResponse>(`/products/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setProductStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetProductStatusInput,
+  ): Promise<ProductResponse> {
+    return this.request<ProductResponse>(`/products/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listProductVariants(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductVariantResponse[]> {
+    return this.request<ProductVariantResponse[]>(`/products/${encodeURIComponent(productId)}/variants`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addProductVariant(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productId: string,
+    input: AddProductVariantInput,
+  ): Promise<ProductVariantResponse> {
+    return this.request<ProductVariantResponse>(`/products/${encodeURIComponent(productId)}/variants`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateProductVariant(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productId: string,
+    variantId: string,
+    input: UpdateProductVariantInput,
+  ): Promise<ProductVariantResponse> {
+    return this.request<ProductVariantResponse>(
+      `/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}`,
+      { method: "PUT", accessToken, tenantSlug, companyId, body: input },
+    );
+  }
+
+  async setProductVariantStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productId: string,
+    variantId: string,
+    input: SetProductVariantStatusInput,
+  ): Promise<ProductVariantResponse> {
+    return this.request<ProductVariantResponse>(
+      `/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/status`,
+      { method: "PUT", accessToken, tenantSlug, companyId, body: input },
     );
   }
 

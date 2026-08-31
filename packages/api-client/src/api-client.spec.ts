@@ -423,6 +423,71 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Catalog endpoints, including the company header", async () => {
+    const unit = { id: "u1", code: "UN", name: "Unidad", symbol: "u", status: "ACTIVE", createdAt: "2026-08-31T00:00:00.000Z", updatedAt: "2026-08-31T00:00:00.000Z" };
+    const product = {
+      id: "p1",
+      categoryId: null,
+      brandId: null,
+      unitOfMeasureId: "u1",
+      code: "SKU-1",
+      name: "Camisa",
+      description: null,
+      type: "PHYSICAL_GOOD",
+      trackInventory: true,
+      sellable: true,
+      purchasable: true,
+      hasVariants: false,
+      publishOnline: false,
+      barcode: null,
+      basePrice: "19.9900",
+      baseCost: null,
+      status: "ACTIVE",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([unit]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(unit), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([product]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(product), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listUnitsOfMeasure("access-token", "grupo-aurora", "company-1");
+    await client.createUnitOfMeasure("access-token", "grupo-aurora", "company-1", {
+      code: "UN",
+      name: "Unidad",
+      symbol: "u",
+    });
+    await client.listProducts("access-token", "grupo-aurora", "company-1");
+    await client.createProduct("access-token", "grupo-aurora", "company-1", {
+      code: "SKU-1",
+      name: "Camisa",
+      unitOfMeasureId: "u1",
+      basePrice: "19.99",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/catalog/units-of-measure",
+      expect.objectContaining({ method: "GET" }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/products",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ code: "SKU-1", name: "Camisa", unitOfMeasureId: "u1", basePrice: "19.99" }),
+      }),
+    );
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

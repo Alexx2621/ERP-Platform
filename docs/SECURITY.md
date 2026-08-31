@@ -812,3 +812,73 @@ item of the original `docs/WORK_QUEUE.md` backlog.
   permission addition (Typed Configuration, Files, Membership Invitations)
   — `SeedOwnerRoleUseCase` only grants the permission catalog as it exists
   *at provisioning time*.
+
+## Catalog (Master Data — Phase 2, 2026-08-31)
+
+Scope: `UnitOfMeasure`/`Category`/`Brand`/`Product`/`ProductVariant`
+(`apps/api/src/modules/catalog`) — the first Phase 2 (Master Data) module
+and the first business module in this codebase (`docs/ARCHITECTURE.md`
+§5.2), living under `apps/api/src/modules/` as a sibling of `core/`, never
+inside it.
+
+### Assets
+
+- `catalog.units-of-measure.read`/`.manage`,
+  `catalog.categories.read`/`.manage`, `catalog.brands.read`/`.manage`,
+  `catalog.products.read`/`.manage` — 8 new permissions, same read/manage
+  split as every prior Foundation module.
+- `Product.basePrice`/`.baseCost`, `ProductVariant.price`/`.cost` — the
+  first genuinely monetary fields in this codebase (MASTER_SPEC §30/§82).
+- `Product.barcode`/`ProductVariant.sku` — used for point-of-sale/inventory
+  lookups by future modules; both have real database-level uniqueness
+  (scoped to company for barcode, tenant-wide for SKU).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A request without an active company context (`X-Company-Id`) writes or reads Master Data | Unlike Foundation, `companyId` is **required** here, not an optional scope refinement — every controller calls `requireCompanyId(ctx)`, throwing `400 COMPANY_CONTEXT_REQUIRED` if absent, before any use case runs. |
+| A product/category/brand/unit from Company A is read, updated, or referenced by a request scoped to Company B in the same tenant | Every Update/SetStatus use case checks `entity.companyId !== input.companyId` in addition to tenant, throwing the same `NotFoundError` a genuinely-missing entity would — the established IDOR-resistant pattern from every prior Foundation module, verified against real Postgres with two real companies under one tenant. |
+| Cross-tenant reference: a product references a category/brand/unit belonging to a different tenant | Every FK (`Product.category`/`.brand`/`.unitOfMeasure`, `ProductVariant.product`, `Category.parent`) is a composite `(tenantId, ...Id) → (tenantId, id)` reference — structurally impossible at the database level, not just filtered by application code. |
+| A partial `PUT` (updating one field) silently wipes other optional fields the caller didn't intend to touch | **A real bug, found via manual HTTP smoke testing, not caught by unit tests** (which always supplied every field): `UpdateProductUseCase`/`UpdateProductVariantUseCase` originally treated "field omitted from the request body" as "clear to null" for every optional field, including `baseCost`/`cost` — a genuine data-loss risk for values used in margin calculations. Fixed with a three-state contract: **omit** → keep current value; **empty string `""`** → explicitly clear to `null`; **a real value** → replace. DTOs relaxed from bare `@IsNumberString()` to `@ValidateIf((o) => o.field !== "") @IsNumberString()` so the `""` clear-signal passes validation instead of being rejected as malformed input. Regression tests lock in both branches; re-verified against real Postgres and a fresh HTTP smoke test after the fix. |
+| A `hasVariants` product is given its own `basePrice`/`baseCost`, or a non-variant sellable product is given none | Both directions are rejected by `Product.create`'s domain invariant (`ProductDoesNotSupportVariantsError`-adjacent validation), re-checked on every `update()` call too, not just at creation — a variant-tracked product's price must live on its variants, and a sellable non-variant product must always be priced. |
+| Decimal precision silently drifts between what Postgres stores and what the API returns | **A real bug, found via manual HTTP smoke testing against real Postgres**: `PrismaProductRepository`/`PrismaProductVariantRepository` originally used Decimal.js's `.toString()`, which strips trailing zeros (`"24.9900"` from the `numeric(14,4)` column came back as `"24.99"`). Fixed to `.toFixed(4)`, confirmed via a direct `psql` comparison and new integration-test round-trip assertions. |
+| A duplicate product code, barcode, unit-of-measure code, category code, brand code, or variant SKU is registered within the same scope | Real database-level unique constraints (`@@unique([tenantId, companyId, code])` etc., `@@unique([tenantId, sku])`, `@@unique([tenantId, companyId, barcode])`) back every uniqueness check the application layer performs — verified against real Postgres, not just an in-memory fake. |
+| A category is reparented to be its own parent, directly | Rejected by `Category.create`/`.reparent()`'s domain invariant. **Known gap**: a longer cycle formed across several `reparent()` calls (A→B, then B→A) is not currently blocked — see "Known limitations". |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **Multi-level category reparent cycles are not blocked.** Only the
+  direct "a category can't be its own parent" case is checked. A cycle
+  formed across two or more `reparent()` calls would currently succeed and
+  produce an unwalkable tree. Low real-world likelihood (requires a
+  deliberate sequence of admin actions) but a genuine gap; revisit if
+  Category ever grows a "move subtree" UI action that could trigger it
+  more easily.
+- **No Price Lists / multi-tier pricing.** `Product.basePrice` is a single
+  price per product — `docs/ARCHITECTURE.md` §5.2's "Pricing" sub-domain
+  (customer-tier, quantity-break, currency-specific price lists) is
+  entirely out of scope for this slice. `basePrice`/`ProductVariant.price`
+  are a placeholder single-currency price, not a pricing engine.
+- **No Kit/Bundle product types.** `ProductType` covers
+  `PHYSICAL_GOOD`/`SERVICE`/`DIGITAL_PRODUCT`/`RAW_MATERIAL` only —
+  MASTER_SPEC §19's `Kit`/`Bundle` composite-product types are deferred.
+- **No lot/serial/expiration tracking.** MASTER_SPEC §19's
+  `trackLots`/`trackSerialNumbers`/`trackExpiration` flags don't exist on
+  `Product` yet — inventory-level tracking granularity is Phase 3
+  (Inventory) scope, not Catalog.
+- **No tax rules engine.** `docs/ARCHITECTURE.md` §5.2's "Taxes" sub-domain
+  (a `Tax`/`TaxRate` model products could reference) doesn't exist yet;
+  `Product` has no tax association at all in this slice.
+- **No import/export.** MASTER_SPEC §83's bulk CSV/Excel product import
+  (with per-row validation and Worker-based processing for large files) is
+  not built — every Catalog entity is created one row at a time through the
+  UI or API today.
+- **`ProductVariant.attributes` has no attribute-definition catalog.**
+  Any string key/value pair is accepted — there's no equivalent of
+  `SettingDefinition` constraining which attribute names or values are
+  valid for a given product/category. A future "Attribute Sets" concept
+  (MASTER_SPEC §19) would close this.
+- **No backfill of the 8 new `catalog.*` permissions for tenants
+  provisioned before this change**, same accepted gap already documented
+  for every prior permission addition.
