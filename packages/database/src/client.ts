@@ -30,6 +30,8 @@ export type {
   Brand,
   Product,
   ProductVariant,
+  Customer,
+  Supplier,
 } from "../generated/prisma/client";
 export {
   UserStatus,

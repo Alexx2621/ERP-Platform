@@ -11,6 +11,7 @@ import { RolesPermissionsPage } from "../features/access-control/roles-permissio
 import { SettingsPage } from "../features/configuration/settings-page";
 import { AppsPage } from "../features/app-registry/apps-page";
 import { CatalogPage } from "../features/catalog/catalog-page";
+import { ContactsPage } from "../features/contacts/contacts-page";
 import { PlatformAdminPage } from "../features/platform-admin/platform-admin-page";
 
 interface WorkspaceSelection extends TenantSummary {
@@ -38,7 +39,8 @@ export function App() {
         path === "/roles" ||
         path === "/settings" ||
         path === "/apps" ||
-        path === "/catalog") &&
+        path === "/catalog" ||
+        path === "/contacts") &&
       !selection
     ) {
       navigate("/tenants", true);
@@ -78,6 +80,10 @@ export function App() {
 
   if (path === "/catalog" && selection) {
     return <CatalogPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/contacts" && selection) {
+    return <ContactsPage selection={selection} navigate={navigate} />;
   }
 
   if (path === "/platform-admin" && session.user.isPlatformAdmin) {

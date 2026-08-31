@@ -24,11 +24,107 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 Fase 2 (Master Data) está en curso. El primer bloque (Catálogo — Units of
 Measure, Categories, Brands, Products, Product Variants) se cerró en la
-sesión 23 (ver "Hecho — sesión 23" abajo). Quedan pendientes del alcance de
-Fase 2 descrito en `docs/ARCHITECTURE.md` §5.2: Customers, Suppliers,
-Pricing (price lists/multi-tier), Taxes, y Warehousing master data — cada
-uno deliberadamente diferido, no simulado, ver "Known limitations" en la
-sección "Catalog" de `docs/SECURITY.md`.
+sesión 23; el segundo bloque (Customers, Suppliers) se cerró en la sesión
+24 (ver "Hecho — sesión 24" abajo). Quedan pendientes del alcance de Fase 2
+descrito en `docs/ARCHITECTURE.md` §5.2: Pricing (price lists/multi-tier),
+Taxes, y Warehousing master data — cada uno deliberadamente diferido, no
+simulado, ver "Known limitations" en las secciones "Catalog" y
+"Customers / Suppliers" de `docs/SECURITY.md`.
+
+### Hecho — sesión 24 (Customers, Suppliers — Fase 2, segundo bloque)
+
+Segundo bloque de Master Data, siguiendo el orden recomendado de
+`docs/ROADMAP.md` §6 (Party/Customers/Suppliers después de Units of
+Measure). `Customer` y `Supplier` son módulos separados y deliberados, no
+una abstracción "Party" compartida — ver el docstring sobre `model
+Customer` en `schema.prisma` y `docs/DATABASE.md`/`docs/SECURITY.md` para
+el razonamiento completo (hoy los campos son idénticos, pero Ventas
+añadirá conceptos solo-de-cliente y Compras conceptos solo-de-proveedor
+que no tienen un hogar natural compartido).
+
+- **`apps/api/src/modules/customers/`** y **`apps/api/src/modules/suppliers/`**
+  (dos módulos nuevos, mismo layout domain/application/infrastructure/
+  presentation/test-support que Catalog): `Customer`/`Supplier` con code,
+  name, legalName, taxId, email, phone, addressLine, city, country,
+  status. El contrato de tres estados (omitir/`""`/valor) para campos
+  opcionales en `UpdateCustomerUseCase`/`UpdateSupplierUseCase` se aplicó
+  desde el inicio — la lección del bug real de pérdida de datos
+  encontrado en Catalog (sesión 23) esta vez se aplicó proactivamente, no
+  como corrección posterior a un segundo incidente.
+- Unicidad real de `taxId` a nivel de base de datos
+  (`@@unique([tenantId, companyId, taxId])`), aprovechando que Postgres
+  permite múltiples `NULL` en un índice único — cualquier cantidad de
+  clientes/proveedores sin identificación fiscal registrada coexisten sin
+  conflicto; solo un valor duplicado real se rechaza. Un cliente y un
+  proveedor pueden compartir el mismo `taxId` sin problema (tablas
+  genuinamente separadas) — verificado contra Postgres real.
+- 4 permisos nuevos: `customers.read/.manage`, `suppliers.read/.manage`.
+  Auditoría real (`customers.customer.created/.updated/.status_changed`,
+  `suppliers.supplier.*` equivalentes).
+- Tabla nueva (migración `20260831054432_customers_suppliers_master_data`,
+  **generada y aplicada directamente contra Postgres real** vía
+  `prisma migrate dev`, aplicada limpiamente al primer intento — sin los
+  dos ajustes de schema que Catalog necesitó). Detalle completo en
+  `docs/DATABASE.md` "Customers / Suppliers tables".
+- Contrato HTTP nuevo: `GET/POST /api/v1/customers`, `PUT /:id`,
+  `PUT /:id/status` (mismo patrón para `/api/v1/suppliers`).
+- **`@erp/api-client`**: 8 tipos y 8 métodos nuevos generados desde el spec
+  OpenAPI real, sin bugs de fidelidad de decoradores esta vez (todos los
+  campos nullable llevaban `type: String, nullable: true` desde el
+  inicio).
+- **UI** (`apps/erp-web/src/features/contacts/contacts-page.tsx`, ruta
+  nueva `/contacts`, botón "Contactos" en el workspace): pestañas Clientes/
+  Proveedores con un componente genérico `ContactPanel<T>` compartido — a
+  diferencia del backend (dos entidades deliberadamente separadas), la UI
+  es solo de presentación y no carga el mismo riesgo de divergencia de
+  reglas de negocio, así que un componente genérico aquí sí evita duplicar
+  un formulario de 8 campos dos veces. Incluye edición completa (no solo
+  crear+alternar estado, a diferencia de los paneles simples de Catálogo)
+  dado que la información de contacto/dirección de un cliente o proveedor
+  real necesita poder corregirse. **Bug real encontrado y corregido antes
+  de llegar a producción** (durante la propia redacción del E2E, no
+  después): una singularización naïve del label plural
+  (`"Proveedores".toLowerCase().replace(/s$/, "")` → `"proveedore"` en vez
+  de `"proveedor"`) habría roto el botón "Nuevo proveedor" y el título del
+  modal — corregido pasando un prop `singularLabel` explícito en vez de
+  intentar derivarlo con una regex. Las lecciones de re-render de Catálogo
+  (memoizar `load`/`create`/`update`/`setStatus` con `useCallback`,
+  separar cada panel en su propio componente) se aplicaron desde el
+  primer borrador, así que los 24 tests de `apps/erp-web` (incluyendo los
+  3 nuevos de `contacts-page.spec.tsx`) pasaron en el primer intento, sin
+  necesitar una ronda de depuración de re-render como en Catálogo.
+- Tests: 32 tests unitarios nuevos en `apps/api` (12 dominio, 18 casos de
+  uso, 2 wiring de módulo, repartidos entre Customer y Supplier) — 336
+  tests unitarios totales en `apps/api` (antes 300, más las 4 aserciones
+  nuevas en `app.module.spec.ts`). Suite de integración con un escenario
+  real nuevo contra Postgres
+  (`apps/api/test/integration/customers-suppliers.integration-spec.ts`):
+  unicidad real de `taxId` por compañía, el mismo `taxId` permitido en una
+  compañía distinta del mismo tenant, contrato de tres estados verificado
+  contra la DB real, aislamiento cross-tenant, y confirmación de que
+  `Customer`/`Supplier` no comparten unicidad de `taxId` entre sí — 23/23
+  en total (antes 22). 3 tests nuevos en `apps/erp-web`
+  (`contacts-page.spec.tsx`) — 24/24 en total (antes 21). **E2E real
+  nuevo** (`apps/e2e/tests/contacts.spec.ts`, Chromium vía Testcontainers):
+  crea un cliente real con taxId/email, lo edita (cambia nombre, limpia el
+  taxId vía `""`), alterna su estado, crea un proveedor real — todo contra
+  el backend real con las respuestas HTTP verificadas — 8/8 Playwright en
+  total (antes 7).
+- Documentación actualizada: `docs/DATABASE.md` ("Customers / Suppliers
+  tables"), `docs/SECURITY.md` ("Customers / Suppliers", modelo de
+  amenazas completo + huecos conocidos: sin Party compartido, sin campos
+  de Ventas/Compras, sin validación real de país, sin dirección
+  estructurada/multi-dirección, sin import/export). De paso, corregido un
+  bug de documentación preexistente encontrado al revisar el schema:
+  `schema.prisma`'s docstring sobre `Product` referenciaba
+  "docs/DECISIONS.md ADR-009", un ADR que nunca se escribió — corregido
+  para apuntar a la sección real ("Known limitations" en
+  `docs/SECURITY.md` "Catalog") en vez de una referencia rota.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (336 api + 27 events + 33 notifications + 6
+  worker + 12 api-client + 24 erp-web = 438), `pnpm --filter @erp/api
+  test:integration` (23/23 contra Postgres real), `pnpm --filter @erp/e2e
+  test:e2e` (8/8 Playwright) — todo verde.
 
 ### Hecho — sesión 23 (Catálogo — Fase 2, primer módulo de negocio)
 

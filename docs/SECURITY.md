@@ -882,3 +882,58 @@ inside it.
 - **No backfill of the 8 new `catalog.*` permissions for tenants
   provisioned before this change**, same accepted gap already documented
   for every prior permission addition.
+
+## Customers / Suppliers (Master Data — Phase 2, 2026-08-31)
+
+Scope: `Customer`/`Supplier` (`apps/api/src/modules/customers`,
+`apps/api/src/modules/suppliers`) — second Phase 2 block, following
+Catalog. Two structurally-identical-today but deliberately separate
+modules — see `docs/DATABASE.md` "Customers / Suppliers tables" and the
+`schema.prisma` docstring on `Customer` for why they are not a shared
+"Party" abstraction.
+
+### Assets
+
+- `customers.read`/`.manage`, `suppliers.read`/`.manage` — 4 new
+  permissions, same read/manage split as every prior Foundation/Catalog
+  module.
+- `Customer.taxId`/`Supplier.taxId` — a real-world tax identifier; not
+  itself sensitive like a password, but a genuine business record subject
+  to the same tenant/company isolation as everything else in this module.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A request without an active company context writes or reads a customer/supplier | `requireCompanyId(ctx)` (duplicated per module, same helper as Catalog) throws `400 COMPANY_CONTEXT_REQUIRED` before any use case runs. |
+| A customer/supplier from Company A is read, updated, or its status toggled by a request scoped to Company B in the same tenant | `UpdateCustomerUseCase`/`SetCustomerStatusUseCase` (and their Supplier equivalents) check `entity.tenantId !== input.tenantId \|\| entity.companyId !== input.companyId` and throw the same `NotFoundError` a genuinely-missing entity would — the established IDOR-resistant pattern, verified against real Postgres with two real companies under one tenant. |
+| Two customers (or two suppliers) in the same company register the same tax id | Real database-level `@@unique([tenantId, companyId, taxId])` backs the application check — verified against real Postgres, not just an in-memory fake. Multiple records with **no** tax id on file coexist freely (Postgres allows multiple `NULL`s in a unique index) — this is intentional, not a gap: not every counterparty has a tax id on record yet. |
+| A partial `PUT` (updating one field) silently wipes other optional fields the caller didn't intend to touch | Learned from the real bug found in Catalog's `UpdateProductUseCase` this same session — applied here from the start, not retrofitted after a repeat incident. Both `UpdateCustomerUseCase`/`UpdateSupplierUseCase` use the three-state contract (omit → keep, `""` → clear, value → replace) for every optional field, with matching unit-test regressions and an E2E scenario that edits a real customer and clears its tax id via `""`. |
+| A customer's tax id collides with a supplier's tax id for the same company | Does not happen — `customers` and `suppliers` are genuinely separate tables with independent unique constraints; a real business that is both a customer and a supplier of the counterparty can register the same tax id on both sides without conflict (verified against real Postgres). |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No shared "Party" identity between a Customer and a Supplier that are
+  the same real business.** Creating both requires two separate records
+  with no cross-reference; MASTER_SPEC's broader Party concept (if ever
+  built) would need its own migration to reconcile these later. Deliberate
+  — see the `schema.prisma` docstring on `Customer`.
+- **No credit limit, payment terms, price list assignment, or any other
+  Sales/Purchasing-specific field.** This slice is Master Data only —
+  those belong to Phase 4 (Sales) and Phase 5 (Purchasing) respectively,
+  per `docs/ROADMAP.md` §6.
+- **`country` is a free 2-character string, not validated against a real
+  ISO 3166-1 list.** A typo (`"XX"`) is accepted silently. Acceptable for
+  this slice; revisit if a country-dependent feature (tax rules, shipping)
+  ever needs to trust this field.
+- **A single flat address (`addressLine`/`city`/`country`), not a
+  multi-address or structured `Address`/`Location` model.** A
+  customer/supplier with billing and shipping addresses, or multiple
+  branches, has nowhere to record that distinction yet. Warehousing
+  master data (still pending in Phase 2) has its own, unrelated `Location`
+  concept for warehouses — not reused here.
+- **No import/export.** Same gap already documented for Catalog — every
+  customer/supplier is created one at a time through the UI or API today.
+- **No backfill of the 4 new `customers.*`/`suppliers.*` permissions for
+  tenants provisioned before this change**, same accepted gap already
+  documented for every prior permission addition.

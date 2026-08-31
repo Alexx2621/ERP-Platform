@@ -488,6 +488,56 @@ describe("ApiClient", () => {
     );
   });
 
+  it("uses the documented Customers/Suppliers endpoints, including the company header", async () => {
+    const customer = {
+      id: "c1",
+      code: "CUST-01",
+      name: "Acme Corp",
+      legalName: null,
+      taxId: null,
+      email: null,
+      phone: null,
+      addressLine: null,
+      city: null,
+      country: null,
+      status: "ACTIVE",
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    };
+    const supplier = { ...customer, id: "s1", code: "SUPP-01", name: "Textiles del Norte" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([customer]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(customer), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([supplier]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(supplier), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listCustomers("access-token", "grupo-aurora", "company-1");
+    await client.createCustomer("access-token", "grupo-aurora", "company-1", { code: "CUST-01", name: "Acme Corp" });
+    await client.listSuppliers("access-token", "grupo-aurora", "company-1");
+    await client.createSupplier("access-token", "grupo-aurora", "company-1", {
+      code: "SUPP-01",
+      name: "Textiles del Norte",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/customers", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/suppliers", expect.objectContaining({ method: "GET" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/suppliers",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ code: "SUPP-01", name: "Textiles del Norte" }),
+      }),
+    );
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

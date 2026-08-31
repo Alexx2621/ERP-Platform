@@ -9,6 +9,7 @@ import {
   SquaresFour,
   Storefront,
   TShirt,
+  Users,
 } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
 import type { AppPath } from "../../shared/navigation/router";
@@ -56,6 +57,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/catalog")}>
             <TShirt size={17} weight="bold" aria-hidden="true" />
             Catálogo
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/contacts")}>
+            <Users size={17} weight="bold" aria-hidden="true" />
+            Contactos
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

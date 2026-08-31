@@ -151,6 +151,16 @@ export type ProductVariantResponse = Omit<components["schemas"]["ProductVariantR
   attributes: Record<string, string>;
 };
 
+export type CustomerResponse = components["schemas"]["CustomerResponseDto"];
+export type CreateCustomerInput = components["schemas"]["CreateCustomerDto"];
+export type UpdateCustomerInput = components["schemas"]["UpdateCustomerDto"];
+export type SetCustomerStatusInput = components["schemas"]["SetCustomerStatusDto"];
+
+export type SupplierResponse = components["schemas"]["SupplierResponseDto"];
+export type CreateSupplierInput = components["schemas"]["CreateSupplierDto"];
+export type UpdateSupplierInput = components["schemas"]["UpdateSupplierDto"];
+export type SetSupplierStatusInput = components["schemas"]["SetSupplierStatusDto"];
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

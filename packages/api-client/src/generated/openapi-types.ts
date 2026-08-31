@@ -914,6 +914,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's customers. */
+        get: operations["CustomersController_list"];
+        put?: never;
+        /** Create a customer for the active company. */
+        post: operations["CustomersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a customer. */
+        put: operations["CustomersController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a customer. */
+        put: operations["CustomersController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's suppliers. */
+        get: operations["SuppliersController_list"];
+        put?: never;
+        /** Create a supplier for the active company. */
+        post: operations["SuppliersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/suppliers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a supplier. */
+        put: operations["SuppliersController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/suppliers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a supplier. */
+        put: operations["SuppliersController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1459,6 +1563,118 @@ export interface components {
             cost?: string;
         };
         SetProductVariantStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        CustomerResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            legalName: string | null;
+            taxId: string | null;
+            email: string | null;
+            phone: string | null;
+            addressLine: string | null;
+            city: string | null;
+            country: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateCustomerDto: {
+            /** @example CUST-0001 */
+            code: string;
+            /** @example Acme Corp */
+            name: string;
+            legalName?: string;
+            taxId?: string;
+            email?: string;
+            phone?: string;
+            addressLine?: string;
+            city?: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example GT
+             */
+            country?: string;
+        };
+        UpdateCustomerDto: {
+            name: string;
+            /** @description Omit to keep, "" to clear. */
+            legalName?: string;
+            /** @description Omit to keep, "" to clear. */
+            taxId?: string;
+            /** @description Omit to keep, "" to clear. */
+            email?: string;
+            /** @description Omit to keep, "" to clear. */
+            phone?: string;
+            /** @description Omit to keep, "" to clear. */
+            addressLine?: string;
+            /** @description Omit to keep, "" to clear. */
+            city?: string;
+            /** @description Omit to keep, "" to clear. */
+            country?: string;
+        };
+        SetCustomerStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        SupplierResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            legalName: string | null;
+            taxId: string | null;
+            email: string | null;
+            phone: string | null;
+            addressLine: string | null;
+            city: string | null;
+            country: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateSupplierDto: {
+            /** @example SUPP-0001 */
+            code: string;
+            /** @example Textiles del Norte */
+            name: string;
+            legalName?: string;
+            taxId?: string;
+            email?: string;
+            phone?: string;
+            addressLine?: string;
+            city?: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example GT
+             */
+            country?: string;
+        };
+        UpdateSupplierDto: {
+            name: string;
+            /** @description Omit to keep, "" to clear. */
+            legalName?: string;
+            /** @description Omit to keep, "" to clear. */
+            taxId?: string;
+            /** @description Omit to keep, "" to clear. */
+            email?: string;
+            /** @description Omit to keep, "" to clear. */
+            phone?: string;
+            /** @description Omit to keep, "" to clear. */
+            addressLine?: string;
+            /** @description Omit to keep, "" to clear. */
+            city?: string;
+            /** @description Omit to keep, "" to clear. */
+            country?: string;
+        };
+        SetSupplierStatusDto: {
             /** @enum {string} */
             status: "ACTIVE" | "INACTIVE";
         };
@@ -3237,6 +3453,230 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductVariantResponseDto"];
+                };
+            };
+        };
+    };
+    CustomersController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerResponseDto"][];
+                };
+            };
+        };
+    };
+    CustomersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomerDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerResponseDto"];
+                };
+            };
+        };
+    };
+    CustomersController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerResponseDto"];
+                };
+            };
+        };
+    };
+    CustomersController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCustomerStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerResponseDto"];
+                };
+            };
+        };
+    };
+    SuppliersController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierResponseDto"][];
+                };
+            };
+        };
+    };
+    SuppliersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSupplierDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierResponseDto"];
+                };
+            };
+        };
+    };
+    SuppliersController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSupplierDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierResponseDto"];
+                };
+            };
+        };
+    };
+    SuppliersController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSupplierStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierResponseDto"];
                 };
             };
         };

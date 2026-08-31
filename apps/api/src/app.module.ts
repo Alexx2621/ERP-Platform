@@ -18,6 +18,8 @@ import { NotificationsModule } from "./core/notifications";
 import { PlatformAdminModule } from "./core/platform-admin";
 import { AppRegistryModule } from "./core/app-registry";
 import { CatalogModule } from "./modules/catalog";
+import { CustomersModule } from "./modules/customers";
+import { SuppliersModule } from "./modules/suppliers";
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { CatalogModule } from "./modules/catalog";
     PlatformAdminModule,
     AppRegistryModule,
     CatalogModule,
+    CustomersModule,
+    SuppliersModule,
   ],
 })
 export class AppModule implements NestModule {

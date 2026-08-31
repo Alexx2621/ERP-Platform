@@ -709,3 +709,47 @@ generated: `Brand` initially lacked `@@unique([tenantId, id])` (needed for
 `Product.unitOfMeasure` was initially a bare `references: [id]` (not
 tenant-scoped) — both fixed before generating, so no unsafe intermediate
 migration was ever applied.
+
+## Customers / Suppliers tables (Master Data — Phase 2, 2026-08-31)
+
+Scope: `docs/ARCHITECTURE.md` §5.2 "Master Data" — second Phase 2 block,
+following Catalog. `Customer` and `Supplier` are deliberately separate
+tables, not a shared "Party" abstraction — see the docstring directly above
+`model Customer` in `schema.prisma` for the reasoning (today's fields are
+identical, but Sales/Purchasing phases will add customer-only and
+supplier-only concepts that have no natural shared home).
+
+### `customers` / `suppliers`
+
+Identical shape, two separate tables:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | No `@@unique([tenantId, id])` — unlike Catalog, nothing references these tables via a composite FK yet, so `findById` looks up by the global PK alone and the application layer double-checks `tenantId`/`companyId` (same pattern as `Notification`). |
+| `tenant_id` / `company_id` | `uuid` | Required, same as every other Catalog/Master Data table. |
+| `code` | `varchar(50)` | |
+| `name` | `varchar(200)` | Trade/display name. |
+| `legal_name` | `varchar(200)?` | Razón social. |
+| `tax_id` | `varchar(60)?` | RFC/NIT/RUC-style tax identifier. |
+| `email` | `varchar(200)?` | |
+| `phone` | `varchar(40)?` | |
+| `address_line` / `city` / `country` | `varchar(255)?` / `varchar(100)?` / `varchar(2)?` | A single flat address, not a normalized `Address`/`Location` sub-resource — sufficient for Master Data; Warehousing's own `Location` concept (still pending) is unrelated. `country` is ISO 3166-1 alpha-2, not validated against a country list yet. |
+| `status` | `MasterDataStatus` | Reuses the enum already defined for Catalog. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+`@@unique([tenantId, companyId, code])` and
+`@@unique([tenantId, companyId, taxId])`, both scoped to company —
+Postgres allows multiple `NULL`s in a unique index, so any number of
+customers/suppliers with no tax id on file coexist without conflict; only a
+genuine duplicate *value* is rejected. A customer and a supplier may freely
+share the same tax id (real businesses are often both a customer and a
+supplier of the same counterparty) — verified against real Postgres.
+
+### Migration
+
+`packages/database/prisma/migrations/20260831054432_customers_suppliers_master_data/` —
+generated and applied via
+`prisma migrate dev --name customers_suppliers_master_data` against the
+real `erp_platform` Postgres container; applied cleanly on the first
+attempt (no schema-validator errors this time, unlike Catalog's migration).

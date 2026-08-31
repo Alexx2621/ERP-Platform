@@ -122,6 +122,8 @@ model Tenant {
   brands          Brand[]
   products        Product[]
   productVariants ProductVariant[]
+  customers       Customer[]
+  suppliers       Supplier[]
 
   @@map("tenants")
 }
@@ -200,14 +202,16 @@ model Company {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   organization   Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id], onDelete: Restrict)
-  settingValues   SettingValue[]
-  auditEntries    AuditEntry[]
-  outboxMessages  OutboxMessage[]
-  fileObjects     FileObject[]
-  unitsOfMeasure  UnitOfMeasure[]
-  categories      Category[]
-  brands          Brand[]
-  products        Product[]
+  settingValues  SettingValue[]
+  auditEntries   AuditEntry[]
+  outboxMessages OutboxMessage[]
+  fileObjects    FileObject[]
+  unitsOfMeasure UnitOfMeasure[]
+  categories     Category[]
+  brands         Brand[]
+  products       Product[]
+  customers      Customer[]
+  suppliers      Supplier[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -556,8 +560,8 @@ model Notification {
   data            Json?
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  tenant     Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  recipient  User                    @relation(fields: [recipientUserId], references: [id], onDelete: Restrict)
+  tenant     Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  recipient  User                   @relation(fields: [recipientUserId], references: [id], onDelete: Restrict)
   deliveries NotificationDelivery[]
 
   @@index([tenantId, recipientUserId, createdAt])
@@ -683,16 +687,16 @@ enum MasterDataStatus {
 
 /// Code-owned master data, company-scoped (docs/MASTER_SPEC.md Fase 2).
 model UnitOfMeasure {
-  id        String            @id @db.Uuid
-  tenantId  String            @map("tenant_id") @db.Uuid
-  companyId String            @map("company_id") @db.Uuid
-  code      String            @db.VarChar(20)
-  name      String            @db.VarChar(100)
-  symbol    String            @db.VarChar(10)
-  status    MasterDataStatus  @default(ACTIVE)
-  version   Int               @default(1)
-  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  code      String           @db.VarChar(20)
+  name      String           @db.VarChar(100)
+  symbol    String           @db.VarChar(10)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company  Company   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
@@ -774,30 +778,30 @@ enum ProductStatus {
 /// own price when `has_variants` is false; a variant's own price/cost
 /// override these when `has_variants` is true. Multi-tier/customer-specific
 /// Price Lists (docs/ARCHITECTURE.md §5.2 "Pricing") are also deferred —
-/// see docs/DECISIONS.md ADR-009.
+/// see "Known limitations" in docs/SECURITY.md "Catalog".
 model Product {
-  id              String           @id @db.Uuid
-  tenantId        String           @map("tenant_id") @db.Uuid
-  companyId       String           @map("company_id") @db.Uuid
-  categoryId      String?          @map("category_id") @db.Uuid
-  brandId         String?          @map("brand_id") @db.Uuid
-  unitOfMeasureId String           @map("unit_of_measure_id") @db.Uuid
-  code            String           @db.VarChar(50)
-  name            String           @db.VarChar(200)
+  id              String        @id @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  companyId       String        @map("company_id") @db.Uuid
+  categoryId      String?       @map("category_id") @db.Uuid
+  brandId         String?       @map("brand_id") @db.Uuid
+  unitOfMeasureId String        @map("unit_of_measure_id") @db.Uuid
+  code            String        @db.VarChar(50)
+  name            String        @db.VarChar(200)
   description     String?
-  type            ProductType      @default(PHYSICAL_GOOD)
-  trackInventory  Boolean          @default(true) @map("track_inventory")
-  sellable        Boolean          @default(true)
-  purchasable     Boolean          @default(true)
-  hasVariants     Boolean          @default(false) @map("has_variants")
-  publishOnline   Boolean          @default(false) @map("publish_online")
-  barcode         String?          @db.VarChar(64)
-  basePrice       Decimal?         @map("base_price") @db.Decimal(14, 4)
-  baseCost        Decimal?         @map("base_cost") @db.Decimal(14, 4)
-  status          ProductStatus    @default(ACTIVE)
-  version         Int              @default(1)
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  type            ProductType   @default(PHYSICAL_GOOD)
+  trackInventory  Boolean       @default(true) @map("track_inventory")
+  sellable        Boolean       @default(true)
+  purchasable     Boolean       @default(true)
+  hasVariants     Boolean       @default(false) @map("has_variants")
+  publishOnline   Boolean       @default(false) @map("publish_online")
+  barcode         String?       @db.VarChar(64)
+  basePrice       Decimal?      @map("base_price") @db.Decimal(14, 4)
+  baseCost        Decimal?      @map("base_cost") @db.Decimal(14, 4)
+  status          ProductStatus @default(ACTIVE)
+  version         Int           @default(1)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company       Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
@@ -821,18 +825,18 @@ model Product {
 /// normalized EAV schema would be premature with no second consumer yet
 /// (docs/ARCHITECTURE.md §57).
 model ProductVariant {
-  id        String           @id @db.Uuid
-  tenantId  String           @map("tenant_id") @db.Uuid
-  productId String           @map("product_id") @db.Uuid
-  sku       String           @db.VarChar(64)
-  barcode   String?          @db.VarChar(64)
-  attributes Json            @default("{}")
-  price     Decimal          @db.Decimal(14, 4)
-  cost      Decimal?         @db.Decimal(14, 4)
-  status    MasterDataStatus @default(ACTIVE)
-  version   Int              @default(1)
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id         String           @id @db.Uuid
+  tenantId   String           @map("tenant_id") @db.Uuid
+  productId  String           @map("product_id") @db.Uuid
+  sku        String           @db.VarChar(64)
+  barcode    String?          @db.VarChar(64)
+  attributes Json             @default("{}")
+  price      Decimal          @db.Decimal(14, 4)
+  cost       Decimal?         @db.Decimal(14, 4)
+  status     MasterDataStatus @default(ACTIVE)
+  version    Int              @default(1)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
@@ -841,4 +845,73 @@ model ProductVariant {
   @@unique([tenantId, productId, attributes])
   @@index([tenantId, productId])
   @@map("product_variants")
+}
+
+/// Customer and Supplier are deliberately separate models, not a shared
+/// "Party" abstraction, per docs/ROADMAP.md §6's explicit instruction to
+/// decide this "solo si el análisis demuestra semántica común útil". Today
+/// their fields are identical — but Phase 4 (Sales) will add
+/// customer-only concepts (credit limit, price list assignment) and Phase 5
+/// (Purchasing) will add supplier-only concepts (payment terms, lead time)
+/// that have no natural home on a shared table without nullable columns
+/// that only ever apply to one side. Duplicating this small field set now
+/// is cheaper than un-sharing a Party model later once real business rules
+/// depend on it (MASTER_SPEC §76's "don't design for hypothetical future
+/// requirements" cuts the other way here — the sharing is the speculative
+/// part, since only Master Data exists today and both sides already read
+/// identically to real ERPs that treat them as one Party. This project's
+/// convention is to under-abstract rather than over-abstract, so it stays
+/// two models).
+model Customer {
+  id          String           @id @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  code        String           @db.VarChar(50)
+  name        String           @db.VarChar(200)
+  legalName   String?          @map("legal_name") @db.VarChar(200)
+  taxId       String?          @map("tax_id") @db.VarChar(60)
+  email       String?          @db.VarChar(200)
+  phone       String?          @db.VarChar(40)
+  addressLine String?          @map("address_line") @db.VarChar(255)
+  city        String?          @db.VarChar(100)
+  country     String?          @db.VarChar(2)
+  status      MasterDataStatus @default(ACTIVE)
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, code])
+  @@unique([tenantId, companyId, taxId])
+  @@index([tenantId, companyId])
+  @@map("customers")
+}
+
+model Supplier {
+  id          String           @id @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  code        String           @db.VarChar(50)
+  name        String           @db.VarChar(200)
+  legalName   String?          @map("legal_name") @db.VarChar(200)
+  taxId       String?          @map("tax_id") @db.VarChar(60)
+  email       String?          @db.VarChar(200)
+  phone       String?          @db.VarChar(40)
+  addressLine String?          @map("address_line") @db.VarChar(255)
+  city        String?          @db.VarChar(100)
+  country     String?          @db.VarChar(2)
+  status      MasterDataStatus @default(ACTIVE)
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, code])
+  @@unique([tenantId, companyId, taxId])
+  @@index([tenantId, companyId])
+  @@map("suppliers")
 }

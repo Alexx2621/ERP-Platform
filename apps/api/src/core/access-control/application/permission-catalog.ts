@@ -54,4 +54,8 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "catalog.products.manage",
     description: "Create, edit and archive products and their variants.",
   },
+  { key: "customers.read", description: "View the company's customers." },
+  { key: "customers.manage", description: "Create, edit and archive customers." },
+  { key: "suppliers.read", description: "View the company's suppliers." },
+  { key: "suppliers.manage", description: "Create, edit and archive suppliers." },
 ];

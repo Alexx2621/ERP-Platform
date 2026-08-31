@@ -1,14 +1,12 @@
 # Project State
 
-Última actualización: 2026-08-31 (sesión 23), tras implementar el módulo
-Catálogo (Units of Measure, Categories, Brands, Products, Product
-Variants) — primer bloque de Fase 2 (Master Data) y primer módulo de
-negocio real de la plataforma (`apps/api/src/modules/catalog`, sibling de
-`core/`). Ver "Hecho — sesión 23" en `docs/WORK_QUEUE.md` para el detalle
-completo, incluyendo dos bugs reales encontrados y corregidos (pérdida de
-datos en actualizaciones parciales; recorte de ceros decimales al leer de
-Postgres) y dos bugs reales de re-render en la UI encontrados durante la
-verificación E2E. Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
+Última actualización: 2026-08-31 (sesión 24), tras implementar Customers y
+Suppliers — segundo bloque de Fase 2 (Master Data), siguiendo al Catálogo
+de la sesión 23. Ver "Hecho — sesión 24" en `docs/WORK_QUEUE.md` para el
+detalle completo, incluyendo la decisión deliberada de mantener Customer/
+Supplier como entidades separadas (no un "Party" compartido) y un bug real
+de singularización de texto en la UI encontrado y corregido antes de
+llegar a producción. Modelo de trabajo vigente: `docs/WORK_QUEUE.md`
 (reemplaza `docs/tasks/FOUNDATION-00X.md`/`CURRENT.md`, que quedan como
 historial).
 
@@ -27,13 +25,15 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
-PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23)**. Primer
-bloque completado: Catálogo (Units of Measure, Categories, Brands,
-Products, Product Variants — `apps/api/src/modules/catalog`, ver "Hecho —
-sesión 23" en `docs/WORK_QUEUE.md`). Pendiente del alcance de
-`docs/ARCHITECTURE.md` §5.2: Customers, Suppliers, Pricing (price lists/
-multi-tier), Taxes, Warehousing master data — cada uno explícitamente
-diferido en `docs/SECURITY.md` "Catalog", no simulado.
+PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23)**. Bloques
+completados: Catálogo (Units of Measure, Categories, Brands, Products,
+Product Variants — `apps/api/src/modules/catalog`, sesión 23) y Customers/
+Suppliers (`apps/api/src/modules/customers`, `apps/api/src/modules/
+suppliers`, sesión 24 — ver "Hecho — sesión 24" en `docs/WORK_QUEUE.md`).
+Pendiente del alcance de `docs/ARCHITECTURE.md` §5.2: Pricing (price
+lists/multi-tier), Taxes, Warehousing master data — cada uno
+explícitamente diferido en `docs/SECURITY.md` "Catalog" y "Customers /
+Suppliers", no simulado.
 
 PHASE 1 — Foundation, **formalmente cerrada el 2026-08-30 (sesión 22)**:
 primer vertical slice integrado y verificado de extremo a extremo —
@@ -708,9 +708,46 @@ bloqueen.
   producto sin variantes con precio base y uno con variantes, agrega una
   variante real con atributos JSON — todo contra el backend real. Detalle
   completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 23").
-- 398 tests unitarios pasando (api 300, api-client 11, erp-web 21) + 27 en
-  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 22
-  tests de integración con Postgres real + **7 tests E2E de Playwright
+- **Customers, Suppliers — Fase 2, segundo bloque** (`apps/api/src/modules/
+  customers`, `apps/api/src/modules/suppliers`, Claude, sesión 24):
+  entidades separadas y deliberadas (no una abstracción "Party"
+  compartida — ver el docstring sobre `model Customer` en `schema.prisma`
+  y `docs/SECURITY.md` "Customers / Suppliers"), cada una con code, name,
+  legalName, taxId, email, phone, addressLine, city, country, status.
+  Contrato de tres estados (omitir/`""`/valor) para actualizaciones
+  parciales aplicado desde el inicio — la lección del bug real de Catálogo
+  (sesión 23) esta vez se aplicó proactivamente. Unicidad real de `taxId`
+  por compañía a nivel de base de datos, permitiendo múltiples registros
+  sin `taxId` (Postgres permite múltiples `NULL` en un índice único) y
+  permitiendo que un cliente y un proveedor compartan el mismo `taxId`
+  (tablas separadas). 4 permisos nuevos (`customers.*`/`suppliers.*`),
+  auditoría real. Tabla nueva (migración
+  `20260831054432_customers_suppliers_master_data`, **generada y aplicada
+  directamente contra Postgres real**, limpiamente al primer intento).
+  Contrato HTTP nuevo (`GET/POST /api/v1/customers`, `PUT /:id`,
+  `PUT /:id/status`, mismo patrón para `/api/v1/suppliers`). UI nueva
+  ("Contactos", `apps/erp-web/src/features/contacts`, ruta `/contacts`)
+  con pestañas Clientes/Proveedores y un componente genérico
+  `ContactPanel<T>` compartido (la UI, a diferencia del backend, no carga
+  riesgo de divergencia de reglas de negocio) que incluye edición completa,
+  no solo crear+alternar estado. **Bug real encontrado y corregido antes
+  de llegar a producción** (durante la propia redacción del E2E): una
+  singularización naïve por regex del label plural ("Proveedores" →
+  "proveedore" en vez de "proveedor") habría roto el botón "Nuevo
+  proveedor" — corregido con un prop `singularLabel` explícito. Las
+  lecciones de re-render de Catálogo se aplicaron desde el primer borrador,
+  así que los tests de `apps/erp-web` pasaron en el primer intento sin
+  necesitar depuración de re-render. **Verificado con un E2E de Playwright
+  real**: crea un cliente real con taxId/email, lo edita (cambia nombre,
+  limpia el taxId vía `""`), alterna su estado, crea un proveedor real —
+  todo contra el backend real. De paso, corregido un bug de documentación
+  preexistente: el docstring de `Product` en `schema.prisma` referenciaba
+  un "ADR-009" que nunca se escribió — corregido para apuntar a la
+  sección real de `docs/SECURITY.md`. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 24").
+- 438 tests unitarios pasando (api 336, api-client 12, erp-web 24) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 23
+  tests de integración con Postgres real + **8 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
@@ -718,7 +755,8 @@ bloqueen.
   `tenants.module.spec.ts`, `access-control.module.spec.ts`,
   `configuration.module.spec.ts`, `audit.module.spec.ts`,
   `files.module.spec.ts`, `platform-admin.module.spec.ts`,
-  `app-registry.module.spec.ts`, `catalog.module.spec.ts` en `apps/api`;
+  `app-registry.module.spec.ts`, `catalog.module.spec.ts`,
+  `customers.module.spec.ts`, `suppliers.module.spec.ts` en `apps/api`;
   `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
@@ -779,11 +817,10 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Fase 2 (Master Data), sesión 23: bloque Catálogo (Units of Measure,
-Categories, Brands, Products, Product Variants) completado e integrado
-(ver Completed arriba). Pendiente del alcance de `docs/ARCHITECTURE.md`
-§5.2: Customers, Suppliers, Pricing (price lists/multi-tier), Taxes,
-Warehousing master data.
+Fase 2 (Master Data): bloques Catálogo (sesión 23) y Customers/Suppliers
+(sesión 24) completados e integrados (ver Completed arriba). Pendiente del
+alcance de `docs/ARCHITECTURE.md` §5.2: Pricing (price lists/multi-tier),
+Taxes, Warehousing master data.
 
 ## Pending
 
@@ -793,13 +830,14 @@ ADR-001, ADR-002 y ADR-003 formalmente (ADR-004, ADR-005, ADR-006, ADR-007
 y ADR-008 ya están ratificados) — sus decisiones ya están implementadas y
 verificadas, solo falta el documento formal. La UI de RBAC (incluida la
 invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
-de Platform Administration (sesión 18), la UI de Apps (sesión 22) y la UI
-de Catálogo (sesión 23) ya están hechas e integradas (ver Completed); la
-UI de Files (subida/listado/descarga) y de Notifications (bandeja/badge de
-no leídas) todavía no se han construido — quedan como mejoras de UX sin
-dependencia de arquitectura, a retomar si el usuario las pide o cuando un
-módulo de negocio las necesite. Dentro de Fase 2: Customers, Suppliers,
-Pricing, Taxes, Warehousing master data (ver "In Progress").
+de Platform Administration (sesión 18), la UI de Apps (sesión 22), la UI
+de Catálogo (sesión 23) y la UI de Contactos/Customers/Suppliers (sesión
+24) ya están hechas e integradas (ver Completed); la UI de Files (subida/
+listado/descarga) y de Notifications (bandeja/badge de no leídas) todavía
+no se han construido — quedan como mejoras de UX sin dependencia de
+arquitectura, a retomar si el usuario las pide o cuando un módulo de
+negocio las necesite. Dentro de Fase 2: Pricing, Taxes, Warehousing
+master data (ver "In Progress").
 
 ## Production Status
 
@@ -1109,3 +1147,23 @@ omitirlo y otro que lo limpia enviando `""`. Aislamiento cross-company
 confirmado (una categoría de otra compañía del mismo tenant rechazada) y
 cross-tenant confirmado (un segundo tenant real no ve ningún registro del
 primero). Toda la data de prueba fue limpiada al terminar.
+
+**Sesión 24 (2026-08-31, Customers/Suppliers — Fase 2)**: migración
+`20260831054432_customers_suppliers_master_data` (`customers`,
+`suppliers`) generada y **aplicada directamente contra Postgres real** vía
+`prisma migrate dev`, limpiamente al primer intento — `prisma migrate
+status` confirma las 14 migraciones aplicadas sin drift. Verificado con el
+servidor real reconstruido y un smoke test manual vía HTTP: registro y
+provisioning con compañía real → creación real de un cliente con `taxId`/
+`email` → un segundo cliente con el mismo `taxId` en la misma compañía
+rechazado con `409 CUSTOMER_TAX_ID_IN_USE` real (constraint de DB, no solo
+filtro de aplicación) → `PUT` real que omite `taxId` (se preserva
+`"TAX-100"`) y limpia `email` vía `""` (queda `null`) → alternar estado a
+`INACTIVE` real → un proveedor real creado con el **mismo** `taxId` que el
+cliente, aceptado sin conflicto (tablas genuinamente separadas) →
+`GET /api/v1/audit-entries` confirma las 4 entradas reales esperadas
+(`customers.customer.created`/`.updated`/`.status_changed`,
+`suppliers.supplier.created`) con el actor y los valores correctos. Los
+datos de prueba de esta sesión permanecen en la base, por el mismo motivo
+`onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
+anteriores.

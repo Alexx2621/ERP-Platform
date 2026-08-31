@@ -1,0 +1,7 @@
+/** Public contract of the Customers module. Other modules must only import from here. */
+export { Customer, type CustomerProps } from "./domain/customer.entity";
+export { CreateCustomerUseCase } from "./application/use-cases/create-customer.use-case";
+export { ListCustomersUseCase } from "./application/use-cases/list-customers.use-case";
+export * from "./application/errors";
+export { CustomersController } from "./presentation/customers.controller";
+export { CustomersModule } from "./customers.module";

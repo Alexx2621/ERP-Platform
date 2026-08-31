@@ -11,9 +11,12 @@ import type {
   CategoryResponse,
   CreateBrandInput,
   CreateCategoryInput,
+  CreateCustomerInput,
   CreateProductInput,
   CreateRoleInput,
+  CreateSupplierInput,
   CreateUnitOfMeasureInput,
+  CustomerResponse,
   EffectiveSettingResponse,
   InviteMembershipInput,
   LoginInput,
@@ -32,23 +35,28 @@ import type {
   RoleAssignmentResponse,
   RoleResponse,
   SetAppConfigurationInput,
+  SetCustomerStatusInput,
   SetMasterDataStatusInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
   SetProductStatusInput,
   SetProductVariantStatusInput,
   SetSettingValueInput,
+  SetSupplierStatusInput,
   SessionResponse,
   SettingDefinitionResponse,
   SettingValueResponse,
+  SupplierResponse,
   TenantAppResponse,
   TenantExecutionContext,
   TenantSummary,
   UnitOfMeasureResponse,
   UpdateBrandInput,
   UpdateCategoryInput,
+  UpdateCustomerInput,
   UpdateProductInput,
   UpdateProductVariantInput,
+  UpdateSupplierInput,
   UpdateUnitOfMeasureInput,
   UserPreferenceResponse,
 } from "./contracts.js";
@@ -754,6 +762,118 @@ export class ApiClient {
       `/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/status`,
       { method: "PUT", accessToken, tenantSlug, companyId, body: input },
     );
+  }
+
+  async listCustomers(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<CustomerResponse[]> {
+    return this.request<CustomerResponse[]>("/customers", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createCustomer(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateCustomerInput,
+  ): Promise<CustomerResponse> {
+    return this.request<CustomerResponse>("/customers", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateCustomer(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateCustomerInput,
+  ): Promise<CustomerResponse> {
+    return this.request<CustomerResponse>(`/customers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setCustomerStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetCustomerStatusInput,
+  ): Promise<CustomerResponse> {
+    return this.request<CustomerResponse>(`/customers/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listSuppliers(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    signal?: AbortSignal,
+  ): Promise<SupplierResponse[]> {
+    return this.request<SupplierResponse[]>("/suppliers", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createSupplier(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateSupplierInput,
+  ): Promise<SupplierResponse> {
+    return this.request<SupplierResponse>("/suppliers", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateSupplier(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: UpdateSupplierInput,
+  ): Promise<SupplierResponse> {
+    return this.request<SupplierResponse>(`/suppliers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setSupplierStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    id: string,
+    input: SetSupplierStatusInput,
+  ): Promise<SupplierResponse> {
+    return this.request<SupplierResponse>(`/suppliers/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
