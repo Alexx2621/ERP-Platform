@@ -47,6 +47,13 @@ export type {
   SalesReturn,
   SalesReturnLine,
   Payment,
+  PurchaseOrder,
+  PurchaseOrderLine,
+  PurchaseReceipt,
+  PurchaseReceiptLine,
+  PurchaseReturn,
+  PurchaseReturnLine,
+  SupplierInvoice,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -72,6 +79,8 @@ export {
   SalesOrderStatus,
   PaymentMethod,
   PaymentStatus,
+  PurchaseOrderStatus,
+  SupplierInvoiceStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

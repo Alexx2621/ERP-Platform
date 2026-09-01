@@ -7,6 +7,7 @@ import { RedisService } from "../../shared/redis/redis.service";
 import { SuppliersModule } from "./suppliers.module";
 import { SuppliersController } from "./presentation/suppliers.controller";
 import { CreateSupplierUseCase } from "./application/use-cases/create-supplier.use-case";
+import { GetSupplierUseCase } from "./application/use-cases/get-supplier.use-case";
 
 // Same StubInfraModule pattern as customers.module.spec.ts.
 @Global()
@@ -43,6 +44,7 @@ describe("SuppliersModule wiring", () => {
 
     expect(moduleRef.get(SuppliersController)).toBeInstanceOf(SuppliersController);
     expect(moduleRef.get(CreateSupplierUseCase)).toBeInstanceOf(CreateSupplierUseCase);
+    expect(moduleRef.get(GetSupplierUseCase)).toBeInstanceOf(GetSupplierUseCase);
 
     await moduleRef.close();
   });

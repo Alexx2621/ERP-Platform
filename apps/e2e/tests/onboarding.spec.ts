@@ -80,7 +80,7 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
   await expect(page.getByText("Roadmap total del producto")).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Avance total estimado" })).toHaveAttribute(
     "aria-valuenow",
-    "37",
+    "45",
   );
   await expect(page.getByText("Contexto activo")).toBeVisible();
   await expect(page.getByText(tenantSlug, { exact: false })).toBeVisible();

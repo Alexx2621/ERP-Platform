@@ -69,6 +69,14 @@ import {
   GetSalesOrderUseCase,
 } from "./modules/sales";
 import { PaymentsController, CapturePaymentUseCase, RefundPaymentUseCase } from "./modules/payments";
+import {
+  PurchaseOrdersController,
+  PurchaseReceiptsController,
+  PurchaseReturnsController,
+  SupplierInvoicesController,
+  ConfirmPurchaseOrderUseCase,
+  GetPurchaseOrderUseCase,
+} from "./modules/purchasing";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -155,6 +163,12 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(PaymentsController)).toBeInstanceOf(PaymentsController);
     expect(moduleRef.get(CapturePaymentUseCase)).toBeInstanceOf(CapturePaymentUseCase);
     expect(moduleRef.get(RefundPaymentUseCase)).toBeInstanceOf(RefundPaymentUseCase);
+    expect(moduleRef.get(PurchaseOrdersController)).toBeInstanceOf(PurchaseOrdersController);
+    expect(moduleRef.get(PurchaseReceiptsController)).toBeInstanceOf(PurchaseReceiptsController);
+    expect(moduleRef.get(PurchaseReturnsController)).toBeInstanceOf(PurchaseReturnsController);
+    expect(moduleRef.get(SupplierInvoicesController)).toBeInstanceOf(SupplierInvoicesController);
+    expect(moduleRef.get(ConfirmPurchaseOrderUseCase)).toBeInstanceOf(ConfirmPurchaseOrderUseCase);
+    expect(moduleRef.get(GetPurchaseOrderUseCase)).toBeInstanceOf(GetPurchaseOrderUseCase);
 
     await moduleRef.close();
   });

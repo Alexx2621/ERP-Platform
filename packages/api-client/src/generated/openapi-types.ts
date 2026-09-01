@@ -1659,6 +1659,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchasing/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List purchase orders for the active company. */
+        get: operations["PurchaseOrdersController_list"];
+        put?: never;
+        /** Create a DRAFT purchase order. */
+        post: operations["PurchaseOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a purchase order's lines. */
+        get: operations["PurchaseOrdersController_listOrderLines"];
+        put?: never;
+        /** Add a line to a DRAFT purchase order. */
+        post: operations["PurchaseOrdersController_addOrderLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a DRAFT order, moving it to CONFIRMED. Gated by a distinct approve permission from purchasing.orders.manage, so drafting and approving can be different roles (docs/ROADMAP.md §9 segregation of duties). */
+        post: operations["PurchaseOrdersController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a CONFIRMED order — does not require every line to be fully received. */
+        post: operations["PurchaseOrdersController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT or CONFIRMED order — rejected if any receipt already exists for it. */
+        post: operations["PurchaseOrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List receipts for the active company. */
+        get: operations["PurchaseReceiptsController_list"];
+        put?: never;
+        /** Record a (possibly partial) receipt against a CONFIRMED order: posts a real RECEIPT inventory movement per line and rejects receiving more than was ever ordered. */
+        post: operations["PurchaseReceiptsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/receipts/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a receipt's lines. */
+        get: operations["PurchaseReceiptsController_listReceiptLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List returns to suppliers for the active company. */
+        get: operations["PurchaseReturnsController_list"];
+        put?: never;
+        /** Record a return to the supplier: posts a real ISSUE inventory movement per line and rejects returning more than was ever received (minus already returned). */
+        post: operations["PurchaseReturnsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/returns/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a return's lines. */
+        get: operations["PurchaseReturnsController_listReturnLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List supplier invoices for the active company. */
+        get: operations["SupplierInvoicesController_list"];
+        put?: never;
+        /** Record a supplier's own invoice as its own document, traced to a purchase order. */
+        post: operations["SupplierInvoicesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchasing/supplier-invoices/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a RECORDED supplier invoice. */
+        post: operations["SupplierInvoicesController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2794,6 +2986,145 @@ export interface components {
             idempotencyKey: string;
             /** @description Required for BANK_TRANSFER — the transfer confirmation number. */
             reference?: string;
+        };
+        PurchaseOrderResponseDto: {
+            id: string;
+            supplierId: string;
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "CLOSED" | "CANCELLED";
+            currency: string;
+            notes: string | null;
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            confirmedAt: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreatePurchaseOrderDto: {
+            supplierId: string;
+            /** @example USD */
+            currency: string;
+            notes?: string;
+        };
+        PurchaseOrderLineResponseDto: {
+            id: string;
+            purchaseOrderId: string;
+            warehouseId: string | null;
+            productId: string;
+            productVariantId: string | null;
+            /** @example 10.0000 */
+            quantity: string;
+            /** @example 5.5000 */
+            unitCost: string;
+            /** @example 55.0000 */
+            lineTotal: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AddPurchaseOrderLineDto: {
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @description Required only if the product tracks inventory. */
+            warehouseId?: string;
+            /** @example 10.0000 */
+            quantity: string;
+            /** @description Overrides the resolved default (variant/product cost). */
+            unitCost?: string;
+        };
+        PurchaseReceiptResponseDto: {
+            id: string;
+            purchaseOrderId: string;
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreatePurchaseReceiptLineDto: {
+            purchaseOrderLineId: string;
+            /** @example 5.0000 */
+            quantity: string;
+        };
+        CreatePurchaseReceiptDto: {
+            purchaseOrderId: string;
+            notes?: string;
+            lines: components["schemas"]["CreatePurchaseReceiptLineDto"][];
+        };
+        PurchaseReceiptLineResponseDto: {
+            id: string;
+            purchaseReceiptId: string;
+            purchaseOrderLineId: string;
+            /** @example 5.0000 */
+            quantity: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PurchaseReturnResponseDto: {
+            id: string;
+            purchaseOrderId: string;
+            reason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreatePurchaseReturnLineDto: {
+            purchaseOrderLineId: string;
+            /** @example 1.0000 */
+            quantity: string;
+        };
+        CreatePurchaseReturnDto: {
+            purchaseOrderId: string;
+            reason?: string;
+            lines: components["schemas"]["CreatePurchaseReturnLineDto"][];
+        };
+        PurchaseReturnLineResponseDto: {
+            id: string;
+            purchaseReturnId: string;
+            purchaseOrderLineId: string;
+            /** @example 1.0000 */
+            quantity: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SupplierInvoiceResponseDto: {
+            id: string;
+            supplierId: string;
+            purchaseOrderId: string;
+            invoiceNumber: string;
+            /** @example 1250.0000 */
+            amount: string;
+            currency: string;
+            /** @example 2026-09-01 */
+            issueDate: string;
+            /** @example 2026-10-01 */
+            dueDate: string | null;
+            /** @enum {string} */
+            status: "RECORDED" | "CANCELLED";
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreateSupplierInvoiceDto: {
+            supplierId: string;
+            purchaseOrderId: string;
+            invoiceNumber: string;
+            /** @example 1250.0000 */
+            amount: string;
+            /** @example USD */
+            currency: string;
+            /** @example 2026-09-01 */
+            issueDate: string;
+            /** @example 2026-10-01 */
+            dueDate?: string;
+            notes?: string;
         };
     };
     responses: never;
@@ -6199,6 +6530,461 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_list: {
+        parameters: {
+            query?: {
+                status?: "DRAFT" | "CONFIRMED" | "CLOSED" | "CANCELLED";
+                supplierId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_listOrderLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderLineResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_addOrderLine: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPurchaseOrderLineDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderLineResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_confirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_close: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseOrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderResponseDto"];
+                };
+            };
+            /** @description PURCHASE_ORDER_HAS_RECEIPTS */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseReceiptsController_list: {
+        parameters: {
+            query?: {
+                purchaseOrderId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReceiptResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseReceiptsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseReceiptDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReceiptResponseDto"];
+                };
+            };
+            /** @description PURCHASE_RECEIPT_EXCEEDS_ORDERED_QUANTITY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseReceiptsController_listReceiptLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReceiptLineResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseReturnsController_list: {
+        parameters: {
+            query?: {
+                purchaseOrderId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReturnResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseReturnsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseReturnDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReturnResponseDto"];
+                };
+            };
+            /** @description PURCHASE_RETURN_EXCEEDS_RECEIVED_QUANTITY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseReturnsController_listReturnLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseReturnLineResponseDto"][];
+                };
+            };
+        };
+    };
+    SupplierInvoicesController_list: {
+        parameters: {
+            query?: {
+                purchaseOrderId?: string;
+                supplierId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierInvoiceResponseDto"][];
+                };
+            };
+        };
+    };
+    SupplierInvoicesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSupplierInvoiceDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierInvoiceResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierInvoicesController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierInvoiceResponseDto"];
                 };
             };
         };

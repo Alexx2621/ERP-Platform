@@ -39,7 +39,9 @@ import { InventoryController } from "./presentation/inventory.controller";
  * Inventory exists. Sales (Phase 4) imports this module for
  * `CreateReservationUseCase`/`ReleaseReservationUseCase`/
  * `RecordIssueUseCase`/`RecordReturnUseCase` — the "port transaccional"
- * ROADMAP §8 asks Sales to reserve/fulfill/return stock through.
+ * ROADMAP §8 asks Sales to reserve/fulfill/return stock through. Purchasing
+ * (Phase 5) additionally imports `RecordReceiptUseCase` (goods arriving)
+ * and reuses `RecordIssueUseCase` (goods returned to a supplier).
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule],
@@ -72,6 +74,7 @@ import { InventoryController } from "./presentation/inventory.controller";
     ReleaseReservationUseCase,
     RecordIssueUseCase,
     RecordReturnUseCase,
+    RecordReceiptUseCase,
   ],
 })
 export class InventoryModule {}

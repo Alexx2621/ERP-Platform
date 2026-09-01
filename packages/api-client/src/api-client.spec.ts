@@ -984,6 +984,128 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Purchasing endpoints", async () => {
+    const order = {
+      id: "po-1",
+      supplierId: "supplier-1",
+      status: "DRAFT",
+      currency: "USD",
+      notes: null,
+      version: 1,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      confirmedAt: null,
+      closedAt: null,
+      cancelledAt: null,
+    };
+    const orderLine = {
+      id: "po-line-1",
+      purchaseOrderId: "po-1",
+      warehouseId: "wh-1",
+      productId: "product-1",
+      productVariantId: null,
+      quantity: "10.0000",
+      unitCost: "4.2500",
+      lineTotal: "42.5000",
+      createdAt: "2026-09-01T00:00:00.000Z",
+    };
+    const receipt = { id: "receipt-1", purchaseOrderId: "po-1", notes: null, createdAt: "2026-09-01T00:00:00.000Z" };
+    const receiptLine = { id: "receipt-line-1", purchaseReceiptId: "receipt-1", purchaseOrderLineId: "po-line-1", quantity: "6.0000", createdAt: "2026-09-01T00:00:00.000Z" };
+    const purchaseReturn = { id: "return-1", purchaseOrderId: "po-1", reason: "Producto defectuoso", createdAt: "2026-09-01T00:00:00.000Z" };
+    const returnLine = { id: "return-line-1", purchaseReturnId: "return-1", purchaseOrderLineId: "po-line-1", quantity: "1.0000", createdAt: "2026-09-01T00:00:00.000Z" };
+    const invoice = {
+      id: "invoice-1",
+      supplierId: "supplier-1",
+      purchaseOrderId: "po-1",
+      invoiceNumber: "INV-100",
+      amount: "42.5000",
+      currency: "USD",
+      issueDate: "2026-09-01",
+      dueDate: null,
+      status: "RECORDED",
+      notes: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      cancelledAt: null,
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([order]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([orderLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(orderLine), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CONFIRMED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CLOSED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CANCELLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([receipt]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(receipt), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([receiptLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([purchaseReturn]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(purchaseReturn), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([returnLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([invoice]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(invoice), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...invoice, status: "CANCELLED" }), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listPurchaseOrders("access-token", "grupo-aurora", "company-1", { status: "DRAFT" });
+    await client.createPurchaseOrder("access-token", "grupo-aurora", "company-1", { supplierId: "supplier-1", currency: "USD" });
+    await client.listPurchaseOrderLines("access-token", "grupo-aurora", "company-1", "po-1");
+    await client.addPurchaseOrderLine("access-token", "grupo-aurora", "company-1", "po-1", {
+      productId: "product-1",
+      warehouseId: "wh-1",
+      quantity: "10.0000",
+    });
+    await client.confirmPurchaseOrder("access-token", "grupo-aurora", "company-1", "po-1");
+    await client.closePurchaseOrder("access-token", "grupo-aurora", "company-1", "po-1");
+    await client.cancelPurchaseOrder("access-token", "grupo-aurora", "company-1", "po-1");
+    await client.listPurchaseReceipts("access-token", "grupo-aurora", "company-1", { purchaseOrderId: "po-1" });
+    await client.createPurchaseReceipt("access-token", "grupo-aurora", "company-1", {
+      purchaseOrderId: "po-1",
+      lines: [{ purchaseOrderLineId: "po-line-1", quantity: "6.0000" }],
+    });
+    await client.listPurchaseReceiptLines("access-token", "grupo-aurora", "company-1", "receipt-1");
+    await client.listPurchaseReturns("access-token", "grupo-aurora", "company-1", { purchaseOrderId: "po-1" });
+    await client.createPurchaseReturn("access-token", "grupo-aurora", "company-1", {
+      purchaseOrderId: "po-1",
+      lines: [{ purchaseOrderLineId: "po-line-1", quantity: "1.0000" }],
+    });
+    await client.listPurchaseReturnLines("access-token", "grupo-aurora", "company-1", "return-1");
+    await client.listSupplierInvoices("access-token", "grupo-aurora", "company-1", { purchaseOrderId: "po-1" });
+    await client.createSupplierInvoice("access-token", "grupo-aurora", "company-1", {
+      supplierId: "supplier-1",
+      purchaseOrderId: "po-1",
+      invoiceNumber: "INV-100",
+      amount: "42.5000",
+      currency: "USD",
+      issueDate: "2026-09-01",
+    });
+    await client.cancelSupplierInvoice("access-token", "grupo-aurora", "company-1", "invoice-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/purchasing/orders?status=DRAFT", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/purchasing/orders", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/purchasing/orders/po-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/purchasing/orders/po-1/lines", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/purchasing/orders/po-1/confirm", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/purchasing/orders/po-1/close", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/purchasing/orders/po-1/cancel", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/purchasing/receipts?purchaseOrderId=po-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/purchasing/receipts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/purchasing/receipts/receipt-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/purchasing/returns?purchaseOrderId=po-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/purchasing/returns", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/purchasing/returns/return-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(14, "/api/v1/purchasing/supplier-invoices?purchaseOrderId=po-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(15, "/api/v1/purchasing/supplier-invoices", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(16, "/api/v1/purchasing/supplier-invoices/invoice-1/cancel", expect.objectContaining({ method: "POST" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

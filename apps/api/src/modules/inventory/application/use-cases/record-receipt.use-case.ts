@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { newId } from "@erp/database";
-import { InventoryMovement } from "../../domain/inventory-movement.entity";
+import { InventoryMovement, InventoryMovementReferenceType } from "../../domain/inventory-movement.entity";
 import { InventoryBalance } from "../../domain/inventory-balance.entity";
 import { INVENTORY_BALANCE_REPOSITORY, InventoryBalanceRepository } from "../../domain/inventory-balance.repository";
 import { ResolveWarehouseTargetUseCase } from "./resolve-warehouse-target.use-case";
@@ -16,12 +16,17 @@ export interface RecordReceiptInput {
   productVariantId?: string | null;
   quantity: string;
   reason?: string | null;
+  /** Omitted → MANUAL (a direct UI-driven receipt). Purchasing passes PURCHASE_ORDER + its order id on receiving. */
+  referenceType?: InventoryMovementReferenceType;
+  referenceId?: string | null;
 }
 
 /**
- * Stock arriving into a warehouse with no corresponding InventoryTransfer
- * (e.g. a purchase receipt — Purchasing, Phase 5, will call this once it
- * exists; for now it is also reachable directly, `referenceType: "MANUAL"`).
+ * Stock arriving into a warehouse with no corresponding InventoryTransfer —
+ * a manual receipt (`referenceType: "MANUAL"`, the default) or, since
+ * Purchasing (Phase 5), a real purchase order receipt
+ * (`referenceType: "PURCHASE_ORDER"`, `referenceId: purchaseOrderId` — see
+ * `CreatePurchaseReceiptUseCase`).
  */
 @Injectable()
 export class RecordReceiptUseCase {
@@ -50,8 +55,8 @@ export class RecordReceiptUseCase {
       type: "RECEIPT",
       quantity: input.quantity,
       reason: input.reason ?? null,
-      referenceType: "MANUAL",
-      referenceId: null,
+      referenceType: input.referenceType ?? "MANUAL",
+      referenceId: input.referenceId ?? null,
       correlationId: input.correlationId,
       createdByUserId: input.actorUserId,
       createdAt: new Date(),

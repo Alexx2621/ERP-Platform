@@ -6,11 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-31 (sesión 28,
-segundo bug real corregido en la misma sesión: el rol Owner de tenants ya
-provisionados no ganaba retroactivamente los permisos de módulos
-posteriores — reportado por el usuario contra un tenant real en uso).
-Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-01 (sesión 29,
+Fase 5 — Purchasing completa en un solo bloque de trabajo, a pedido
+explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -23,15 +21,18 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 4 (Sales y Payments) está completa** — ver "Hecho — sesión 27"
-abajo. Dos bugs reales reportados por el usuario contra infraestructura
-real se corrigieron en la sesión 28 antes de continuar: descubrimiento de
-empresas de un tenant (ver "Hecho — sesión 28" abajo) y sincronización del
-rol Owner con el catálogo de permisos (ver "Hecho — sesión 28 (segundo
-bug)" abajo). El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
-`docs/ROADMAP.md` §9, salvo que el usuario indique otra prioridad.
-Alcance deliberadamente fuera de Fase 4 y diferido (no simulado, ver
-ADR-009 y "Known limitations" en "Sales"/"Payments" de
+**Fase 5 (Purchasing) está completa** — ver "Hecho — sesión 29" abajo, en
+un solo bloque de trabajo a pedido explícito del usuario. El siguiente
+trabajo no bloqueado es Fase 6 (POS) según `docs/ROADMAP.md` §10, salvo
+que el usuario indique otra prioridad. Alcance deliberadamente fuera de
+Fase 5 y diferido (no simulado, ver "Known limitations" en "Purchasing" de
+`docs/SECURITY.md`): Purchase Requests (el propio `docs/ROADMAP.md` §9 las
+condiciona a "cuando el workflow lo justifique", nunca cumplido en esta
+fase), número de orden de compra legible, impuestos en líneas de orden,
+validación cruzada entre el monto de una `SupplierInvoice` y las líneas/
+recepciones reales de su orden, y cualquier conexión real con Payments
+(cuentas por pagar / egresos reales). Alcance fuera de Fase 4 y diferido,
+sin cambios (ver ADR-009 y "Known limitations" en "Sales"/"Payments" de
 `docs/SECURITY.md`): un motor de reglas fiscales real, resolución
 automática de lista de precios, número de orden/cotización legible,
 confirm/fulfill parcial por línea, Invoice/Shipment, adapters de
@@ -40,12 +41,157 @@ verificación de webhooks, reconciliación por timeout del proveedor,
 reembolso parcial. Alcance fuera de Fase 3 y aún diferido, sin cambios:
 ubicaciones/bins de bodega, lote/serie/vencimiento — ver "Known
 limitations" en "Inventory" de `docs/SECURITY.md` (su hueco de conexión
-con Sales/Purchasing/POS ya cerró parcialmente: Sales es ahora un
-llamador real, Purchasing/POS siguen pendientes). Alcance fuera de Fase 2
-y aún diferido de sesiones previas, sin cambios: precios de lista por
-variante, asociación Warehouse↔Branch/Location, e import/export masivo —
-ver "Known limitations" en "Catalog", "Customers / Suppliers" y
-"Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+con Sales/Purchasing/POS ya cerró casi por completo: Sales y Purchasing ya
+son llamadores reales desde las sesiones 27 y 29, solo POS sigue
+pendiente). Alcance fuera de Fase 2 y aún diferido de sesiones previas,
+sin cambios: precios de lista por variante, asociación Warehouse↔Branch/
+Location, e import/export masivo — ver "Known limitations" en "Catalog",
+"Customers / Suppliers" y "Taxes / Warehouses / Pricing" de
+`docs/SECURITY.md`.
+
+### Hecho — sesión 29 (Purchasing — Fase 5, completa de una vez)
+
+Fase 5 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("Ok, entonces continua con la fase 5 y terminala de una vez"),
+inmediatamente después de resolver y verificar dos bugs reales reportados
+por el usuario contra su tenant real "Web Space" (ver "Hecho — sesión 28"
+y "Hecho — sesión 28 (segundo bug)" abajo): Purchase Orders con líneas,
+Purchase Receipts (recepción parcial real contra una orden, conectada de
+verdad a Inventory), Purchase Returns (devolución real, también conectada
+a Inventory) y Supplier Invoices (registro simple, sin conciliación
+automática) — los cuatro entregables de `docs/ROADMAP.md` §9, con la
+garantía de sus exit criteria ("Segregación de funciones: quien crea
+orden no necesariamente aprueba", "Recepciones parciales, cancelaciones y
+devoluciones son trazables") verificada contra Postgres real, no solo
+razonada.
+
+- **`apps/api/src/modules/purchasing/`** (módulo nuevo, quinto bloque de
+  negocio del código base, mismo layout domain/application/infrastructure/
+  presentation/test-support que Sales): `PurchaseOrder`/`PurchaseOrderLine`
+  (`DRAFT → CONFIRMED → CLOSED`, `CANCELLED` alcanzable solo desde
+  `DRAFT`/`CONFIRMED` — nunca si ya tiene recepciones reales, ver bug real
+  descrito abajo), `PurchaseReceipt`/`PurchaseReceiptLine` (registro
+  append-only, sin columna de estado — una recepción es un hecho, no un
+  ciclo de vida), `PurchaseReturn`/`PurchaseReturnLine` (mismo patrón
+  append-only), `SupplierInvoice` (`RECORDED → CANCELLED`, valida
+  `issueDate <= dueDate`, sin ninguna validación cruzada contra el monto
+  real de las líneas/recepciones de su orden — ver "Known limitations").
+  Cinco dependencias directas y sin ciclos: Catalog, Warehouses, Suppliers,
+  Inventory (a diferencia de Sales, sin Taxes ni Pricing — una orden de
+  compra en este alcance no calcula impuestos ni aplica listas de precio,
+  ver "Known limitations").
+- **Segregación de funciones real, no solo diseñada**: `PurchaseOrdersController`
+  gatea `POST .../confirm` con el permiso `purchasing.orders.approve`,
+  distinto de `purchasing.orders.manage` que gatea crear la orden y
+  agregar líneas — dos permisos reales, no una sola acción "administrar"
+  genérica. **Verificado contra Postgres real con dos membresías reales
+  con `RoleAssignment`/`Permission` genuinamente distintos**: una
+  membership con solo `purchasing.orders.manage` puede crear la orden y
+  agregar la línea pero recibe `403 PERMISSION_DENIED` real al intentar
+  confirmarla; una segunda membership con solo `purchasing.orders.approve`
+  puede confirmar esa misma orden sin haber podido crearla — el exit
+  criteria de `docs/ROADMAP.md` §9 verificado directamente contra el motor
+  de permisos real, no solo razonado sobre el código.
+- **`CreatePurchaseReceiptUseCase`**: valida cada línea contra la suma
+  corriente de todas las `PurchaseReceiptLine` previas de esa
+  `PurchaseOrderLine` (lectura de ledger, nunca un contador guardado que
+  pudiera desincronizarse — mismo patrón ya usado por
+  `CreateSalesReturnUseCase` en la sesión 27), y llama al
+  `RecordReceiptUseCase` real de Inventory con
+  `referenceType: "PURCHASE_ORDER"` — primer caller real del parámetro
+  `referenceType`/`referenceId` de `RecordReceiptUseCase`, que hasta esta
+  sesión siempre recibía `"MANUAL"`/`null` hardcodeado.
+  `CreatePurchaseReturnUseCase` implementa la validación simétrica
+  (recibido menos ya devuelto) y llama a `RecordIssueUseCase` real de
+  Inventory con `referenceType: "PURCHASE_RETURN"` — ambos nuevos valores
+  de `InventoryMovementReferenceType`, extendidos en esta sesión.
+- **Bug real de invariante encontrado y corregido antes del primer commit
+  de este módulo**: la primera versión de `CancelPurchaseOrderUseCase`
+  solo verificaba el propio `status` de la orden (`DRAFT`/`CONFIRMED`)
+  antes de permitir cancelar, sin comprobar si ya existían recepciones
+  reales contra ella — cancelar una orden parcialmente recibida habría
+  dejado inventario real ya ingresado sin ninguna orden que lo explicara.
+  Corregido agregando un chequeo real contra
+  `PurchaseReceiptRepository.listByPurchaseOrder` (método nuevo en el
+  puerto) antes de permitir la transición, con un error nuevo
+  (`PurchaseOrderHasReceiptsError`, `409`). **Verificado contra Postgres
+  real** en la suite de integración: una orden con al menos una recepción
+  real rechaza el intento de cancelación.
+- 9 permisos nuevos: `purchasing.orders.read`, `purchasing.orders.manage`,
+  `purchasing.orders.approve`, `purchasing.receipts.read/.manage`,
+  `purchasing.returns.read/.manage`, `purchasing.supplier-invoices.read/
+  .manage`. Auditoría real en las 9 acciones de escritura
+  (`purchasing.order.created/_line.added/.confirmed/.closed/.cancelled`,
+  `purchasing.receipt.created`, `purchasing.return.created`,
+  `purchasing.supplier_invoice.created/.cancelled`).
+- Tablas nuevas (migración `20260901182240_purchasing`, **generada y
+  aplicada directamente contra Postgres real** vía el mismo workaround
+  no-interactivo ya establecido de `prisma migrate diff --script`, con el
+  flag confirmado como `--to-schema` en la versión actual de Prisma de
+  este proyecto —no `--to-schema-datamodel`, como documentaban notas de
+  sesiones anteriores—, aplicada limpiamente al primer intento):
+  `purchase_orders`, `purchase_order_lines`, `purchase_receipts`,
+  `purchase_receipt_lines`, `purchase_returns`, `purchase_return_lines`,
+  `supplier_invoices`, más la extensión del enum
+  `InventoryMovementReferenceType` y `@@unique([tenantId, id])` nuevo en
+  `suppliers` (Purchasing es su primer consumidor por FK, mismo patrón ya
+  usado por `customers`/`taxes` en la sesión 27). Detalle completo en
+  `docs/DATABASE.md` "Purchasing tables".
+- Contrato HTTP nuevo: `GET/POST /api/v1/purchasing/orders`,
+  `GET/POST .../:id/lines`, `POST .../:id/confirm` (permiso `.approve`),
+  `POST .../:id/close`, `POST .../:id/cancel`;
+  `GET/POST /api/v1/purchasing/receipts`;
+  `GET/POST /api/v1/purchasing/returns`;
+  `GET/POST /api/v1/purchasing/supplier-invoices`,
+  `POST .../:id/cancel`.
+- **`@erp/api-client`**: ~20 tipos y ~16 métodos nuevos generados desde el
+  spec OpenAPI real (mismo flujo de la sesión 21), sin bugs de fidelidad
+  de decoradores — todos los DTOs llevaron `type:`/`nullable:` explícitos
+  desde el inicio, la lección de la sesión 21 aplicada proactivamente.
+- **UI** (`apps/erp-web/src/features/purchasing/`, ruta nueva
+  `/purchasing`, botón "Compras" en el workspace): pestañas Órdenes/
+  Devoluciones/Facturas de proveedor. El panel de Órdenes incluye una
+  sección de recepción (`ReceivingSection`) embebida en el detalle de una
+  orden confirmada, para registrar recepciones parciales línea por línea
+  sin salir del detalle.
+- **Tres colisiones reales de `getByText`/`getByLabel` encontradas y
+  corregidas durante la propia escritura del E2E, mismo patrón ya
+  documentado en sesiones anteriores de este proyecto** (`Tabs` nunca
+  desmonta paneles inactivos, y ambos queries de Playwright hacen
+  coincidencia de substring por defecto, no exacta): (1) el texto vacío de
+  `TableEmpty` para Órdenes coincidía con un span oculto dentro del modal
+  de Facturas de otro panel montado en segundo plano; (2) `getByLabel("Proveedor")`
+  coincidía también con el campo "Número de factura del proveedor"; (3)
+  `getByText("Registrada")` coincidía con los subtítulos de los paneles de
+  Devoluciones/Facturas. Las tres corregidas con `{ exact: true }`, sin
+  tocar ningún componente de producción.
+- Tests: 93 tests unitarios nuevos en `apps/api` (39 de dominio, 54 de
+  aplicación, incluyendo el chequeo de segregación de funciones y la
+  validación de suma corriente de recepciones/devoluciones) — 717 tests
+  unitarios totales en `apps/api` (antes 624). Suite de integración con 2
+  escenarios reales nuevos contra Postgres
+  (`purchasing.integration-spec.ts`): ciclo de vida completo Order→Confirm→
+  Receipt parcial→intento de cancelar rechazado→Close→Return→
+  SupplierInvoice→Cancel, y el escenario de segregación de funciones con
+  `RoleAssignment`/`Permission` reales — 34/34 en total (antes 32). 3 tests
+  nuevos en `apps/erp-web` (`purchasing-page.spec.tsx`). **E2E real nuevo**
+  (`apps/e2e/tests/purchasing.spec.ts`, Chromium vía Testcontainers): ciclo
+  de vida completo por navegador real — proveedor y producto reales,
+  orden real con línea real, confirmación real, recepción parcial real,
+  intento de cancelación rechazado real, cierre real, devolución real,
+  factura de proveedor real y su cancelación — 13/13 Playwright en total
+  (antes 12).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps (2 errores reales de typecheck encontrados y corregidos:
+  `@erp/database` sin los 7 modelos/2 enums nuevos en su lista explícita
+  de re-exports, y 2 imports no usados en `@erp/api-client`), `pnpm test`
+  (717 api + 27 events + 33 notifications + 6 worker + api-client + erp-web,
+  verificado limpio en corridas aisladas por paquete — la corrida
+  concurrente de todo el monorepo mostró fallos aislados por timeout bajo
+  contención de recursos de esta sesión larga, mismo patrón ya documentado
+  en sesiones anteriores, descartado con corridas aisladas limpias),
+  `pnpm --filter @erp/api test:integration` (34/34 contra Postgres real),
+  `pnpm --filter @erp/e2e run test:e2e` (13/13 Playwright) — todo verde.
 
 ### Hecho — sesión 28 (segundo bug real: sincronización del rol Owner)
 

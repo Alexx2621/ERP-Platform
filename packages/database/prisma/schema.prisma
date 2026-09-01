@@ -140,6 +140,13 @@ model Tenant {
   salesReturns          SalesReturn[]
   salesReturnLines      SalesReturnLine[]
   payments              Payment[]
+  purchaseOrders        PurchaseOrder[]
+  purchaseOrderLines    PurchaseOrderLine[]
+  purchaseReceipts      PurchaseReceipt[]
+  purchaseReceiptLines  PurchaseReceiptLine[]
+  purchaseReturns       PurchaseReturn[]
+  purchaseReturnLines   PurchaseReturnLine[]
+  supplierInvoices      SupplierInvoice[]
 
   @@map("tenants")
 }
@@ -239,6 +246,10 @@ model Company {
   salesOrders           SalesOrder[]
   salesReturns          SalesReturn[]
   payments              Payment[]
+  purchaseOrders        PurchaseOrder[]
+  purchaseReceipts      PurchaseReceipt[]
+  purchaseReturns       PurchaseReturn[]
+  supplierInvoices      SupplierInvoice[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -843,6 +854,7 @@ model Product {
   inventoryReservations InventoryReservation[]
   salesOrderLines       SalesOrderLine[]
   quoteLines            QuoteLine[]
+  purchaseOrderLines    PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -881,6 +893,7 @@ model ProductVariant {
   inventoryReservations InventoryReservation[]
   salesOrderLines       SalesOrderLine[]
   quoteLines            QuoteLine[]
+  purchaseOrderLines    PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, sku])
@@ -956,6 +969,10 @@ model Supplier {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
+  purchaseOrders   PurchaseOrder[]
+  supplierInvoices SupplierInvoice[]
+
+  @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@unique([tenantId, companyId, taxId])
   @@index([tenantId, companyId])
@@ -1022,6 +1039,7 @@ model Warehouse {
   transfersAsDestination InventoryTransfer[]    @relation("TransferDestination")
   inventoryReservations  InventoryReservation[]
   salesOrderLines        SalesOrderLine[]
+  purchaseOrderLines     PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1115,6 +1133,8 @@ enum InventoryMovementReferenceType {
   MANUAL
   SALES_ORDER
   SALES_RETURN
+  PURCHASE_ORDER
+  PURCHASE_RETURN
 }
 
 /// Append-only ledger — the single source of truth for every balance change
@@ -1548,4 +1568,226 @@ model Payment {
   @@unique([tenantId, companyId, idempotencyKey])
   @@index([tenantId, companyId, salesOrderId])
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Purchasing (Phase 5, docs/ROADMAP.md §9). PurchaseOrder/PurchaseOrderLine
+// mirror SalesOrder/SalesOrderLine's shape closely, minus discount/tax
+// (a supplier's own tax breakdown belongs on SupplierInvoice, a separate
+// document — see that model's docstring). Unlike Sales, receiving is
+// deliberately partial-first-class: PurchaseReceipt/PurchaseReceiptLine can
+// be posted multiple times against the same CONFIRMED order, each validated
+// against a running sum over prior receipts, never a stored counter — same
+// ledger philosophy as SalesReturn. PurchaseReturn/PurchaseReturnLine record
+// goods physically going back to the supplier (a real ISSUE movement, not a
+// RETURN — see InventoryMovement's own reference-type docstring), validated
+// against received-minus-already-returned, also a running-sum ledger read.
+// ---------------------------------------------------------------------------
+
+enum PurchaseOrderStatus {
+  DRAFT
+  CONFIRMED
+  CLOSED
+  CANCELLED
+}
+
+/// `DRAFT -> CONFIRMED -> CLOSED`, with `CANCELLED` reachable only from
+/// `DRAFT`/`CONFIRMED` (docs/ROADMAP.md §9 "Returns y estados de cierre").
+/// Confirming requires the `purchasing.orders.approve` permission,
+/// deliberately distinct from `purchasing.orders.manage` (create/add-line/
+/// close/cancel) — the segregation-of-duties exit criterion. Closing does
+/// not require every line to be fully received: a business may legitimately
+/// close an order with a permanent shortfall. `CancelPurchaseOrderUseCase`
+/// additionally rejects cancelling a `CONFIRMED` order that already has at
+/// least one `PurchaseReceipt` — goods that physically arrived cannot be
+/// un-arrived by cancelling the paperwork.
+model PurchaseOrder {
+  id          String              @id @db.Uuid
+  tenantId    String              @map("tenant_id") @db.Uuid
+  companyId   String              @map("company_id") @db.Uuid
+  supplierId  String              @map("supplier_id") @db.Uuid
+  status      PurchaseOrderStatus @default(DRAFT)
+  currency    String              @db.VarChar(3)
+  notes       String?             @db.VarChar(1000)
+  version     Int                 @default(1)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  confirmedAt DateTime?           @map("confirmed_at") @db.Timestamptz(6)
+  closedAt    DateTime?           @map("closed_at") @db.Timestamptz(6)
+  cancelledAt DateTime?           @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company          Company             @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  supplier         Supplier            @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+  lines            PurchaseOrderLine[]
+  receipts         PurchaseReceipt[]
+  returns          PurchaseReturn[]
+  supplierInvoices SupplierInvoice[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, supplierId])
+  @@map("purchase_orders")
+}
+
+/// `warehouseId` is nullable — required only when the product tracks
+/// inventory, same conditional rule `SalesOrderLine.warehouseId` already
+/// established. `lineTotal = quantity × unitCost`, no discount/tax on this
+/// line — a supplier's own tax breakdown belongs on `SupplierInvoice`.
+model PurchaseOrderLine {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  purchaseOrderId  String   @map("purchase_order_id") @db.Uuid
+  warehouseId      String?  @map("warehouse_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  productVariantId String?  @map("product_variant_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(14, 4)
+  unitCost         Decimal  @map("unit_cost") @db.Decimal(14, 4)
+  lineTotal        Decimal  @map("line_total") @db.Decimal(14, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  purchaseOrder        PurchaseOrder         @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id], onDelete: Cascade)
+  warehouse            Warehouse?            @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  product              Product               @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant       ProductVariant?       @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+  purchaseReceiptLines PurchaseReceiptLine[]
+  purchaseReturnLines  PurchaseReturnLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_order_lines")
+}
+
+/// A receipt is its own append-only record, not a `PurchaseOrder` status
+/// mutation — a `CONFIRMED` order stays `CONFIRMED` regardless of how many
+/// partial receipts are recorded against it; the order only advances to
+/// `CLOSED` via an explicit close action. `CreatePurchaseReceiptUseCase`
+/// posts a real `RECEIPT` inventory movement per line
+/// (`referenceType: "PURCHASE_ORDER"`) and rejects receiving more than was
+/// ever ordered for a given `PurchaseOrderLine`, computed as a running sum
+/// over `PurchaseReceiptLine` — a ledger read, not a stored running total.
+model PurchaseReceipt {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  purchaseOrderId String   @map("purchase_order_id") @db.Uuid
+  notes           String?  @db.VarChar(1000)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company               @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder         @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id], onDelete: Restrict)
+  lines         PurchaseReceiptLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptLine {
+  id                  String   @id @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  purchaseReceiptId   String   @map("purchase_receipt_id") @db.Uuid
+  purchaseOrderLineId String   @map("purchase_order_line_id") @db.Uuid
+  quantity            Decimal  @db.Decimal(14, 4)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  purchaseReceipt   PurchaseReceipt   @relation(fields: [tenantId, purchaseReceiptId], references: [tenantId, id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [tenantId, purchaseOrderLineId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, purchaseReceiptId])
+  @@index([tenantId, purchaseOrderLineId])
+  @@map("purchase_receipt_lines")
+}
+
+/// A return is its own append-only record, not a `PurchaseOrder`/
+/// `PurchaseReceipt` status mutation — same philosophy as `SalesReturn`.
+/// `CreatePurchaseReturnUseCase` posts a real `ISSUE` inventory movement per
+/// line (`referenceType: "PURCHASE_RETURN"`, goods physically leaving back
+/// to the supplier) and rejects returning more than was ever received minus
+/// what was already returned for a given `PurchaseOrderLine`.
+model PurchaseReturn {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  purchaseOrderId String   @map("purchase_order_id") @db.Uuid
+  reason          String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company              @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder        @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id], onDelete: Restrict)
+  lines         PurchaseReturnLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnLine {
+  id                  String   @id @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  purchaseReturnId    String   @map("purchase_return_id") @db.Uuid
+  purchaseOrderLineId String   @map("purchase_order_line_id") @db.Uuid
+  quantity            Decimal  @db.Decimal(14, 4)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  purchaseReturn    PurchaseReturn    @relation(fields: [tenantId, purchaseReturnId], references: [tenantId, id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [tenantId, purchaseOrderLineId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, purchaseReturnId])
+  @@index([tenantId, purchaseOrderLineId])
+  @@map("purchase_return_lines")
+}
+
+enum SupplierInvoiceStatus {
+  RECORDED
+  CANCELLED
+}
+
+/// A supplier's own invoice, recorded as its own document
+/// (docs/ROADMAP.md §9: "Supplier invoices como documento separado") —
+/// never a `PurchaseOrder` field. Deliberately **not** connected to any
+/// payment capture: this codebase's `Payment` model (Phase 4B) only ever
+/// captures money coming *in* against a `SalesOrder`; a real
+/// accounts-payable/outgoing payment flow is a distinct, unbuilt capability
+/// (same "don't simulate" principle ADR-009 already applied to Payments —
+/// `status` only ever tracks whether the invoice document itself is live,
+/// `RECORDED -> CANCELLED`, never whether it was ever actually paid).
+/// `amount` is not validated against the sum of the order's lines or its
+/// receipts — a real supplier invoice can legitimately include freight,
+/// adjustments, or partial-shipment amounts that don't equal any subset of
+/// `PurchaseOrderLine.lineTotal`.
+model SupplierInvoice {
+  id              String                @id @db.Uuid
+  tenantId        String                @map("tenant_id") @db.Uuid
+  companyId       String                @map("company_id") @db.Uuid
+  supplierId      String                @map("supplier_id") @db.Uuid
+  purchaseOrderId String                @map("purchase_order_id") @db.Uuid
+  invoiceNumber   String                @map("invoice_number") @db.VarChar(100)
+  amount          Decimal               @db.Decimal(14, 4)
+  currency        String                @db.VarChar(3)
+  issueDate       DateTime              @map("issue_date") @db.Date
+  dueDate         DateTime?             @map("due_date") @db.Date
+  status          SupplierInvoiceStatus @default(RECORDED)
+  notes           String?               @db.VarChar(1000)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  cancelledAt     DateTime?             @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company       @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  supplier      Supplier      @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("supplier_invoices")
 }

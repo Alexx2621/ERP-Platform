@@ -9,6 +9,7 @@ export { CreateReservationUseCase, type CreateReservationInput } from "./applica
 export { ReleaseReservationUseCase } from "./application/use-cases/release-reservation.use-case";
 export { RecordIssueUseCase, type RecordIssueInput } from "./application/use-cases/record-issue.use-case";
 export { RecordReturnUseCase, type RecordReturnInput } from "./application/use-cases/record-return.use-case";
+export { RecordReceiptUseCase, type RecordReceiptInput } from "./application/use-cases/record-receipt.use-case";
 export * from "./application/errors";
 export { InventoryController } from "./presentation/inventory.controller";
 export { InventoryModule } from "./inventory.module";

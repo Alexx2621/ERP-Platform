@@ -15,6 +15,7 @@ import { ContactsPage } from "../features/contacts/contacts-page";
 import { CommercialPage } from "../features/commercial/commercial-page";
 import { InventoryPage } from "../features/inventory/inventory-page";
 import { SalesPage } from "../features/sales/sales-page";
+import { PurchasingPage } from "../features/purchasing/purchasing-page";
 import { PlatformAdminPage } from "../features/platform-admin/platform-admin-page";
 
 interface WorkspaceSelection extends TenantSummary {
@@ -46,7 +47,8 @@ export function App() {
         path === "/contacts" ||
         path === "/commercial" ||
         path === "/inventory" ||
-        path === "/sales") &&
+        path === "/sales" ||
+        path === "/purchasing") &&
       !selection
     ) {
       navigate("/tenants", true);
@@ -102,6 +104,10 @@ export function App() {
 
   if (path === "/sales" && selection) {
     return <SalesPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/purchasing" && selection) {
+    return <PurchasingPage selection={selection} navigate={navigate} />;
   }
 
   if (path === "/platform-admin" && session.user.isPlatformAdmin) {

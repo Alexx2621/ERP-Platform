@@ -1217,3 +1217,146 @@ lifecycle now produces exactly 13, with exactly one
 
 Combined with `sales_and_payments` above (`packages/database/prisma/
 migrations/20260831224651_sales_and_payments/`).
+
+## Purchasing tables (Phase 5, 2026-09-01)
+
+Scope: `docs/ROADMAP.md` §9 — Purchase Orders and lines, Receipts
+(partial-first-class), Returns to a supplier, Supplier Invoices.
+`apps/api/src/modules/purchasing`. Mirrors Sales' shape closely
+(`PurchaseOrder`/`PurchaseOrderLine` ~ `SalesOrder`/`SalesOrderLine`,
+`PurchaseReturn`/`PurchaseReturnLine` ~ `SalesReturn`/`SalesReturnLine`)
+with two deliberate differences: no discount/tax on order lines (a
+supplier's own tax breakdown belongs on `SupplierInvoice`, a separate
+document), and receiving is genuinely partial-first-class — `PurchaseReceipt`/
+`PurchaseReceiptLine` can be posted multiple times against the same
+`CONFIRMED` order, unlike Sales' single atomic `FulfillSalesOrderUseCase`.
+
+### `purchase_orders`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `supplier_id` | `uuid` | `supplier_id` → `suppliers(tenantId, id)`, `ON DELETE RESTRICT` — the first FK consumer of `suppliers`' `@@unique([tenantId, id])`, added in this same migration (Suppliers never needed it before; same situation `customers`/`taxes` were in before Sales, session 27). |
+| `status` | `PurchaseOrderStatus` | `DRAFT` → `CONFIRMED` → `CLOSED`, `CANCELLED` reachable only from `DRAFT`/`CONFIRMED` — never from `CLOSED`. Confirming needs a genuinely different permission (`purchasing.orders.approve`) from every other write on this table (`purchasing.orders.manage`) — the segregation-of-duties exit criterion, enforced by `PermissionGuard`, not a DB constraint. |
+| `currency` | `varchar(3)` | |
+| `notes` | `varchar(1000)?` | |
+| `version` | `int` | Optimistic concurrency, same convention as `SalesOrder`. |
+| `created_at` / `updated_at` / `confirmed_at` / `closed_at` / `cancelled_at` | `timestamptz(6)` | |
+
+`CancelPurchaseOrderUseCase` additionally rejects cancelling a `CONFIRMED`
+order that already has at least one real `PurchaseReceipt` — a
+cross-table check (`PurchaseReceiptRepository.listByPurchaseOrder`), not
+something `PurchaseOrder.cancel()` itself can know (docs/ARCHITECTURE.md
+§6: domain can't query other tables). Goods that physically arrived are
+corrected via a `PurchaseReturn`, never erased by cancelling the order
+that brought them in.
+
+### `purchase_order_lines`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `purchase_order_id` | `uuid` | `ON DELETE CASCADE` from `purchase_orders` — same convention as `sales_order_lines`. |
+| `warehouse_id` | `uuid?` | Required only when the product tracks inventory (`ResolvePurchaseLineTargetUseCase`, same conditional rule `SalesOrderLine.warehouseId` established). |
+| `product_id` / `product_variant_id` | `uuid` / `uuid?` | |
+| `quantity` / `unit_cost` / `line_total` | `numeric(14,4)` | `lineTotal = quantity × unitCost`, computed once at line-creation time (`PurchaseOrderLine.create()`) — no discount, no tax rate on this line; a supplier's own tax breakdown belongs on `SupplierInvoice`. |
+| `created_at` | `timestamptz(6)` | |
+
+### `purchase_receipts` / `purchase_receipt_lines`
+
+A receipt is its own append-only record, not a `PurchaseOrder` status
+mutation — a `CONFIRMED` order stays `CONFIRMED` regardless of how many
+partial receipts are posted against it; the order only ever advances to
+`CLOSED` via an explicit, separate close action. `CreatePurchaseReceiptUseCase`
+posts a real `RECEIPT` inventory movement per line
+(`referenceType: "PURCHASE_ORDER"`, `referenceId: purchaseOrderId` —
+Inventory's `RecordReceiptUseCase` gained an optional `referenceType`/
+`referenceId` pair in this same change, previously hardcoded to `"MANUAL"`)
+and rejects receiving more than was ever ordered for a given line,
+computed as a running sum over every prior `purchase_receipt_lines` row
+for that order line (`listByPurchaseOrderLine`) — a ledger read, never a
+stored counter that could drift, the same philosophy `InventoryBalance`
+and `SalesReturnLine` already established.
+
+| `purchase_receipts` column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `purchase_order_id` | `uuid` | `purchase_order_id` → `purchase_orders(tenantId, id)`, `ON DELETE RESTRICT` (a receipt must never be able to outlive the order it belongs to, but deleting an order with real receipts is exactly the scenario `CancelPurchaseOrderUseCase`'s own check already prevents at the application layer first). |
+| `notes` | `varchar(1000)?` | |
+| `created_at` | `timestamptz(6)` | |
+
+| `purchase_receipt_lines` column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `purchase_receipt_id` | `uuid` | `ON DELETE CASCADE` from `purchase_receipts`. |
+| `purchase_order_line_id` | `uuid` | → `purchase_order_lines(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `quantity` | `numeric(14,4)` | Always positive — a receipt can never itself be negative; a correction is a `PurchaseReturn`, not a negative receipt. |
+| `created_at` | `timestamptz(6)` | |
+
+### `purchase_returns` / `purchase_return_lines`
+
+Same append-only-record philosophy as `purchase_receipts`, but for goods
+physically leaving back to the supplier. `CreatePurchaseReturnUseCase`
+posts a real `ISSUE` inventory movement per line
+(`referenceType: "PURCHASE_RETURN"`) — deliberately `RecordIssueUseCase`,
+not `RecordReturnUseCase` (which is Sales' "customer sent goods back,
+stock increases" movement and would be the wrong direction here) — and
+rejects returning more than was ever received minus what was already
+returned for a given line, computed as running sums over both
+`purchase_receipt_lines` and `purchase_return_lines` (never stored
+counters).
+
+| `purchase_returns` column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `purchase_order_id` | `uuid` | → `purchase_orders(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `reason` | `varchar(500)?` | |
+| `created_at` | `timestamptz(6)` | |
+
+| `purchase_return_lines` column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `purchase_return_id` | `uuid` | `ON DELETE CASCADE` from `purchase_returns`. |
+| `purchase_order_line_id` | `uuid` | → `purchase_order_lines(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `quantity` | `numeric(14,4)` | |
+| `created_at` | `timestamptz(6)` | |
+
+### `supplier_invoices`
+
+A supplier's own invoice, recorded as its own document
+(docs/ROADMAP.md §9: "Supplier invoices como documento separado") — never
+a `PurchaseOrder` field.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `supplier_id` / `purchase_order_id` | `uuid` | `purchase_order_id` must genuinely belong to `supplier_id` — `CreateSupplierInvoiceUseCase` checks `order.supplierId !== input.supplierId` and rejects with `SupplierInvoiceOrderMismatchError`, a real cross-check the schema itself cannot express (an FK can't assert a relationship between two *other* FKs' targets). |
+| `invoice_number` | `varchar(100)` | The supplier's own reference — not a code this platform generates. |
+| `amount` | `numeric(14,4)` | Not validated against the order's own line totals or receipts — see docs/SECURITY.md "Purchasing" for why. |
+| `currency` | `varchar(3)` | |
+| `issue_date` / `due_date` | `date` / `date?` | Civil dates, same `@db.Date` convention `PriceList.validFrom`/`.validUntil` already established — `issueDate` must not be after `dueDate` (domain-validated). |
+| `status` | `SupplierInvoiceStatus` | `RECORDED` → `CANCELLED` only — deliberately never tracks "paid"; see docs/SECURITY.md "Purchasing" for the full reasoning (same "don't simulate" principle ADR-009 applied to Payments). |
+| `notes` | `varchar(1000)?` | |
+| `created_at` / `updated_at` / `cancelled_at` | `timestamptz(6)` | |
+
+### `InventoryMovementReferenceType` extended
+
+`ALTER TYPE "InventoryMovementReferenceType" ADD VALUE 'PURCHASE_ORDER'`
+and `'PURCHASE_RETURN'` — same one-value-per-statement workaround already
+used when Sales added `SALES_ORDER`/`SALES_RETURN` (session 27,
+`20260831223815_inventory_return_and_sales_reference_types`). Inventory's
+`RecordReceiptUseCase` gained an optional `referenceType`/`referenceId`
+pair in this same change (previously hardcoded to `"MANUAL"`), mirroring
+`RecordIssueUseCase`/`RecordReturnUseCase`'s existing shape — its own
+docstring had already anticipated this exact caller: "Purchasing, Phase 5,
+will call this once it exists."
+
+### Migration
+
+`packages/database/prisma/migrations/20260901182240_purchasing/` —
+generated via the same non-interactive `prisma migrate diff --script`
+workaround established in session 26 (`prisma migrate dev --create-only`
+fails in this environment), applied cleanly to real Postgres on the first
+attempt despite combining seven new tables and an enum extension in one
+migration, plus adding `@@unique([tenantId, id])` to `suppliers` (its
+first FK consumer).

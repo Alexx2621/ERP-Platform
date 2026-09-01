@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   SquaresFour,
   Storefront,
+  Truck,
   TShirt,
   Users,
   Wallet,
@@ -76,6 +77,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/sales")}>
             <ShoppingCartSimple size={17} weight="bold" aria-hidden="true" />
             Ventas
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/purchasing")}>
+            <Truck size={17} weight="bold" aria-hidden="true" />
+            Compras
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

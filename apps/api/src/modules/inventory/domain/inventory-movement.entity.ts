@@ -16,7 +16,9 @@ export type InventoryMovementReferenceType =
   | "RESERVATION"
   | "MANUAL"
   | "SALES_ORDER"
-  | "SALES_RETURN";
+  | "SALES_RETURN"
+  | "PURCHASE_ORDER"
+  | "PURCHASE_RETURN";
 
 export interface InventoryMovementProps {
   id: string;

@@ -269,6 +269,48 @@ export interface ListPaymentsFilter {
   limit?: number;
 }
 
+export type PurchaseOrderStatus = components["schemas"]["PurchaseOrderResponseDto"]["status"];
+export type PurchaseOrderResponse = components["schemas"]["PurchaseOrderResponseDto"];
+export type CreatePurchaseOrderInput = components["schemas"]["CreatePurchaseOrderDto"];
+export type PurchaseOrderLineResponse = components["schemas"]["PurchaseOrderLineResponseDto"];
+export type AddPurchaseOrderLineInput = components["schemas"]["AddPurchaseOrderLineDto"];
+
+export type PurchaseReceiptResponse = components["schemas"]["PurchaseReceiptResponseDto"];
+export type CreatePurchaseReceiptLineInput = components["schemas"]["CreatePurchaseReceiptLineDto"];
+export type CreatePurchaseReceiptInput = components["schemas"]["CreatePurchaseReceiptDto"];
+export type PurchaseReceiptLineResponse = components["schemas"]["PurchaseReceiptLineResponseDto"];
+
+export type PurchaseReturnResponse = components["schemas"]["PurchaseReturnResponseDto"];
+export type CreatePurchaseReturnLineInput = components["schemas"]["CreatePurchaseReturnLineDto"];
+export type CreatePurchaseReturnInput = components["schemas"]["CreatePurchaseReturnDto"];
+export type PurchaseReturnLineResponse = components["schemas"]["PurchaseReturnLineResponseDto"];
+
+export type SupplierInvoiceStatus = components["schemas"]["SupplierInvoiceResponseDto"]["status"];
+export type SupplierInvoiceResponse = components["schemas"]["SupplierInvoiceResponseDto"];
+export type CreateSupplierInvoiceInput = components["schemas"]["CreateSupplierInvoiceDto"];
+
+export interface ListPurchaseOrdersFilter {
+  status?: PurchaseOrderStatus;
+  supplierId?: string;
+  limit?: number;
+}
+
+export interface ListPurchaseReceiptsFilter {
+  purchaseOrderId?: string;
+  limit?: number;
+}
+
+export interface ListPurchaseReturnsFilter {
+  purchaseOrderId?: string;
+  limit?: number;
+}
+
+export interface ListSupplierInvoicesFilter {
+  purchaseOrderId?: string;
+  supplierId?: string;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

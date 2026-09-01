@@ -94,4 +94,16 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
   { key: "sales.returns.manage", description: "Record sales returns." },
   { key: "payments.read", description: "View the company's payments." },
   { key: "payments.manage", description: "Capture and refund payments." },
+  { key: "purchasing.orders.read", description: "View the company's purchase orders and their lines." },
+  { key: "purchasing.orders.manage", description: "Create, add lines to, close and cancel purchase orders." },
+  {
+    key: "purchasing.orders.approve",
+    description: "Approve (confirm) a DRAFT purchase order — deliberately distinct from purchasing.orders.manage for segregation of duties.",
+  },
+  { key: "purchasing.receipts.read", description: "View the company's purchase receipts and their lines." },
+  { key: "purchasing.receipts.manage", description: "Record receipts against confirmed purchase orders." },
+  { key: "purchasing.returns.read", description: "View the company's returns to suppliers and their lines." },
+  { key: "purchasing.returns.manage", description: "Record returns to suppliers." },
+  { key: "purchasing.invoices.read", description: "View the company's supplier invoices." },
+  { key: "purchasing.invoices.manage", description: "Record and cancel supplier invoices." },
 ];

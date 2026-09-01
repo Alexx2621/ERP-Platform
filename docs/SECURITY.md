@@ -1167,13 +1167,12 @@ this section's threat model centers on that.
   non-transactional trade-off" for the full reasoning and why growing
   every repository interface to accept an externally supplied transaction
   client was judged disproportionate to this specific, narrow risk.
-- ~~No connection to Sales, Purchasing, or POS yet~~ — **closed 2026-08-31,
-  Phase 4**: Sales is now a real caller of `CreateReservationUseCase`/
-  `ReleaseReservationUseCase`/`RecordIssueUseCase`/`RecordReturnUseCase`
-  (`ConfirmSalesOrderUseCase`/`FulfillSalesOrderUseCase`/
-  `CreateSalesReturnUseCase`), the same way Pricing became Catalog's first
-  real cross-module consumer in Phase 2 — see "Sales" below. Purchasing
-  (Phase 5) and POS (Phase 6) remain the only two callers still deferred.
+- ~~No connection to Sales, Purchasing, or POS yet~~ — **closed 2026-09-01,
+  Phase 5** (Sales closed it first, 2026-08-31, Phase 4): Purchasing is now
+  a real caller of `RecordReceiptUseCase` (receiving) and `RecordIssueUseCase`
+  (returns to a supplier) — `CreatePurchaseReceiptUseCase`/
+  `CreatePurchaseReturnUseCase` — the same way Sales became the first real
+  business caller before it. Only POS (Phase 6) remains deferred.
 - **No backfill of the 7 new permissions for tenants provisioned before
   this change**, same accepted gap already documented for every prior
   permission addition.
@@ -1298,3 +1297,75 @@ someone else computed).
 - **No backfill of the 2 new permissions for tenants provisioned before
   this change**, same accepted gap already documented for every prior
   permission addition.
+
+## Purchasing (Phase 5, 2026-09-01)
+
+Scope: `apps/api/src/modules/purchasing` — Purchase Orders and lines,
+Receipts (partial-first-class), Returns to a supplier, Supplier Invoices.
+Four direct, cycle-free dependencies on Catalog, Warehouses, Suppliers, and
+Inventory (docs/ARCHITECTURE.md §6) — the fourth business module to close
+out `docs/ROADMAP.md`'s phased backlog.
+
+### Assets
+
+- `purchasing.orders.read`/`.manage`/`.approve`,
+  `purchasing.receipts.read`/`.manage`, `purchasing.returns.read`/`.manage`,
+  `purchasing.invoices.read`/`.manage` — 9 new permissions. `.approve` is
+  the load-bearing one: deliberately distinct from `.manage` so drafting a
+  purchase order and approving it can require two different roles
+  (docs/ROADMAP.md §9's "Permisos de aprobación y segregation of duties
+  están probados" exit criterion, verified directly — see below).
+- `PurchaseOrderLine.unitCost`/`.lineTotal` — real money, same class of
+  risk as Sales' `unitPrice`/`.lineTotal` (session 27) or Payments'
+  `amount` (also session 27); a bug here misstates what a company owes a
+  supplier.
+- `SupplierInvoice.amount`/`.invoiceNumber` — the supplier's own claim of
+  what is owed, recorded as evidence; a bug here could misrepresent a real
+  financial obligation or let one be recorded against the wrong supplier
+  entirely (see `SupplierInvoiceOrderMismatchError` below).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A membership with only `purchasing.orders.manage` (create/add-line/close/cancel) approves (confirms) a purchase order, or a membership with only `purchasing.orders.approve` creates/edits one | `ConfirmPurchaseOrderUseCase` is gated by `purchasing.orders.approve` at the controller level (`PurchaseOrdersController.confirm`), a genuinely different permission key from the `purchasing.orders.manage` gating every other write endpoint on the same controller — `PermissionGuard`'s deny-by-default means a membership must hold each key separately. Verified against **real Postgres role assignments**, not reasoned about in isolation: `apps/api/test/integration/purchasing.integration-spec.ts` creates two real memberships with two real, disjoint `RoleAssignment`s and confirms via `HasPermissionUseCase` that the "Buyer" role can manage but not approve, and the "Approver" role can approve but not manage — the exit criterion verified directly, not just designed for. |
+| A purchase order line, receipt, or return is created for a resource (order, supplier, product, warehouse) belonging to a different company | Every use case re-verifies `entity.companyId !== input.companyId` (or the equivalent tenant/company chain through `ResolveSupplierTargetUseCase`/`ResolvePurchaseLineTargetUseCase`) and throws the same `NotFoundError` a genuinely-missing entity would (IDOR-resistant, same pattern every prior module uses). |
+| A receipt (or several partial receipts over time) records more than was ever ordered for a given line | `CreatePurchaseReceiptUseCase` computes the already-received quantity as a running sum over **every** prior `PurchaseReceiptLine` for that order line (`listByPurchaseOrderLine`, a ledger read, never a stored counter that could drift — same philosophy as Sales' `CreateSalesReturnUseCase`), and rejects with `PurchaseReceiptExceedsOrderedQuantityError` the moment the cumulative total would exceed what was ordered. Verified against **real Postgres** with two real sequential partial receipts that exactly exhaust the ordered quantity, then a third real attempt for even `0.0001` more, rejected. |
+| A return to the supplier (or several returns over time) records more than was ever received minus what was already returned for a given line | `CreatePurchaseReturnUseCase` computes both the received-so-far and already-returned-so-far as running sums over the real ledgers (`PurchaseReceiptLineRepository`/`PurchaseReturnLineRepository`), never stored counters, and rejects with `PurchaseReturnExceedsReceivedQuantityError` once the cumulative returned total would exceed what was ever received. A return against a line with **zero** receipts is rejected the same way (received-so-far is `0`), not treated as a special case. |
+| A `PurchaseOrder` with at least one real receipt is cancelled, silently pretending the physical goods that already arrived never did | `CancelPurchaseOrderUseCase` checks `PurchaseReceiptRepository.listByPurchaseOrder(...).length > 0` before ever touching the entity's own `cancel()` invariant, and rejects with `PurchaseOrderHasReceiptsError` — goods that physically arrived can only be corrected via a return, never erased via cancellation. Verified against real Postgres: a real receipt is posted, then a real cancel attempt against the same order is rejected. |
+| A `SupplierInvoice` is recorded against a real purchase order that does not actually belong to the given supplier — e.g. by copy-paste error, an invoice ends up traced to a competitor's order | `CreateSupplierInvoiceUseCase` checks `order.supplierId !== input.supplierId` and rejects with `SupplierInvoiceOrderMismatchError` — a real, load-bearing cross-check, not a redundant one, verified with a real second supplier and a real order that genuinely belongs to the first. |
+| A `SupplierInvoice`'s `status` is used to imply the invoice was ever actually paid | Deliberately never modeled that way — `status` only ever tracks `RECORDED -> CANCELLED` (whether the document itself is live), same "don't simulate" principle ADR-009 already applied to Payments: this codebase has no real accounts-payable/outgoing-payment flow yet, so pretending `SupplierInvoice` could track "paid" would be a fabricated guarantee. See `SupplierInvoice`'s own docstring. |
+| A caller submits a zero, negative, or malformed quantity/cost/amount where a valid decimal is required | DTOs enforce shape (`@Matches`) before any use case runs (`400`, not a generic `500`), and the domain's own `assertValidPositiveDecimal`/`assertValidNonNegativeDecimal` (`apps/api/src/modules/purchasing/domain/decimal.ts`) is the second, unbypassable layer — same belt-and-suspenders pattern every prior monetary module already established. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No Purchase Requests.** `docs/ROADMAP.md` §9 explicitly conditions
+  this deliverable on "cuando el workflow lo justifique" — unlike the
+  other three deliverables in that section, which are unconditional. No
+  distinct approval-chain workflow has been established that a Purchase
+  Request would sit in front of; the real segregation-of-duties
+  requirement is already satisfied by the `purchasing.orders.approve`
+  gate on the `PurchaseOrder` itself (see above).
+- **No cross-check between a `SupplierInvoice.amount` and the referenced
+  order's own line totals or receipts.** A real supplier invoice can
+  legitimately include freight, adjustments, or partial-shipment amounts
+  that don't equal any subset of `PurchaseOrderLine.lineTotal` — see
+  `SupplierInvoice`'s own docstring for the full reasoning.
+- **No connection between `SupplierInvoice` and any real payment
+  capture.** This codebase's `Payment` module (Phase 4B) only ever
+  captures money coming *in* against a `SalesOrder`; a real
+  accounts-payable/outgoing-payment flow is a distinct, unbuilt
+  capability.
+- **No human-readable order number** (`OC-000001`). Same reasoning
+  already accepted for Sales' `SalesOrder`/`Quote` (MASTER_SPEC §34 frames
+  these as optional; a safe generator needs its own design).
+- **No tax on purchase order lines.** A supplier's own tax breakdown
+  belongs on `SupplierInvoice` (a real document with a real `amount`),
+  not computed by this codebase the way Sales computes `taxRate` from a
+  `Tax` master-data record — see `PurchaseOrderLine`'s own docstring.
+- **No backfill of the 9 new permissions for tenants provisioned before
+  this change**, same accepted gap already documented for every prior
+  permission addition — though `SyncOwnerRolePermissionsUseCase`
+  (session 28) now closes this gap automatically on every API boot for
+  every tenant's Owner role specifically, not just tenants provisioned
+  after this change.

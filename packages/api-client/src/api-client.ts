@@ -2,6 +2,7 @@ import type {
   AcceptMembershipInvitationInput,
   AddPriceListItemInput,
   AddProductVariantInput,
+  AddPurchaseOrderLineInput,
   AddQuoteLineInput,
   AddSalesOrderLineInput,
   AdjustInventoryInput,
@@ -21,12 +22,16 @@ import type {
   CreateCustomerInput,
   CreatePriceListInput,
   CreateProductInput,
+  CreatePurchaseOrderInput,
+  CreatePurchaseReceiptInput,
+  CreatePurchaseReturnInput,
   CreateQuoteInput,
   CreateReservationInput,
   CreateRoleInput,
   CreateSalesOrderInput,
   CreateSalesReturnInput,
   CreateSupplierInput,
+  CreateSupplierInvoiceInput,
   CreateTaxInput,
   CreateTransferInput,
   CreateUnitOfMeasureInput,
@@ -43,9 +48,13 @@ import type {
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
   ListPaymentsFilter,
+  ListPurchaseOrdersFilter,
+  ListPurchaseReceiptsFilter,
+  ListPurchaseReturnsFilter,
   ListQuotesFilter,
   ListSalesOrdersFilter,
   ListSalesReturnsFilter,
+  ListSupplierInvoicesFilter,
   LoginInput,
   MembershipResponse,
   MembershipWithUserResponse,
@@ -61,6 +70,12 @@ import type {
   ProductVariantResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
+  PurchaseOrderLineResponse,
+  PurchaseOrderResponse,
+  PurchaseReceiptLineResponse,
+  PurchaseReceiptResponse,
+  PurchaseReturnLineResponse,
+  PurchaseReturnResponse,
   QuoteLineResponse,
   QuoteResponse,
   RecordIssueInput,
@@ -87,6 +102,7 @@ import type {
   SessionResponse,
   SettingDefinitionResponse,
   SettingValueResponse,
+  SupplierInvoiceResponse,
   SupplierResponse,
   TaxResponse,
   TenantAppResponse,
@@ -1605,6 +1621,243 @@ export class ApiClient {
     paymentId: string,
   ): Promise<PaymentResponse> {
     return this.request<PaymentResponse>(`/payments/${encodeURIComponent(paymentId)}/refund`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listPurchaseOrders(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPurchaseOrdersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PurchaseOrderResponse[]> {
+    return this.request<PurchaseOrderResponse[]>(`/purchasing/orders${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createPurchaseOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePurchaseOrderInput,
+  ): Promise<PurchaseOrderResponse> {
+    return this.request<PurchaseOrderResponse>("/purchasing/orders", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPurchaseOrderLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<PurchaseOrderLineResponse[]> {
+    return this.request<PurchaseOrderLineResponse[]>(`/purchasing/orders/${encodeURIComponent(purchaseOrderId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addPurchaseOrderLine(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseOrderId: string,
+    input: AddPurchaseOrderLineInput,
+  ): Promise<PurchaseOrderLineResponse> {
+    return this.request<PurchaseOrderLineResponse>(`/purchasing/orders/${encodeURIComponent(purchaseOrderId)}/lines`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async confirmPurchaseOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseOrderId: string,
+  ): Promise<PurchaseOrderResponse> {
+    return this.request<PurchaseOrderResponse>(`/purchasing/orders/${encodeURIComponent(purchaseOrderId)}/confirm`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async closePurchaseOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseOrderId: string,
+  ): Promise<PurchaseOrderResponse> {
+    return this.request<PurchaseOrderResponse>(`/purchasing/orders/${encodeURIComponent(purchaseOrderId)}/close`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async cancelPurchaseOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseOrderId: string,
+  ): Promise<PurchaseOrderResponse> {
+    return this.request<PurchaseOrderResponse>(`/purchasing/orders/${encodeURIComponent(purchaseOrderId)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listPurchaseReceipts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPurchaseReceiptsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PurchaseReceiptResponse[]> {
+    return this.request<PurchaseReceiptResponse[]>(`/purchasing/receipts${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createPurchaseReceipt(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePurchaseReceiptInput,
+  ): Promise<PurchaseReceiptResponse> {
+    return this.request<PurchaseReceiptResponse>("/purchasing/receipts", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPurchaseReceiptLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseReceiptId: string,
+    signal?: AbortSignal,
+  ): Promise<PurchaseReceiptLineResponse[]> {
+    return this.request<PurchaseReceiptLineResponse[]>(`/purchasing/receipts/${encodeURIComponent(purchaseReceiptId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listPurchaseReturns(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPurchaseReturnsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PurchaseReturnResponse[]> {
+    return this.request<PurchaseReturnResponse[]>(`/purchasing/returns${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createPurchaseReturn(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePurchaseReturnInput,
+  ): Promise<PurchaseReturnResponse> {
+    return this.request<PurchaseReturnResponse>("/purchasing/returns", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPurchaseReturnLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    purchaseReturnId: string,
+    signal?: AbortSignal,
+  ): Promise<PurchaseReturnLineResponse[]> {
+    return this.request<PurchaseReturnLineResponse[]>(`/purchasing/returns/${encodeURIComponent(purchaseReturnId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listSupplierInvoices(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListSupplierInvoicesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<SupplierInvoiceResponse[]> {
+    return this.request<SupplierInvoiceResponse[]>(`/purchasing/supplier-invoices${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createSupplierInvoice(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateSupplierInvoiceInput,
+  ): Promise<SupplierInvoiceResponse> {
+    return this.request<SupplierInvoiceResponse>("/purchasing/supplier-invoices", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async cancelSupplierInvoice(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    supplierInvoiceId: string,
+  ): Promise<SupplierInvoiceResponse> {
+    return this.request<SupplierInvoiceResponse>(`/purchasing/supplier-invoices/${encodeURIComponent(supplierInvoiceId)}/cancel`, {
       method: "POST",
       accessToken,
       tenantSlug,
