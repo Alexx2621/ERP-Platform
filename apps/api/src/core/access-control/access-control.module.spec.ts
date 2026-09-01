@@ -8,6 +8,8 @@ import { ListRolesUseCase } from "./application/use-cases/list-roles.use-case";
 import { ListPermissionsUseCase } from "./application/use-cases/list-permissions.use-case";
 import { HasPermissionUseCase } from "./application/use-cases/has-permission.use-case";
 import { SeedOwnerRoleUseCase } from "./application/use-cases/seed-owner-role.use-case";
+import { SyncOwnerRolePermissionsUseCase } from "./application/use-cases/sync-owner-role-permissions.use-case";
+import { OwnerRolePermissionSyncSeeder } from "./application/owner-role-permission-sync-seeder";
 import { PermissionGuard } from "./presentation/permission.guard";
 
 @Global()
@@ -29,6 +31,8 @@ describe("AccessControlModule wiring", () => {
     expect(moduleRef.get(ListPermissionsUseCase)).toBeInstanceOf(ListPermissionsUseCase);
     expect(moduleRef.get(HasPermissionUseCase)).toBeInstanceOf(HasPermissionUseCase);
     expect(moduleRef.get(SeedOwnerRoleUseCase)).toBeInstanceOf(SeedOwnerRoleUseCase);
+    expect(moduleRef.get(SyncOwnerRolePermissionsUseCase)).toBeInstanceOf(SyncOwnerRolePermissionsUseCase);
+    expect(moduleRef.get(OwnerRolePermissionSyncSeeder)).toBeInstanceOf(OwnerRolePermissionSyncSeeder);
     expect(moduleRef.get(PermissionGuard)).toBeInstanceOf(PermissionGuard);
 
     await moduleRef.close();

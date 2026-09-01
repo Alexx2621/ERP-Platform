@@ -153,7 +153,7 @@ same tenant from "Tus espacios" → confirm the workspace no longer shows
 "Sin selección específica" and that a company-scoped module (Ventas)
 shows real content instead of the "selecciona una empresa" guard.
 
-## Access Control / RBAC (2026-08-27)
+## Access Control / RBAC (2026-08-27, Owner role permission sync added 2026-08-31)
 
 Scope: `Permission`, `Role`, `RoleAssignment`, `PermissionGuard`,
 `@RequirePermission()` (`apps/api/src/core/access-control`) — this is what
@@ -194,13 +194,8 @@ is user X*, not *user X may act on tenant Y*." Design in
 - ~~No membership-invitation endpoint yet~~ — closed 2026-08-28:
   `POST /api/v1/tenants/memberships` (+ list/accept/pending) now exists. See
   "Membership Invitations" below.
-- **No retroactive permission backfill.** `SeedOwnerRoleUseCase` grants
-  "every permission that exists at provisioning time." If a new permission
-  is added to the catalog later, existing tenants' Owner roles are **not**
-  automatically updated to include it — a future migration/backfill job, not
-  something this use case does implicitly on every boot (which would make
-  role contents silently drift underneath whatever a tenant admin
-  configured).
+- ~~No retroactive permission backfill~~ — closed 2026-08-31, see "Real bug
+  found and fixed: stale Owner roles never gained newer permissions" below.
 - ~~No audit log entries yet for role creation or assignment~~ — closed
   2026-08-27: `RolesController` now records `access_control.role.created`
   and `access_control.role_assignment.created`; the Owner-role auto-seed at
@@ -214,6 +209,70 @@ is user X*, not *user X may act on tenant Y*." Design in
   authenticate but cannot yet manage anything (including granting itself a
   role), since no role is assigned. No saga/outbox exists yet to make this
   atomic or auto-retry it.
+
+### Real bug found and fixed: stale Owner roles never gained newer permissions (2026-08-31)
+
+Reported by the user against a real tenant ("Web Space", provisioned
+2026-08-27): every module screen — Apps, Catálogo → Productos, and by the
+same mechanism every other module gated by a permission added after that
+date — showed "No tienes permiso para realizar esta acción." for the
+tenant's own Owner. The "Asignar Owner" modal also silently degraded to
+its manual-ID-entry fallback ("No fue posible cargar el listado de
+miembros"), because `GET /api/v1/tenants/memberships` (gated by
+`tenants.memberships.read`, a permission added session 15) was itself
+failing with `403`.
+
+Root cause, confirmed directly against Postgres before writing any fix:
+`SeedOwnerRoleUseCase` grants a tenant's Owner role every permission that
+exists *at provisioning time* only — its own docstring already said so.
+"Web Space" was provisioned 2026-08-27 (session 5, when the permission
+catalog held only 3 keys); by session 28 the catalog held 46, spanning
+every module shipped since (Configuration, Audit, Files, Notifications,
+Platform Admin, Membership Invitations, App Registry, Catalog, Customers/
+Suppliers, Taxes/Warehouses/Pricing, Inventory, Sales, Payments). A direct
+query confirmed the Owner role had exactly 3 of 46 granted. This was the
+"No retroactive permission backfill" gap already documented above,
+reached for the first time by a real tenant actively used across many
+sessions — previously accepted because "sin impacto real hoy: no hay
+tenants de producción" (`docs/WORK_QUEUE.md` session 7), an assumption
+that stopped holding once the user began working inside a real,
+long-lived tenant rather than only ever creating fresh ones per session.
+
+Fixed with a real, permanent mechanism rather than a one-off manual grant
+for this one tenant: `SyncOwnerRolePermissionsUseCase`
+(`apps/api/src/core/access-control/application/use-cases/`) — the one
+deliberate cross-tenant query in this module
+(`RoleRepository.findSystemRolesByName`, same justification as
+`UserRepository.findAll`, ADR-007), filtered to `isSystem: true` so a
+tenant's own custom role that happens to share the "Owner" name is never
+touched. Runs on every API boot via `OwnerRolePermissionSyncSeeder`,
+registered alongside `PermissionCatalogSeeder` in `AccessControlModule`;
+explicitly awaits `PermissionCatalogSeeder.seed()` first rather than
+relying on NestJS's same-module `onModuleInit` ordering between two
+providers (the RolesController module-cycle lesson from session 5 made
+this codebase distrust implicit framework ordering here). Idempotent —
+a role already holding every current key is left unsaved, verified by a
+dedicated test asserting `save()` is never called in that case, so a
+tenant admin's own role edits are never silently overwritten by unrelated
+permission grants beyond the union of what already existed plus what is
+missing.
+
+**Verified against real Postgres, not just fakes**: on the real API
+reboot that shipped this fix, the boot log reported "Owner role
+permission sync: 14 of 17 tenant Owner role(s) updated" against the real
+development database — confirming this was not an isolated "Web Space"
+problem but affected the large majority of tenants ever provisioned
+across this project's many sessions. A direct query immediately after
+confirmed "Web Space"'s Owner role at exactly 46 of 46 granted
+permissions. A new integration test
+(`apps/api/test/integration/prisma-repositories.integration-spec.ts`,
+"syncs a real, already-provisioned tenant's stale Owner role against a
+grown permission catalog") reproduces the exact scenario against real
+Postgres: seed an Owner role when only 2 permissions exist, add 2 more to
+the catalog, confirm the stale role still lacks them, run the sync,
+confirm it now has all 4 while its original grant is preserved, and
+confirm a tenant's custom non-system role sharing the "Owner" name is
+never touched.
 
 ## Typed Configuration (2026-08-27)
 

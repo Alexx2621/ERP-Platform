@@ -7,9 +7,10 @@ Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
 permanente por agente. Última actualización técnica: 2026-08-31 (sesión 28,
-bug real de descubrimiento de empresas de un tenant corregido — reportado
-por el usuario contra la infraestructura Docker real). Modelo
-operativo actualizado: 2026-08-27.
+segundo bug real corregido en la misma sesión: el rol Owner de tenants ya
+provisionados no ganaba retroactivamente los permisos de módulos
+posteriores — reportado por el usuario contra un tenant real en uso).
+Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -23,10 +24,11 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 ### Próximo
 
 **Fase 4 (Sales y Payments) está completa** — ver "Hecho — sesión 27"
-abajo. Un bug real reportado por el usuario contra la infraestructura
-Docker real (ningún módulo de negocio resolvía la empresa de un tenant al
-reabrirlo) se corrigió en la sesión 28 antes de continuar — ver "Hecho —
-sesión 28" abajo. El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
+abajo. Dos bugs reales reportados por el usuario contra infraestructura
+real se corrigieron en la sesión 28 antes de continuar: descubrimiento de
+empresas de un tenant (ver "Hecho — sesión 28" abajo) y sincronización del
+rol Owner con el catálogo de permisos (ver "Hecho — sesión 28 (segundo
+bug)" abajo). El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
 `docs/ROADMAP.md` §9, salvo que el usuario indique otra prioridad.
 Alcance deliberadamente fuera de Fase 4 y diferido (no simulado, ver
 ADR-009 y "Known limitations" en "Sales"/"Payments" de
@@ -44,6 +46,94 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 28 (segundo bug real: sincronización del rol Owner)
+
+Reportado por el usuario, con capturas de pantalla, inmediatamente después
+de que el primer bug de esta sesión quedara resuelto y verificado: al
+volver a intentar usar la plataforma con su tenant real "Web Space", todos
+los módulos (Apps, Catálogo → Productos, y el modal "Asignar Owner" de
+Roles y permisos) mostraban "No tienes permiso para realizar esta acción."
+
+- **Causa raíz confirmada contra Postgres real antes de escribir código,
+  no supuesta**: `SeedOwnerRoleUseCase` (`apps/api/src/core/access-control/
+  application/use-cases/seed-owner-role.use-case.ts`) otorga al rol Owner
+  de un tenant "todos los permisos que existan al momento del
+  provisioning" — su propio docstring ya lo documentaba explícitamente
+  como una foto fija, no una sincronización continua. `docs/SECURITY.md`
+  ya tenía este hueco documentado ("No retroactive permission backfill")
+  desde que RBAC se construyó (sesión 5), aceptado en su momento porque
+  "sin impacto real hoy: no hay tenants de producción" — una premisa que
+  dejó de sostenerse en cuanto el usuario empezó a usar un tenant real de
+  forma continua a través de 23 sesiones de desarrollo de módulos nuevos.
+  Una consulta directa (`SELECT count(*) FROM role_permissions WHERE
+  role_id = ...`) confirmó el rol Owner de "Web Space" (aprovisionado
+  2026-08-27, sesión 5, cuando el catálogo tenía 3 permisos) con
+  exactamente 3 permisos otorgados, de 46 que existen hoy en el catálogo.
+  El modal "Asignar Owner" degradaba a su fallback de "ingresa el ID de
+  membresía manualmente" por la misma causa: `GET /api/v1/tenants/
+  memberships` (permiso `tenants.memberships.read`, agregado en la sesión
+  15) también fallaba con `403` para este mismo rol desactualizado —
+  confirmado que es un degradado de UI intencional y correcto, no un
+  segundo bug de frontend independiente.
+- **`apps/api/src/core/access-control/`**: `RoleRepository.findSystemRolesByName(name)`
+  nuevo — la única query genuinamente cross-tenant de este módulo,
+  documentada como excepción deliberada con el mismo criterio que
+  `UserRepository.findAll` (ADR-007), filtrada a `isSystem: true` para que
+  un rol propio de un tenant que coincida de nombre con "Owner" nunca sea
+  tocado (verificado con un test dedicado). `SyncOwnerRolePermissionsUseCase`
+  nuevo: para cada rol Owner de cada tenant, calcula los permisos que le
+  faltan frente al catálogo vigente y solo reescribe (`roles.save`) los
+  roles genuinamente desactualizados — un rol ya sincronizado nunca
+  dispara una escritura innecesaria, verificado con un test que espía
+  `save()` y confirma que no se llama. `OwnerRolePermissionSyncSeeder`
+  nuevo: corre en cada arranque de `apps/api`, junto a
+  `PermissionCatalogSeeder` — espera explícitamente `await
+  this.catalogSeeder.seed()` antes de sincronizar, en vez de confiar en el
+  orden de `onModuleInit` entre dos providers del mismo módulo (la misma
+  lección real del ciclo de módulos de `RolesController` encontrada en la
+  sesión 5, aplicada proactivamente esta vez en vez de descubierta de
+  nuevo por otro bug). `PermissionCatalogSeeder.seed()` se extrajo como
+  método público invocable explícitamente (antes vivía solo dentro de
+  `onModuleInit`); llamarlo dos veces en el mismo arranque es inofensivo,
+  ya que el upsert del catálogo nunca borra claves existentes. Sin
+  migración nueva — es lógica de aplicación sobre `roles`/
+  `role_permissions`/`permissions`, tablas ya existentes desde la sesión 5.
+- **Verificado contra Postgres real en el reinicio real de `apps/api` que
+  llevó el fix a producción, no solo en tests**: el log del arranque real
+  confirmó `Owner role permission sync: 14 of 17 tenant Owner role(s)
+  updated` — evidencia directa de que esto no era un problema aislado de
+  "Web Space", sino que afectaba a la gran mayoría de los tenants reales
+  aprovisionados a lo largo de las 28 sesiones de este proyecto. Una
+  consulta directa inmediatamente después confirmó el rol Owner de "Web
+  Space" en exactamente 46 de 46 permisos del catálogo.
+- Tests: 4 nuevos en `SyncOwnerRolePermissionsUseCase` (otorga los
+  permisos faltantes a un rol desactualizado preservando los ya
+  existentes; no reescribe un rol ya sincronizado; nunca toca un rol
+  no-system que comparta el nombre "Owner"; sincroniza los roles Owner de
+  varios tenants de forma independiente) + 1 en
+  `OwnerRolePermissionSyncSeeder` (confirma el orden explícito
+  catálogo→sincronización) — 624 tests unitarios totales en `apps/api`
+  (antes 619). 1 test de integración nuevo contra Postgres real
+  (`apps/api/test/integration/prisma-repositories.integration-spec.ts`,
+  "syncs a real, already-provisioned tenant's stale Owner role against a
+  grown permission catalog"): reproduce el escenario exacto del bug —
+  rol Owner sembrado cuando el catálogo tiene 2 permisos, el catálogo
+  crece a 4, se confirma que el rol todavía carece de los 2 nuevos, se
+  ejecuta la sincronización, se confirma que ahora los tiene todos
+  mientras conserva el grant original, y se confirma que un rol propio no
+  ya-sistema con el mismo nombre "Owner" nunca se toca — 32/32 en total
+  (antes 31).
+- Sin cambios de frontend ni de `@erp/api-client` — el fix es enteramente
+  de backend/bootstrap; la UI ya degradaba correctamente (fallback de ID
+  manual) mientras el rol estuvo desactualizado, y ahora simplemente deja
+  de necesitar ese fallback una vez el rol real del usuario está
+  sincronizado.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm --filter @erp/api test` (624/624), `pnpm --filter
+  @erp/api test:integration` (32/32 contra Postgres real), `pnpm --filter
+  @erp/e2e run test:e2e` (12/12 Playwright, corrida contra infraestructura
+  efímera tras detener los servidores persistentes) — todo verde.
 
 ### Hecho — sesión 28 (bug real: descubrimiento de empresas de un tenant)
 

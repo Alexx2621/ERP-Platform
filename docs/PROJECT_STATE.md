@@ -1,22 +1,42 @@
 # Project State
 
-Última actualización: 2026-08-31 (sesión 28), tras corregir un bug real
-reportado por el usuario contra la infraestructura Docker real: ningún
-endpoint del backend permitía listar las empresas de un tenant, así que
-reabrir un tenant ya existente (fuera del flujo directo de onboarding)
-perdía su `companyId` para siempre, dejando cada módulo de negocio
-mostrando "Selecciona una empresa..." pese a existir una empresa real ya
-provisionada. Se agregó `GET /api/v1/tenants/companies` (descubrimiento de
-empresas de un tenant) y `TenantListPage` ahora lo resuelve
-automáticamente (empresa única) o pide elegir (varias empresas) antes de
-entrar al workspace. También se corrigió el panel "Avance del desarrollo"
-del workspace, que seguía mostrando datos estáticos de cuando Foundation
-cerró (sesión 22) sin reflejar el cierre real de las Fases 2, 3 y 4. Ver
-"Hecho — sesión 28" en `docs/WORK_QUEUE.md` para el detalle completo,
-verificado con un nuevo escenario E2E de Playwright contra infraestructura
-real. Ningún cambio de alcance de fase — Fase 4 (Sales y Payments) sigue
-siendo la última fase cerrada; el siguiente bloque no bloqueado sigue
-siendo Fase 5 (Purchasing).
+Última actualización: 2026-08-31 (sesión 28, segundo bug real), tras
+corregir un segundo bug real reportado por el usuario, esta vez contra el
+tenant "Web Space" ya en uso: todos los módulos (Apps, Catálogo, y por el
+mismo mecanismo cualquier otro con un permiso agregado después de la
+sesión 5) mostraban "No tienes permiso para realizar esta acción." Causa
+raíz confirmada contra Postgres real: `SeedOwnerRoleUseCase` otorga al rol
+Owner "todos los permisos que existan al momento del provisioning"
+únicamente — un hueco ya documentado ("sin backfill retroactivo de
+permisos") que nunca se había manifestado hasta ahora porque, hasta esta
+sesión, ningún tenant real se usaba de forma continua a través de tantas
+fases. El rol Owner de "Web Space" (aprovisionado sesión 5, cuando el
+catálogo tenía 3 permisos) seguía con exactamente esos 3, de 46 que existen
+hoy. Se agregó `SyncOwnerRolePermissionsUseCase` +
+`OwnerRolePermissionSyncSeeder`, que corre en cada arranque de la API y
+sincroniza el rol Owner de cada tenant con el catálogo vigente —
+verificado contra Postgres real (14 de 17 tenants reales tenían el rol
+desactualizado; "Web Space" quedó en 46/46 tras el arranque real). Ver
+"Hecho — sesión 28 (segundo bug)" en `docs/WORK_QUEUE.md` para el detalle
+completo.
+
+Actualización previa de la misma sesión: 2026-08-31 (sesión 28), tras
+corregir un bug real reportado por el usuario contra la infraestructura
+Docker real: ningún endpoint del backend permitía listar las empresas de
+un tenant, así que reabrir un tenant ya existente (fuera del flujo directo
+de onboarding) perdía su `companyId` para siempre, dejando cada módulo de
+negocio mostrando "Selecciona una empresa..." pese a existir una empresa
+real ya provisionada. Se agregó `GET /api/v1/tenants/companies`
+(descubrimiento de empresas de un tenant) y `TenantListPage` ahora lo
+resuelve automáticamente (empresa única) o pide elegir (varias empresas)
+antes de entrar al workspace. También se corrigió el panel "Avance del
+desarrollo" del workspace, que seguía mostrando datos estáticos de cuando
+Foundation cerró (sesión 22) sin reflejar el cierre real de las Fases 2, 3
+y 4. Ver "Hecho — sesión 28" en `docs/WORK_QUEUE.md` para el detalle
+completo, verificado con un nuevo escenario E2E de Playwright contra
+infraestructura real. Ningún cambio de alcance de fase en ninguno de los
+dos bugs — Fase 4 (Sales y Payments) sigue siendo la última fase cerrada;
+el siguiente bloque no bloqueado sigue siendo Fase 5 (Purchasing).
 
 Última actualización de fase: 2026-08-31 (sesión 27), tras implementar Sales y
 Payments completos — Quotes/Sales Orders/lines con reserva de inventario
@@ -1078,6 +1098,53 @@ bloqueen.
   verificación directa, en navegador real contra infraestructura real, de
   que el bug reportado por el usuario está resuelto. Detalle completo en
   `docs/WORK_QUEUE.md` ("Hecho — sesión 28").
+- **Sincronización del rol Owner con el catálogo de permisos** (Claude,
+  sesión 28, segundo bug, 2026-08-31): reportado por el usuario contra el
+  tenant real "Web Space" — todos los módulos mostraban "No tienes permiso
+  para realizar esta acción.", incluyendo el modal "Asignar Owner" que
+  degradaba a pedir un ID de membresía manual porque `GET /api/v1/tenants/
+  memberships` también fallaba con `403`. **Causa raíz confirmada contra
+  Postgres real antes de escribir código**: `SeedOwnerRoleUseCase` otorga
+  al rol Owner "todos los permisos que existan al momento del
+  provisioning" — un hueco ya documentado en `docs/SECURITY.md`
+  ("No retroactive permission backfill") desde que RBAC se construyó
+  (sesión 5), nunca antes manifestado porque ningún tenant real se había
+  usado de forma continua a través de tantas fases hasta ahora. Consulta
+  directa confirmó el rol Owner de "Web Space" (aprovisionado 2026-08-27,
+  cuando el catálogo tenía 3 permisos) con exactamente 3 de 46 otorgados.
+  `apps/api/src/core/access-control/`: `RoleRepository.findSystemRolesByName`
+  nuevo (única query cross-tenant deliberada de este módulo, mismo criterio
+  que `UserRepository.findAll` de ADR-007, filtrada a `isSystem: true` para
+  nunca tocar un rol propio de un tenant que coincida de nombre),
+  `SyncOwnerRolePermissionsUseCase` nuevo (compara el rol Owner de cada
+  tenant contra el catálogo vigente, solo reescribe los que están
+  desactualizados — un rol ya sincronizado nunca dispara un `save()`
+  innecesario, verificado con un test dedicado), `OwnerRolePermissionSyncSeeder`
+  nuevo (corre en cada arranque de `apps/api`, junto a
+  `PermissionCatalogSeeder` — espera explícitamente su `seed()` en vez de
+  confiar en el orden de `onModuleInit` entre providers del mismo módulo,
+  la misma lección del ciclo de módulos de RolesController de la sesión 5
+  aplicada proactivamente). Sin migración — es lógica de aplicación sobre
+  `roles`/`role_permissions`/`permissions`, tablas ya existentes.
+  **Verificado contra Postgres real en el reinicio real de `apps/api` que
+  llevó el fix a producción**: el log confirmó "Owner role permission
+  sync: 14 of 17 tenant Owner role(s) updated" — no era solo "Web Space",
+  la gran mayoría de tenants reales aprovisionados a lo largo de todas las
+  sesiones de este proyecto estaban desactualizados. Una consulta directa
+  inmediatamente después confirmó el rol Owner de "Web Space" en 46/46.
+  Tests: 5 nuevos unitarios (`sync-owner-role-permissions.use-case.spec.ts`:
+  sincroniza permisos faltantes, no reescribe un rol ya al día, nunca toca
+  un rol no-system que comparta el nombre "Owner", sincroniza tenants
+  independientemente entre sí; `owner-role-permission-sync-seeder.spec.ts`:
+  confirma el orden explícito catálogo→sync) — 624 tests unitarios totales
+  en `apps/api` (antes 619). 1 test de integración nuevo contra Postgres
+  real reproduciendo el escenario exacto del bug (rol sembrado con 2
+  permisos, catálogo crece a 4, sync los otorga preservando el grant
+  original, rol custom no-system con el mismo nombre nunca se toca) —
+  32/32 en total (antes 31). Validación completa (`lint`/`typecheck`/
+  `test`/`build`/`test:integration`/`test:e2e`, 12/12 Playwright) —
+  todo verde. Sin cambios de frontend ni de SDK — el fix es enteramente de
+  backend/bootstrap.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -1633,3 +1700,19 @@ estar completamente disponible, y la orden permaneció `DRAFT`. Los datos
 de prueba de esta sesión permanecen en la base, por el mismo motivo
 `onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
 anteriores.
+
+**Sesión 28 (2026-08-31, sincronización del rol Owner — segundo bug real)**:
+sin migración nueva — lógica de aplicación sobre `roles`/`role_permissions`/
+`permissions`, ya existentes desde la sesión 5. Verificado contra la base de
+desarrollo persistente real (no solo Testcontainers) reconstruyendo y
+reiniciando `apps/api` con el fix: el log real del arranque confirmó
+`Owner role permission sync: 14 of 17 tenant Owner role(s) updated`,
+seguido de una consulta directa (`SELECT ... role_permissions ... WHERE
+tenant_id = ...`) confirmando el rol Owner del tenant real "Web Space" en
+exactamente 46 de 46 permisos del catálogo, frente a los 3 de 46 medidos
+antes del fix con la misma consulta. Suite de integración ampliada con un
+escenario real contra Postgres efímero de Testcontainers reproduciendo el
+bug exacto (rol Owner sembrado con 2 permisos reales, catálogo crecido a 4,
+sync ejecutado, los 2 nuevos otorgados y el grant original preservado, un
+rol no-system con el mismo nombre "Owner" nunca tocado) — 32/32 en total
+(antes 31).

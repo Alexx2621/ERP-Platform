@@ -20,6 +20,8 @@ import { PrismaPermissionRepository } from "../../src/core/access-control/infras
 import { PrismaRoleRepository } from "../../src/core/access-control/infrastructure/prisma-role.repository";
 import { PrismaRoleAssignmentRepository } from "../../src/core/access-control/infrastructure/prisma-role-assignment.repository";
 import { HasPermissionUseCase } from "../../src/core/access-control/application/use-cases/has-permission.use-case";
+import { SeedOwnerRoleUseCase, OWNER_ROLE_NAME } from "../../src/core/access-control/application/use-cases/seed-owner-role.use-case";
+import { SyncOwnerRolePermissionsUseCase } from "../../src/core/access-control/application/use-cases/sync-owner-role-permissions.use-case";
 import { MembershipNotFoundInTenantError } from "../../src/core/access-control/application/errors";
 import { SettingDefinition } from "../../src/core/configuration/domain/setting-definition.entity";
 import { PrismaSettingDefinitionRepository } from "../../src/core/configuration/infrastructure/prisma-setting-definition.repository";
@@ -367,6 +369,110 @@ describe("Prisma repositories against PostgreSQL", () => {
     await expect(assignments.save(assignmentForUnknownMembership)).rejects.toThrow(
       MembershipNotFoundInTenantError,
     );
+  });
+
+  it("syncs a real, already-provisioned tenant's stale Owner role against a grown permission catalog", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const users = new PrismaUserRepository(prisma);
+    const tenants = new PrismaTenantRepository(prisma);
+    const memberships = new PrismaMembershipRepository(prisma);
+    const permissions = new PrismaPermissionRepository(prisma);
+    const roles = new PrismaRoleRepository(prisma);
+    const assignments = new PrismaRoleAssignmentRepository(prisma);
+    const now = new Date("2026-08-27T10:00:00.000Z");
+
+    // Reproduces the real bug: a tenant provisioned back when only two
+    // permissions existed in the catalog, exactly like the real "Web Space"
+    // tenant this was found against.
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "access.roles.read", description: "Read roles", createdAt: now }),
+    );
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "access.roles.manage", description: "Manage roles", createdAt: now }),
+    );
+
+    const ownerUser = createUser(now, "stale-owner@example.com");
+    const staleTenant = createTenant(now, "stale-owner-tenant");
+    await users.save(ownerUser);
+    await tenants.save(staleTenant);
+    const ownerMembership = Membership.create({
+      id: newId(),
+      tenantId: staleTenant.id,
+      userId: ownerUser.id,
+      status: "ACTIVE",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await memberships.save(ownerMembership);
+
+    const seedOwnerRole = new SeedOwnerRoleUseCase(roles, permissions, assignments);
+    await seedOwnerRole.execute(staleTenant.id, ownerMembership.id);
+    const hasPermission = new HasPermissionUseCase(assignments, roles);
+    await expect(
+      hasPermission.execute({
+        tenantId: staleTenant.id,
+        membershipId: ownerMembership.id,
+        permissionKey: "access.roles.read",
+      }),
+    ).resolves.toBe(true);
+
+    // Later, more modules ship and add more permissions to the catalog —
+    // the already-seeded Owner role above does not automatically gain them.
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "catalog.products.read", description: "x", createdAt: now }),
+    );
+    await permissions.upsert(
+      Permission.create({ id: newId(), key: "sales.orders.manage", description: "x", createdAt: now }),
+    );
+    await expect(
+      hasPermission.execute({
+        tenantId: staleTenant.id,
+        membershipId: ownerMembership.id,
+        permissionKey: "catalog.products.read",
+      }),
+    ).resolves.toBe(false);
+
+    const syncOwnerRolePermissions = new SyncOwnerRolePermissionsUseCase(roles, permissions);
+    await syncOwnerRolePermissions.execute();
+
+    await expect(
+      hasPermission.execute({
+        tenantId: staleTenant.id,
+        membershipId: ownerMembership.id,
+        permissionKey: "catalog.products.read",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      hasPermission.execute({
+        tenantId: staleTenant.id,
+        membershipId: ownerMembership.id,
+        permissionKey: "sales.orders.manage",
+      }),
+    ).resolves.toBe(true);
+    // The original grant is preserved, not dropped by the resync.
+    await expect(
+      hasPermission.execute({
+        tenantId: staleTenant.id,
+        membershipId: ownerMembership.id,
+        permissionKey: "access.roles.read",
+      }),
+    ).resolves.toBe(true);
+
+    // A tenant's own custom role, even if named exactly "Owner" but never
+    // seeded as a system role, must never be touched by the sync.
+    const customRole = Role.create({
+      id: newId(),
+      tenantId: staleTenant.id,
+      name: `${OWNER_ROLE_NAME} (custom)`,
+      isSystem: false,
+      permissionKeys: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await roles.save(customRole);
+    await syncOwnerRolePermissions.execute();
+    const reloadedCustomRole = await roles.findByName(staleTenant.id, `${OWNER_ROLE_NAME} (custom)`);
+    expect(reloadedCustomRole?.permissionKeys).toEqual([]);
   });
 
   it("resolves effective settings through the real PLATFORM/TENANT/COMPANY fallback chain and enforces the composite company FK", async () => {

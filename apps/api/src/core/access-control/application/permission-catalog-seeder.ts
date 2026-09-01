@@ -12,6 +12,17 @@ export class PermissionCatalogSeeder implements OnModuleInit {
   constructor(@Inject(PERMISSION_REPOSITORY) private readonly permissions: PermissionRepository) {}
 
   async onModuleInit(): Promise<void> {
+    await this.seed();
+  }
+
+  /**
+   * Exposed (not just called from `onModuleInit`) so `OwnerRolePermissionSyncSeeder`
+   * can await the catalog being complete before syncing Owner roles against
+   * it, without depending on NestJS's same-module `onModuleInit` ordering
+   * between two separate providers — a plain awaited call is unambiguous.
+   * Calling this twice on the same boot is harmless: upsert never deletes.
+   */
+  async seed(): Promise<void> {
     const now = new Date();
     for (const definition of FOUNDATION_PERMISSIONS) {
       await this.permissions.upsert(

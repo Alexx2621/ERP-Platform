@@ -6,12 +6,14 @@ import { PrismaPermissionRepository } from "./infrastructure/prisma-permission.r
 import { PrismaRoleRepository } from "./infrastructure/prisma-role.repository";
 import { PrismaRoleAssignmentRepository } from "./infrastructure/prisma-role-assignment.repository";
 import { PermissionCatalogSeeder } from "./application/permission-catalog-seeder";
+import { OwnerRolePermissionSyncSeeder } from "./application/owner-role-permission-sync-seeder";
 import { CreateRoleUseCase } from "./application/use-cases/create-role.use-case";
 import { AssignRoleUseCase } from "./application/use-cases/assign-role.use-case";
 import { ListRolesUseCase } from "./application/use-cases/list-roles.use-case";
 import { ListPermissionsUseCase } from "./application/use-cases/list-permissions.use-case";
 import { HasPermissionUseCase } from "./application/use-cases/has-permission.use-case";
 import { SeedOwnerRoleUseCase } from "./application/use-cases/seed-owner-role.use-case";
+import { SyncOwnerRolePermissionsUseCase } from "./application/use-cases/sync-owner-role-permissions.use-case";
 import { PermissionGuard } from "./presentation/permission.guard";
 
 /**
@@ -35,6 +37,8 @@ import { PermissionGuard } from "./presentation/permission.guard";
     { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
     { provide: ROLE_ASSIGNMENT_REPOSITORY, useClass: PrismaRoleAssignmentRepository },
     PermissionCatalogSeeder,
+    SyncOwnerRolePermissionsUseCase,
+    OwnerRolePermissionSyncSeeder,
     CreateRoleUseCase,
     AssignRoleUseCase,
     ListRolesUseCase,

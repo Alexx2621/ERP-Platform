@@ -26,6 +26,10 @@ export class InMemoryRoleRepository implements RoleRepository {
     return [...this.byId.values()].filter((role) => role.tenantId === tenantId);
   }
 
+  async findSystemRolesByName(name: string): Promise<Role[]> {
+    return [...this.byId.values()].filter((role) => role.isSystem && role.name === name);
+  }
+
   async save(role: Role): Promise<void> {
     this.byId.set(role.id, role);
   }

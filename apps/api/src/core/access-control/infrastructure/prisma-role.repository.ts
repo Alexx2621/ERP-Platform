@@ -46,6 +46,14 @@ export class PrismaRoleRepository implements RoleRepository {
     return records.map((record) => this.toDomain(record));
   }
 
+  async findSystemRolesByName(name: string): Promise<Role[]> {
+    const records = await this.prisma.role.findMany({
+      where: { name, isSystem: true },
+      include: WITH_PERMISSIONS,
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   async save(role: Role): Promise<void> {
     const props = role.toProps();
     const permissionRecords =
