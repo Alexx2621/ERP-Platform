@@ -15,6 +15,12 @@ export class InMemoryCompanyRepository implements CompanyRepository {
     return null;
   }
 
+  async listByTenant(tenantId: string): Promise<Company[]> {
+    return [...this.records.values()]
+      .filter((company) => company.tenantId === tenantId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async save(company: Company): Promise<void> {
     this.records.set(this.key(company.tenantId, company.id), company);
   }

@@ -22,6 +22,7 @@ export type RegisterInput = components["schemas"]["RegisterDto"];
 
 export type TenantSummary = components["schemas"]["TenantSummaryResponseDto"];
 export type TenantExecutionContext = components["schemas"]["TenantExecutionContextResponseDto"];
+export type CompanyResponse = components["schemas"]["CompanyResponseDto"];
 
 export type ProvisionTenantInput = components["schemas"]["ProvisionTenantDto"];
 export type ProvisionTenantResponse = components["schemas"]["ProvisionedTenantResponseDto"];

@@ -11,9 +11,9 @@ interface RoadmapPhase {
 export const developmentRoadmap: readonly RoadmapPhase[] = [
   { id: "phase-0", name: "Arquitectura", progress: 85 },
   { id: "phase-1", name: "Foundation", progress: 100 },
-  { id: "phase-2", name: "Master Data", progress: 0 },
-  { id: "phase-3", name: "Inventario", progress: 0 },
-  { id: "phase-4", name: "Ventas", progress: 0 },
+  { id: "phase-2", name: "Master Data", progress: 100 },
+  { id: "phase-3", name: "Inventario", progress: 100 },
+  { id: "phase-4", name: "Ventas y Pagos", progress: 100 },
   { id: "phase-5", name: "Compras", progress: 0 },
   { id: "phase-6", name: "POS", progress: 0 },
   { id: "phase-7", name: "E-commerce", progress: 0 },
@@ -30,7 +30,7 @@ export const overallDevelopmentProgress = Math.round(
 );
 
 const nextMilestones = [
-  "Fase 2 — Master Data: Clientes, Proveedores, Catálogo de Productos, Precios, Impuestos",
+  "Fase 5 — Compras: Purchase Requests, Purchase Orders, Recepciones, Facturas de proveedor, Devoluciones",
 ] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {
@@ -91,9 +91,9 @@ export function DevelopmentProgressPanel() {
               </p>
             </div>
             <div className="shrink-0 rounded-[10px] border border-[var(--line)] bg-[var(--field)] px-4 py-3">
-              <p className="text-[10px] font-bold text-[var(--muted)]">Fase activa</p>
+              <p className="text-[10px] font-bold text-[var(--muted)]">Última fase cerrada</p>
               <p className="mt-1 font-mono text-[18px] font-extrabold text-[var(--ink)]">
-                Foundation 100%
+                Ventas y Pagos 100%
               </p>
             </div>
           </div>
@@ -147,8 +147,9 @@ export function DevelopmentProgressPanel() {
         <aside className="border-t border-[var(--line)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
-            Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85% y Foundation al
-            100% (cerrada formalmente); las fases funcionales futuras permanecen en 0%.
+            Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85%; Foundation,
+            Master Data, Inventario y Ventas y Pagos están cerradas formalmente al 100%; las fases
+            funcionales restantes, empezando por Compras, permanecen en 0%.
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para

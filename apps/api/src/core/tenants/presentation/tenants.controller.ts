@@ -5,11 +5,13 @@ import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.dec
 import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
 import { SeedOwnerRoleUseCase } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
+import { ListCompaniesUseCase } from "../../companies";
 import { ProvisionTenantUseCase } from "../application/provision-tenant.use-case";
 import { ListMyTenantsUseCase } from "../application/list-my-tenants.use-case";
 import { ProvisionTenantDto } from "./dto/provision-tenant.dto";
 import { ProvisionedTenantResponseDto } from "./dto/provisioned-tenant-response.dto";
 import { TenantSummaryResponseDto, TenantExecutionContextResponseDto } from "./dto/tenant-summary-response.dto";
+import { CompanyResponseDto } from "./dto/company-response.dto";
 import { TenantContextGuard } from "./tenant-context.guard";
 import { CurrentTenantContext } from "./current-tenant-context.decorator";
 import { handleTenantError } from "./tenant-error.mapper";
@@ -25,6 +27,7 @@ export class TenantsController {
     private readonly listMyTenants: ListMyTenantsUseCase,
     private readonly seedOwnerRole: SeedOwnerRoleUseCase,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
+    private readonly listCompanies: ListCompaniesUseCase,
   ) {}
 
   /**
@@ -103,6 +106,29 @@ export class TenantsController {
   async listMine(@CurrentAuth() auth: AuthContext): Promise<TenantSummaryResponseDto[]> {
     const summaries = await this.listMyTenants.execute(auth.user.id);
     return summaries.map((summary) => TenantSummaryResponseDto.fromDomain(summary));
+  }
+
+  /**
+   * Company picker: "which companies exist in this tenant" — the read that
+   * lets a client discover a `companyId` to send as `X-Company-Id` on every
+   * later request. `ResolveTenantContextUseCase`/`GET .../current` never
+   * invent one on their own (they only ever echo back a `companyId` the
+   * caller already supplied), so without this endpoint a client that lost
+   * its in-memory company selection (e.g. reopening a tenant from the
+   * tenant list after the one-time onboarding response) had no way to
+   * recover it — a real gap found and closed after Sales/Payments shipped
+   * with no way to reach them outside onboarding. Guarded by
+   * `TenantContextGuard` alone (no `X-Company-Id` required) since
+   * discovering companies is exactly what a caller does *before* it has one.
+   */
+  @Get("companies")
+  @UseGuards(TenantContextGuard)
+  @ApiTenantHeaders()
+  @ApiOperation({ summary: "List the active companies in the tenant resolved from X-Tenant-Slug." })
+  @ApiResponse({ status: HttpStatus.OK, type: [CompanyResponseDto] })
+  async companies(@CurrentTenantContext() tenantContext: TenantExecutionContext): Promise<CompanyResponseDto[]> {
+    const companies = await this.listCompanies.execute(tenantContext.tenantId);
+    return companies.map((company) => CompanyResponseDto.fromDomain(company));
   }
 
   /**

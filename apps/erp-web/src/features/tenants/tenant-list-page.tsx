@@ -1,17 +1,22 @@
 import { ArrowClockwise, ArrowRight, Buildings, EnvelopeSimpleOpen, Plus } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import type { PendingInvitationResponse, TenantSummary } from "@erp/api-client";
+import type { CompanyResponse, PendingInvitationResponse, TenantSummary } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
+import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { ProductShell } from "../workspace/product-shell";
 
+interface WorkspaceSelection extends TenantSummary {
+  companyId?: string;
+}
+
 interface TenantListPageProps {
   navigate: (path: AppPath, replace?: boolean) => void;
-  onSelect: (tenant: TenantSummary) => void;
+  onSelect: (selection: WorkspaceSelection) => void;
 }
 
 type LoadState =
@@ -28,6 +33,9 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
   const [invitations, setInvitations] = useState<PendingInvitationResponse[] | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [companyPicker, setCompanyPicker] = useState<{ tenant: TenantSummary; companies: CompanyResponse[] } | null>(
+    null,
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,13 +86,51 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
     }
   };
 
+  /**
+   * `GET /tenants/current` never invents a `companyId` on its own — it only
+   * ever echoes back one the caller already supplied — so opening a tenant
+   * must discover its companies itself via `GET /tenants/companies` first.
+   * Zero or one company resolves immediately (the common case, kept a
+   * single click); two or more prompts the picker below. Without this, a
+   * tenant reopened from this list (as opposed to right after onboarding,
+   * which already knows its own `companyId` from the provisioning
+   * response) permanently lost its company context — every company-scoped
+   * module then only ever showed "selecciona una empresa", real bug found
+   * against a real tenant with a real company already provisioned.
+   */
   const openTenant = async (tenant: TenantSummary) => {
     setOpenError(null);
     setOpeningSlug(tenant.slug);
     try {
       const token = await getAccessToken();
-      await apiClient.getTenantContext(token, tenant.slug);
-      onSelect(tenant);
+      const companies = await apiClient.listCompanies(token, tenant.slug);
+      if (companies.length > 1) {
+        setCompanyPicker({ tenant, companies });
+        return;
+      }
+      const companyId = companies[0]?.id;
+      if (companyId) {
+        await apiClient.getTenantContext(token, tenant.slug, companyId);
+      }
+      onSelect({ ...tenant, companyId });
+      navigate("/workspace");
+    } catch (error) {
+      setOpenError(getErrorMessage(error));
+    } finally {
+      setOpeningSlug(null);
+    }
+  };
+
+  const selectCompany = async (companyId: string) => {
+    if (!companyPicker) return;
+    const { tenant } = companyPicker;
+    setOpenError(null);
+    setOpeningSlug(tenant.slug);
+    try {
+      const token = await getAccessToken();
+      await apiClient.getTenantContext(token, tenant.slug, companyId);
+      setCompanyPicker(null);
+      onSelect({ ...tenant, companyId });
       navigate("/workspace");
     } catch (error) {
       setOpenError(getErrorMessage(error));
@@ -236,6 +282,45 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
           </ul>
         ) : null}
       </section>
+
+      <Modal
+        open={companyPicker !== null}
+        onOpenChange={(open) => !openingSlug && !open && setCompanyPicker(null)}
+        title="Elige una empresa"
+        description={
+          companyPicker
+            ? `${companyPicker.tenant.name} tiene varias empresas activas. Selecciona con cuál quieres trabajar.`
+            : undefined
+        }
+      >
+        <ul className="grid gap-2.5">
+          {companyPicker?.companies.map((company) => (
+            <li key={company.id}>
+              <button
+                type="button"
+                disabled={openingSlug !== null}
+                onClick={() => void selectCompany(company.id)}
+                className="group flex w-full items-center gap-4 rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-4 text-left transition-[border-color,background-color] duration-150 hover:border-[var(--accent)] hover:bg-[var(--field)] disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-extrabold tracking-[-0.02em]">
+                    {company.name}
+                  </span>
+                  <span className="mt-0.5 block truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+                    {company.code}
+                  </span>
+                </span>
+                <ArrowRight
+                  size={16}
+                  weight="bold"
+                  className="text-[var(--muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent)]"
+                  aria-hidden="true"
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Modal>
     </ProductShell>
   );
 }

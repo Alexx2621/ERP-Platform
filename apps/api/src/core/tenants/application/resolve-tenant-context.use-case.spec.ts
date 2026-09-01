@@ -23,6 +23,10 @@ class StubCompanyRepository implements CompanyRepository {
     return null;
   }
 
+  async listByTenant(tenantId: string): Promise<Company[]> {
+    return [...this.records.values()].filter((company) => company.tenantId === tenantId);
+  }
+
   async save(company: Company): Promise<void> {
     this.records.set(company.id, company);
   }

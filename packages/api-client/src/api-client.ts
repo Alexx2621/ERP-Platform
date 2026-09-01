@@ -14,6 +14,7 @@ import type {
   BrandResponse,
   CapturePaymentInput,
   CategoryResponse,
+  CompanyResponse,
   ConvertQuoteInput,
   CreateBrandInput,
   CreateCategoryInput,
@@ -218,6 +219,15 @@ export class ApiClient {
       tenantSlug,
       companyId,
     });
+  }
+
+  /** Company picker: discovers the companies in a tenant, so a client can resolve a companyId to send as X-Company-Id afterward. */
+  async listCompanies(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<CompanyResponse[]> {
+    return this.request<CompanyResponse[]>("/tenants/companies", { accessToken, tenantSlug, signal });
   }
 
   async listRoles(

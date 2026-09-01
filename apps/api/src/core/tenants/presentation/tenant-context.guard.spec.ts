@@ -17,6 +17,9 @@ class StubCompanyRepository implements CompanyRepository {
   async findByCode(): Promise<Company | null> {
     return null;
   }
+  async listByTenant(): Promise<Company[]> {
+    return [];
+  }
   async save(): Promise<void> {}
 }
 

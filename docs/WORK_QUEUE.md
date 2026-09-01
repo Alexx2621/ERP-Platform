@@ -6,8 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-31 (sesión 27,
-Sales y Payments implementados — cierra la Fase 4 por completo). Modelo
+permanente por agente. Última actualización técnica: 2026-08-31 (sesión 28,
+bug real de descubrimiento de empresas de un tenant corregido — reportado
+por el usuario contra la infraestructura Docker real). Modelo
 operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
@@ -22,7 +23,10 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 ### Próximo
 
 **Fase 4 (Sales y Payments) está completa** — ver "Hecho — sesión 27"
-abajo. El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
+abajo. Un bug real reportado por el usuario contra la infraestructura
+Docker real (ningún módulo de negocio resolvía la empresa de un tenant al
+reabrirlo) se corrigió en la sesión 28 antes de continuar — ver "Hecho —
+sesión 28" abajo. El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
 `docs/ROADMAP.md` §9, salvo que el usuario indique otra prioridad.
 Alcance deliberadamente fuera de Fase 4 y diferido (no simulado, ver
 ADR-009 y "Known limitations" en "Sales"/"Payments" de
@@ -40,6 +44,94 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 28 (bug real: descubrimiento de empresas de un tenant)
+
+Reportado por el usuario, con capturas de pantalla, contra la
+infraestructura Docker real: un tenant real ("Web Space") con una empresa
+real ya provisionada mostraba "Selecciona una empresa..." en Ventas,
+Inventario y Comercial, y el workspace mostraba "Empresa: Sin selección
+específica" en su "Contexto activo" — pese a existir la empresa. El
+usuario pidió explícitamente investigar esto **antes** de avanzar a Fase 5.
+
+- **Causa raíz real, encontrada por lectura directa de código, no
+  supuesta**: `ResolveTenantContextUseCase` (`GET /api/v1/tenants/current`)
+  nunca inventa un `companyId` propio — por diseño, solo lo devuelve de
+  vuelta si el llamador ya lo envió vía `X-Company-Id` (correcto para
+  aislamiento cross-tenant, ver `docs/SECURITY.md` "Tenant Context HTTP
+  integration"). El problema real: **no existía ningún endpoint en toda la
+  plataforma para listar las empresas de un tenant**. El único lugar donde
+  `companyId` se resolvía alguna vez era la respuesta directa de
+  provisioning dentro de `OnboardingPage` — no había forma de recuperarlo
+  después de abandonar ese flujo. `TenantListPage.openTenant()` (el otro
+  punto de entrada real, "Tus espacios") llamaba `getTenantContext` sin
+  ningún `companyId` y descartaba la empresa del tenant por completo.
+- **`apps/api/src/core/companies/`**: `CompanyRepository.listByTenant(tenantId)`
+  nuevo (Prisma + fake in-memory), `ListCompaniesUseCase` nuevo (filtra
+  solo empresas `ACTIVE`, mismo criterio ya usado en el resto del código
+  base). Sin migración — consulta nueva sobre `companies`, tabla ya
+  existente desde Foundation.
+- **`apps/api/src/core/tenants/presentation/tenants.controller.ts`**:
+  `GET /api/v1/tenants/companies` nuevo, mismo `TenantContextGuard` que
+  `current()` — ese guard solo exige `X-Tenant-Slug` (`X-Company-Id` es
+  opcional), así que el endpoint puede llamarse antes de conocer ningún
+  `companyId`, resolviendo exactamente el problema del huevo y la gallina.
+  `CompanyResponseDto` nuevo (`id`, `code`, `name` — nada más de lo que un
+  picker necesita).
+- **`@erp/api-client`**: `CompanyResponse` + método `listCompanies` nuevos,
+  regenerados desde el spec OpenAPI real del servidor reconstruido (mismo
+  flujo `openapi-typescript` de la sesión 21).
+- **`TenantListPage.openTenant()` reescrito**: llama `listCompanies`
+  primero. Cero o una empresa resuelve de inmediato sin paso extra — el
+  caso común, mismo único clic de siempre. Dos o más empresas abren un
+  modal picker nuevo (reutiliza `Modal`) para que el usuario elija
+  explícitamente, en vez de que el frontend adivine o el backend invente
+  una "primera empresa" implícita que silenciosamente apuntara al usuario
+  a datos de la empresa equivocada.
+- **De paso, corregido el panel "Avance del desarrollo"** del workspace
+  (`development-progress-panel.tsx`), reportado en el mismo mensaje del
+  usuario: seguía mostrando datos estáticos de cuando Foundation cerró
+  (sesión 22) — Master Data/Inventario/Ventas y Pagos seguían en 0% pese a
+  estar formalmente cerradas (sesiones 25, 26, 27). Corregido a 100% cada
+  una, "Próxima fase" actualizado a Fase 5 — Compras, y el promedio total
+  recalculado automáticamente por el propio componente de 14% a 37% (no un
+  valor hardcodeado aparte — cambiar los porcentajes de fase basta).
+- 4 permisos/tests/DTOs nuevos, sin cambio de alcance de permisos RBAC —
+  el endpoint nuevo reutiliza el mismo guard que `current()`, sin
+  `PermissionGuard` adicional (mismo criterio ya usado ahí: resolver
+  contexto de tenant es una operación de sesión, no una acción
+  administrativa con permiso propio).
+- Tests: 2 nuevos en `ListCompaniesUseCase` (filtra solo activas, lista
+  vacía si el tenant no tiene empresas) — 619 tests unitarios totales en
+  `apps/api` (antes 617). 1 test nuevo en `@erp/api-client`
+  (`listCompanies`, confirma que no se envía `X-Company-Id`) — 16/16 en
+  total (antes 15). 3 tests nuevos en `apps/erp-web`
+  (`tenant-list-page.spec.tsx`, nuevo archivo): auto-selección con una sola
+  empresa, continúa sin empresa si el tenant no tiene ninguna, y picker
+  real con selección cuando hay varias — 39/39 en total (antes 36).
+  **E2E real nuevo** (`apps/e2e/tests/onboarding.spec.ts`, segundo test del
+  archivo): registro → onboarding con empresa real → sale del workspace vía
+  "Cambiar espacio" → reabre el mismo tenant desde "Tus espacios" →
+  confirma que el workspace ya no muestra "Sin selección específica" →
+  navega a "Ventas" → confirma que NO aparece "Selecciona una empresa..."
+  y que sí aparece contenido real ("Todavía no hay clientes en esta
+  empresa") — la verificación directa, en navegador real contra
+  infraestructura real, de que el bug reportado por el usuario está
+  resuelto — 12/12 Playwright en total (antes 11). También se ajustó la
+  aserción existente `aria-valuenow` del progreso total (14→37) para
+  reflejar el fix del panel de avance, sin que fuera una regresión —
+  cambio esperado del propio cálculo.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps (un error real de lint encontrado y corregido: una
+  variable `tenantSlug` sin usar en el nuevo test E2E), `pnpm test` (619
+  api + 27 events + 33 notifications + 6 worker + 16 api-client + 39
+  erp-web = 740, verificado limpio en corridas aisladas por paquete — la
+  corrida concurrente de todo el monorepo mostró fallos aislados por
+  timeout en `apps/erp-web` bajo contención de recursos de esta sesión
+  larga, mismo patrón ya documentado en sesiones 25 y 27, descartado con
+  una corrida aislada limpia de `apps/erp-web` sola: 39/39), `pnpm --filter
+  @erp/api test:integration` (31/31 contra Postgres real), `pnpm --filter
+  @erp/e2e run test:e2e` (12/12 Playwright) — todo verde.
 
 ### Hecho — sesión 27 (Sales y Payments — Fase 4, completa de una vez)
 

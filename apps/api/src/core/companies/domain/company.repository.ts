@@ -4,6 +4,8 @@ import { Company } from "./company.entity";
 export interface CompanyRepository {
   findById(tenantId: string, id: string): Promise<Company | null>;
   findByCode(tenantId: string, code: string): Promise<Company | null>;
+  /** Every company belonging to a tenant, regardless of status — callers that only want ACTIVE ones filter client-side (see `ListCompaniesUseCase`). */
+  listByTenant(tenantId: string): Promise<Company[]>;
   save(company: Company): Promise<void>;
 }
 

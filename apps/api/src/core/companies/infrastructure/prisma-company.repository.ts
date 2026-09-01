@@ -21,6 +21,14 @@ export class PrismaCompanyRepository implements CompanyRepository {
     return record ? Company.create(record) : null;
   }
 
+  async listByTenant(tenantId: string): Promise<Company[]> {
+    const records = await this.prisma.company.findMany({
+      where: { tenantId },
+      orderBy: { name: "asc" },
+    });
+    return records.map((record) => Company.create(record));
+  }
+
   async save(company: Company): Promise<void> {
     const props = company.toProps();
     await this.prisma.company.upsert({

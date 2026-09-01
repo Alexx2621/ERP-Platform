@@ -84,7 +84,7 @@ into a tenant). Consequences for this module specifically:
   top of `SessionAuthGuard` before Access Control lands must not assume
   tenant-scoped authorization is already handled.
 
-## Tenant Context HTTP integration (2026-08-26)
+## Tenant Context HTTP integration (2026-08-26, company discovery added 2026-08-31)
 
 Scope: `TenantContextGuard`, `POST /api/v1/tenants` (provisioning), `GET
 /api/v1/tenants` (list mine), `GET /api/v1/tenants/current`, `POST
@@ -107,6 +107,51 @@ expired session (`validate-session.use-case.spec.ts`,
 `refresh-session.use-case.spec.ts`); revoked session
 (`validate-session.use-case.spec.ts`, `refresh-session.use-case.spec.ts`,
 `logout.use-case.spec.ts`).
+
+### Real bug found and fixed: no way to discover a tenant's companies (2026-08-31)
+
+`ResolveTenantContextUseCase` (and `GET /api/v1/tenants/current`) never
+invents a `companyId` on its own — by design (see the threat row above),
+it only ever *echoes back* a `companyId` the caller already supplied via
+`X-Company-Id`. This is correct for cross-tenant isolation, but exposed a
+real, user-reported gap: **no endpoint anywhere in the platform could list
+a tenant's companies**, so a `companyId` could only ever be learned once,
+client-side, from the direct response of `POST /api/v1/tenants`
+(provisioning). `TenantListPage.openTenant()` — the only other place a
+user opens an existing tenant, e.g. from "Tus espacios" after navigating
+away — called `getTenantContext` with no `companyId` at all and simply
+discarded whatever company the tenant had. Every company-scoped module
+(Sales, Inventory, Catalog's company-dependent views, Comercial) then
+permanently showed "Selecciona una empresa..." for that session, even for
+a tenant with exactly one real, already-provisioned company — reported by
+the user against a real "Web Space" tenant.
+
+Fixed with a new, minimal company-discovery endpoint:
+`GET /api/v1/tenants/companies` (`TenantsController.companies()`), gated
+by the same `TenantContextGuard` already used by `current()` — it only
+requires `X-Tenant-Slug` (`X-Company-Id` is optional on this guard), so it
+can be called *before* a `companyId` is known, which is exactly the
+chicken-and-egg problem it solves. `ListCompaniesUseCase` calls the new
+`CompanyRepository.listByTenant(tenantId)` and returns only companies with
+`status: ACTIVE` — same tenant-scoping guarantee as every other
+tenant-owned query in this codebase (`docs/ARCHITECTURE.md` §8.3), just
+newly exposed for listing rather than single lookup. The response
+(`CompanyResponseDto[]`: `id`, `code`, `name`) intentionally exposes no
+more than a picker UI needs.
+
+`TenantListPage.openTenant()` now calls `listCompanies` first: zero or one
+company resolves immediately without any extra step (the overwhelmingly
+common case, kept to the original single click); two or more companies
+open a picker modal so the user chooses explicitly, instead of the
+frontend guessing or the backend inventing an implicit "first company"
+that could silently point a user at the wrong company's data. Verified
+against real infrastructure with a new Playwright E2E scenario
+(`apps/e2e/tests/onboarding.spec.ts`, "reopening an existing tenant from
+the tenant list resolves its company automatically"): register → onboard
+with a company → leave the workspace via "Cambiar espacio" → reopen the
+same tenant from "Tus espacios" → confirm the workspace no longer shows
+"Sin selección específica" and that a company-scoped module (Ventas)
+shows real content instead of the "selecciona una empresa" guard.
 
 ## Access Control / RBAC (2026-08-27)
 

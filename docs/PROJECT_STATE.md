@@ -1,6 +1,24 @@
 # Project State
 
-Última actualización: 2026-08-31 (sesión 27), tras implementar Sales y
+Última actualización: 2026-08-31 (sesión 28), tras corregir un bug real
+reportado por el usuario contra la infraestructura Docker real: ningún
+endpoint del backend permitía listar las empresas de un tenant, así que
+reabrir un tenant ya existente (fuera del flujo directo de onboarding)
+perdía su `companyId` para siempre, dejando cada módulo de negocio
+mostrando "Selecciona una empresa..." pese a existir una empresa real ya
+provisionada. Se agregó `GET /api/v1/tenants/companies` (descubrimiento de
+empresas de un tenant) y `TenantListPage` ahora lo resuelve
+automáticamente (empresa única) o pide elegir (varias empresas) antes de
+entrar al workspace. También se corrigió el panel "Avance del desarrollo"
+del workspace, que seguía mostrando datos estáticos de cuando Foundation
+cerró (sesión 22) sin reflejar el cierre real de las Fases 2, 3 y 4. Ver
+"Hecho — sesión 28" en `docs/WORK_QUEUE.md` para el detalle completo,
+verificado con un nuevo escenario E2E de Playwright contra infraestructura
+real. Ningún cambio de alcance de fase — Fase 4 (Sales y Payments) sigue
+siendo la última fase cerrada; el siguiente bloque no bloqueado sigue
+siendo Fase 5 (Purchasing).
+
+Última actualización de fase: 2026-08-31 (sesión 27), tras implementar Sales y
 Payments completos — Quotes/Sales Orders/lines con reserva de inventario
 vía un port transaccional real, Returns como registro independiente, y
 captura/reembolso de pagos idempotentes vía CASH/BANK_TRANSFER —
@@ -1012,6 +1030,54 @@ bloqueen.
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
   `@erp/worker`) y pruebas negativas de aislamiento cross-tenant.
+- **Descubrimiento de empresas de un tenant + corrección del panel de
+  avance** (Claude, sesión 28, 2026-08-31): reportado por el usuario contra
+  la infraestructura Docker real — un tenant real ("Web Space") con una
+  empresa real ya provisionada mostraba "Selecciona una empresa..." en
+  Ventas/Inventario/Comercial, y "Contexto activo" mostraba "Empresa: Sin
+  selección específica" pese a existir la empresa. **Causa raíz real
+  encontrada**: `ResolveTenantContextUseCase`/`GET /api/v1/tenants/current`
+  nunca inventan un `companyId` — solo lo devuelven de vuelta si el llamador
+  ya lo envió — y **no existía ningún endpoint en toda la plataforma para
+  listar las empresas de un tenant**; el único lugar donde `companyId` se
+  resolvía alguna vez era la respuesta directa de provisioning en
+  `OnboardingPage`, así que reabrir un tenant existente desde "Tus
+  espacios" (`TenantListPage.openTenant()`) descartaba la empresa por
+  completo, sin ninguna forma de recuperarla. `apps/api/src/core/companies/`:
+  `CompanyRepository.listByTenant(tenantId)` nuevo (Prisma + fake in-memory),
+  `ListCompaniesUseCase` nuevo (filtra solo `ACTIVE`). `apps/api/src/core/
+  tenants/presentation/tenants.controller.ts`: `GET /api/v1/tenants/companies`
+  nuevo (mismo `TenantContextGuard` que `current()`, que solo exige
+  `X-Tenant-Slug` — `X-Company-Id` es opcional en ese guard, así que el
+  endpoint puede llamarse antes de conocer ningún `companyId`, resolviendo
+  exactamente el problema del huevo y la gallina). `CompanyResponseDto`
+  nuevo (`id`, `code`, `name` — nada más de lo que un picker necesita). Sin
+  migración nueva — es una consulta nueva sobre `companies`, ya existente.
+  `@erp/api-client`: `CompanyResponse` + método `listCompanies` nuevos,
+  regenerados desde el spec OpenAPI real (mismo flujo de la sesión 21).
+  `TenantListPage.openTenant()` reescrito: llama `listCompanies` primero —
+  cero o una empresa resuelve de inmediato sin paso extra (el caso común,
+  mismo único clic de siempre); dos o más abren un modal picker nuevo para
+  que el usuario elija explícitamente, en vez de que el frontend adivine o
+  el backend invente una "primera empresa" implícita que silenciosamente
+  apuntara al usuario a datos de la empresa equivocada. De paso, corregido
+  el panel "Avance del desarrollo" del workspace
+  (`development-progress-panel.tsx`), que seguía mostrando datos estáticos
+  de cuando Foundation cerró (sesión 22) — Master Data/Inventario/Ventas y
+  Pagos seguían en 0% pese a estar formalmente cerradas (sesiones 25, 26,
+  27); corregido a 100% cada una, "Próxima fase" actualizado a Fase 5 —
+  Compras, y el promedio total recalculado automáticamente de 14% a 37%
+  (el cálculo del propio componente, no un valor hardcodeado aparte).
+  **Verificado con un E2E de Playwright real nuevo**
+  (`apps/e2e/tests/onboarding.spec.ts`, segundo test del archivo): registro
+  → onboarding con empresa real → sale del workspace vía "Cambiar espacio"
+  → reabre el mismo tenant desde "Tus espacios" → confirma que el workspace
+  ya no muestra "Sin selección específica" → navega a "Ventas" → confirma
+  que NO aparece el error "Selecciona una empresa..." y que sí aparece
+  contenido real ("Todavía no hay clientes en esta empresa") — la
+  verificación directa, en navegador real contra infraestructura real, de
+  que el bug reportado por el usuario está resuelto. Detalle completo en
+  `docs/WORK_QUEUE.md` ("Hecho — sesión 28").
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 

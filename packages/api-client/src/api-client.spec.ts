@@ -54,6 +54,24 @@ describe("ApiClient", () => {
     expect(headers.get("X-Company-Id")).toBe("company-1");
   });
 
+  it("lists the companies in a tenant with no X-Company-Id header, since discovering one is the point", async () => {
+    const companies = [{ id: "company-1", code: "CO1", name: "Empresa Uno" }];
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(companies), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listCompanies("access-token", "grupo-aurora")).resolves.toEqual(companies);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tenants/companies",
+      expect.objectContaining({ method: "GET" }),
+    );
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+    expect(headers.has("X-Company-Id")).toBe(false);
+  });
+
   it("uses the documented tenant-scoped RBAC endpoints", async () => {
     const createdRole = {
       id: "role-1",

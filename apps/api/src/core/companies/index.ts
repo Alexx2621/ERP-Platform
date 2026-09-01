@@ -6,5 +6,6 @@ export {
   type CreateCompanyInput,
   type CompanyTenantContext,
 } from "./application/create-company.use-case";
+export { ListCompaniesUseCase } from "./application/list-companies.use-case";
 export { CompanyCodeAlreadyInUseError, OrganizationUnavailableError } from "./application/errors";
 export { CompaniesModule } from "./companies.module";

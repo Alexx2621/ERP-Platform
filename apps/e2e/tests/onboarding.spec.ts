@@ -80,7 +80,7 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
   await expect(page.getByText("Roadmap total del producto")).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Avance total estimado" })).toHaveAttribute(
     "aria-valuenow",
-    "14",
+    "37",
   );
   await expect(page.getByText("Contexto activo")).toBeVisible();
   await expect(page.getByText(tenantSlug, { exact: false })).toBeVisible();
@@ -239,4 +239,58 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
 
   await page.goto("/workspace");
   await expect(page).toHaveURL(/\/login$/);
+});
+
+test("reopening an existing tenant from the tenant list resolves its company automatically", async ({ page }) => {
+  const runId = `${Date.now()}-${process.pid}`;
+  const tenantName = `Reingreso E2E ${runId}`;
+
+  await page.goto("/register");
+  await page.getByLabel("Nombre completo").fill("Propietaria Reingreso E2E");
+  await page.getByLabel("Correo electrónico").fill(`owner-${runId}@example.com`);
+  await page.getByLabel("Contraseña").fill("ReentryE2E9!");
+  const registrationResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/auth/register"),
+  );
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
+  expect((await registrationResponse).status()).toBe(201);
+
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.getByLabel("Nombre del espacio").fill(tenantName);
+  await page.getByLabel("Razón social").click();
+  await page.getByLabel("Razón social").fill(`${tenantName}, S.A.`);
+  await page.getByLabel("Código de organización").fill("REORG");
+  await page.getByLabel("Nombre comercial").fill("Empresa Reingreso E2E");
+  await page.getByLabel("Código de empresa").fill("RECO");
+  const provisioningResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/tenants"),
+  );
+  await page.getByRole("button", { name: "Crear espacio" }).click();
+  expect((await provisioningResponse).status()).toBe(201);
+  await expect(page).toHaveURL(/\/workspace$/);
+
+  // Leave the workspace and come back through "Tus espacios" — the path
+  // that discarded the resolved companyId entirely before this fix, since
+  // GET /tenants/current never invents one on its own and the tenant list
+  // never asked GET /tenants/companies for it either.
+  await page.getByRole("button", { name: "Cambiar espacio" }).click();
+  await expect(page).toHaveURL(/\/tenants$/);
+
+  const companiesResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/tenants/companies") && response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: new RegExp(tenantName) }).click();
+  expect((await companiesResponse).status()).toBe(200);
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(page.getByText("Sin selección específica")).not.toBeVisible();
+
+  // Confirm the resolved company actually reaches a company-scoped module —
+  // real content, not the "selecciona una empresa" guard those modules show
+  // with no companyId.
+  await page.getByRole("button", { name: "Ventas" }).click();
+  await expect(page).toHaveURL(/\/sales$/);
+  await expect(
+    page.getByText("Selecciona una empresa desde el selector de tenant para administrar ventas."),
+  ).not.toBeVisible();
+  await expect(page.getByText("Todavía no hay clientes en esta empresa")).toBeVisible();
 });
