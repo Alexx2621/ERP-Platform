@@ -9,12 +9,14 @@ import { CreateTaxUseCase } from "./application/use-cases/create-tax.use-case";
 import { UpdateTaxUseCase } from "./application/use-cases/update-tax.use-case";
 import { ListTaxesUseCase } from "./application/use-cases/list-taxes.use-case";
 import { SetTaxStatusUseCase } from "./application/use-cases/set-tax-status.use-case";
+import { GetTaxUseCase } from "./application/use-cases/get-tax.use-case";
 import { TaxesController } from "./presentation/taxes.controller";
 
 /**
  * Phase 2 (Master Data) module — sibling of Catalog/Customers/Suppliers,
- * deliberately outside `core/` (docs/ARCHITECTURE.md §5.3-§5.4). Nothing
- * depends on Taxes, so there is no module-loading cycle risk.
+ * deliberately outside `core/` (docs/ARCHITECTURE.md §5.3-§5.4). Sales
+ * (Phase 4) imports this module for `GetTaxUseCase`, a directed,
+ * cycle-free dependency — Taxes itself has zero knowledge of Sales.
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
@@ -25,7 +27,8 @@ import { TaxesController } from "./presentation/taxes.controller";
     UpdateTaxUseCase,
     ListTaxesUseCase,
     SetTaxStatusUseCase,
+    GetTaxUseCase,
   ],
-  exports: [CreateTaxUseCase, ListTaxesUseCase],
+  exports: [CreateTaxUseCase, ListTaxesUseCase, GetTaxUseCase],
 })
 export class TaxesModule {}

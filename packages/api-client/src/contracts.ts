@@ -222,6 +222,52 @@ export interface ListInventoryTransfersFilter {
   limit?: number;
 }
 
+export type SalesChannel = components["schemas"]["QuoteResponseDto"]["channel"];
+export type QuoteStatus = components["schemas"]["QuoteResponseDto"]["status"];
+export type QuoteResponse = components["schemas"]["QuoteResponseDto"];
+export type CreateQuoteInput = components["schemas"]["CreateQuoteDto"];
+export type QuoteLineResponse = components["schemas"]["QuoteLineResponseDto"];
+export type AddQuoteLineInput = components["schemas"]["AddQuoteLineDto"];
+export type ConvertQuoteInput = components["schemas"]["ConvertQuoteDto"];
+
+export type SalesOrderStatus = components["schemas"]["SalesOrderResponseDto"]["status"];
+export type SalesOrderResponse = components["schemas"]["SalesOrderResponseDto"];
+export type CreateSalesOrderInput = components["schemas"]["CreateSalesOrderDto"];
+export type SalesOrderLineResponse = components["schemas"]["SalesOrderLineResponseDto"];
+export type AddSalesOrderLineInput = components["schemas"]["AddSalesOrderLineDto"];
+
+export type SalesReturnResponse = components["schemas"]["SalesReturnResponseDto"];
+export type CreateSalesReturnLineInput = components["schemas"]["CreateSalesReturnLineDto"];
+export type CreateSalesReturnInput = components["schemas"]["CreateSalesReturnDto"];
+export type SalesReturnLineResponse = components["schemas"]["SalesReturnLineResponseDto"];
+
+export interface ListQuotesFilter {
+  status?: QuoteStatus;
+  customerId?: string;
+  limit?: number;
+}
+
+export interface ListSalesOrdersFilter {
+  status?: SalesOrderStatus;
+  customerId?: string;
+  limit?: number;
+}
+
+export interface ListSalesReturnsFilter {
+  salesOrderId?: string;
+  limit?: number;
+}
+
+export type PaymentMethod = components["schemas"]["PaymentResponseDto"]["method"];
+export type PaymentStatus = components["schemas"]["PaymentResponseDto"]["status"];
+export type PaymentResponse = components["schemas"]["PaymentResponseDto"];
+export type CapturePaymentInput = components["schemas"]["CapturePaymentDto"];
+
+export interface ListPaymentsFilter {
+  salesOrderId?: string;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

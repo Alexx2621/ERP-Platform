@@ -61,6 +61,14 @@ import { TaxesController, CreateTaxUseCase } from "./modules/taxes";
 import { WarehousesController, CreateWarehouseUseCase } from "./modules/warehouses";
 import { PriceListsController, CreatePriceListUseCase } from "./modules/pricing";
 import { InventoryController, ListInventoryBalancesUseCase, ListInventoryMovementsUseCase } from "./modules/inventory";
+import {
+  QuotesController,
+  SalesOrdersController,
+  SalesReturnsController,
+  ConfirmSalesOrderUseCase,
+  GetSalesOrderUseCase,
+} from "./modules/sales";
+import { PaymentsController, CapturePaymentUseCase, RefundPaymentUseCase } from "./modules/payments";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -138,6 +146,14 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(InventoryController)).toBeInstanceOf(InventoryController);
     expect(moduleRef.get(ListInventoryBalancesUseCase)).toBeInstanceOf(ListInventoryBalancesUseCase);
     expect(moduleRef.get(ListInventoryMovementsUseCase)).toBeInstanceOf(ListInventoryMovementsUseCase);
+    expect(moduleRef.get(QuotesController)).toBeInstanceOf(QuotesController);
+    expect(moduleRef.get(SalesOrdersController)).toBeInstanceOf(SalesOrdersController);
+    expect(moduleRef.get(SalesReturnsController)).toBeInstanceOf(SalesReturnsController);
+    expect(moduleRef.get(ConfirmSalesOrderUseCase)).toBeInstanceOf(ConfirmSalesOrderUseCase);
+    expect(moduleRef.get(GetSalesOrderUseCase)).toBeInstanceOf(GetSalesOrderUseCase);
+    expect(moduleRef.get(PaymentsController)).toBeInstanceOf(PaymentsController);
+    expect(moduleRef.get(CapturePaymentUseCase)).toBeInstanceOf(CapturePaymentUseCase);
+    expect(moduleRef.get(RefundPaymentUseCase)).toBeInstanceOf(RefundPaymentUseCase);
 
     await moduleRef.close();
   });

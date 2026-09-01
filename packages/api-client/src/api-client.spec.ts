@@ -812,6 +812,160 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Sales and Payments endpoints", async () => {
+    const quote = {
+      id: "quote-1",
+      customerId: "customer-1",
+      channel: "ERP",
+      status: "DRAFT",
+      currency: "USD",
+      notes: null,
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      convertedAt: null,
+      cancelledAt: null,
+    };
+    const quoteLine = {
+      id: "quote-line-1",
+      quoteId: "quote-1",
+      productId: "product-1",
+      productVariantId: null,
+      taxId: null,
+      quantity: "2.0000",
+      unitPrice: "19.9900",
+      discountAmount: "0.0000",
+      taxRate: "0.0000",
+      lineTotal: "39.9800",
+      createdAt: "2026-08-31T00:00:00.000Z",
+    };
+    const order = {
+      id: "order-1",
+      customerId: "customer-1",
+      quoteId: "quote-1",
+      channel: "ERP",
+      status: "DRAFT",
+      currency: "USD",
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      confirmedAt: null,
+      fulfilledAt: null,
+      cancelledAt: null,
+    };
+    const orderLine = {
+      id: "order-line-1",
+      salesOrderId: "order-1",
+      warehouseId: "wh-1",
+      productId: "product-1",
+      productVariantId: null,
+      taxId: null,
+      quantity: "2.0000",
+      unitPrice: "19.9900",
+      discountAmount: "0.0000",
+      taxRate: "0.0000",
+      lineTotal: "39.9800",
+      reservationId: null,
+      createdAt: "2026-08-31T00:00:00.000Z",
+    };
+    const salesReturn = { id: "return-1", salesOrderId: "order-1", reason: "Cambio de opinión", createdAt: "2026-08-31T00:00:00.000Z" };
+    const returnLine = { id: "return-line-1", salesReturnId: "return-1", salesOrderLineId: "order-line-1", quantity: "1.0000", createdAt: "2026-08-31T00:00:00.000Z" };
+    const payment = {
+      id: "payment-1",
+      salesOrderId: "order-1",
+      method: "CASH",
+      status: "CAPTURED",
+      amount: "39.9800",
+      currency: "USD",
+      gatewayReference: null,
+      failureReason: null,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      capturedAt: "2026-08-31T00:00:00.000Z",
+      refundedAt: null,
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([quote]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(quote), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([quoteLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(quoteLine), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...quote, status: "CANCELLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([order]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([orderLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(orderLine), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CONFIRMED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CANCELLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "FULFILLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([salesReturn]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(salesReturn), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([returnLine]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([payment]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(payment), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...payment, status: "REFUNDED" }), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listQuotes("access-token", "grupo-aurora", "company-1", { status: "DRAFT" });
+    await client.createQuote("access-token", "grupo-aurora", "company-1", { customerId: "customer-1", currency: "USD" });
+    await client.listQuoteLines("access-token", "grupo-aurora", "company-1", "quote-1");
+    await client.addQuoteLine("access-token", "grupo-aurora", "company-1", "quote-1", { productId: "product-1", quantity: "2.0000" });
+    await client.convertQuoteToSalesOrder("access-token", "grupo-aurora", "company-1", "quote-1", { warehouseId: "wh-1" });
+    await client.cancelQuote("access-token", "grupo-aurora", "company-1", "quote-2");
+    await client.listSalesOrders("access-token", "grupo-aurora", "company-1", { status: "DRAFT" });
+    await client.createSalesOrder("access-token", "grupo-aurora", "company-1", { customerId: "customer-1", currency: "USD" });
+    await client.listSalesOrderLines("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.addSalesOrderLine("access-token", "grupo-aurora", "company-1", "order-1", {
+      productId: "product-1",
+      warehouseId: "wh-1",
+      quantity: "2.0000",
+    });
+    await client.confirmSalesOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.cancelSalesOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.fulfillSalesOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.listSalesReturns("access-token", "grupo-aurora", "company-1", { salesOrderId: "order-1" });
+    await client.createSalesReturn("access-token", "grupo-aurora", "company-1", {
+      salesOrderId: "order-1",
+      lines: [{ salesOrderLineId: "order-line-1", quantity: "1.0000" }],
+    });
+    await client.listSalesReturnLines("access-token", "grupo-aurora", "company-1", "return-1");
+    await client.listPayments("access-token", "grupo-aurora", "company-1", { salesOrderId: "order-1" });
+    await client.capturePayment("access-token", "grupo-aurora", "company-1", {
+      salesOrderId: "order-1",
+      method: "CASH",
+      amount: "39.9800",
+      currency: "USD",
+      idempotencyKey: "cap-1",
+    });
+    await client.refundPayment("access-token", "grupo-aurora", "company-1", "payment-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/sales/quotes?status=DRAFT", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/sales/quotes", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/sales/quotes/quote-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/sales/quotes/quote-1/lines", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/sales/quotes/quote-1/convert", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/sales/quotes/quote-2/cancel", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/sales/orders?status=DRAFT", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/sales/orders", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/sales/orders/order-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/sales/orders/order-1/lines", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/sales/orders/order-1/confirm", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/sales/orders/order-1/cancel", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/sales/orders/order-1/fulfill", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(14, "/api/v1/sales/returns?salesOrderId=order-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(15, "/api/v1/sales/returns", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(16, "/api/v1/sales/returns/return-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(17, "/api/v1/payments?salesOrderId=order-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(18, "/api/v1/payments/capture", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(19, "/api/v1/payments/payment-1/refund", expect.objectContaining({ method: "POST" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

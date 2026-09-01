@@ -1278,6 +1278,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/movements/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post a manual customer return: stock coming back into a warehouse. */
+        post: operations["InventoryController_return_"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/movements/adjustment": {
         parameters: {
             query?: never;
@@ -1376,6 +1393,249 @@ export interface paths {
         put?: never;
         /** Cancel an IN_TRANSIT transfer: posts a TRANSFER_CANCELLED at the source, reversing the original TRANSFER_OUT. */
         post: operations["InventoryController_cancelTransferHandler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List quotes for the active company. */
+        get: operations["QuotesController_list"];
+        put?: never;
+        /** Create a quote for the active company. */
+        post: operations["QuotesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/quotes/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a quote's lines. */
+        get: operations["QuotesController_listQuoteLines"];
+        put?: never;
+        /** Add a pricing-snapshot line to a DRAFT quote. */
+        post: operations["QuotesController_addQuoteLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/quotes/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert a DRAFT quote into a new DRAFT sales order, copying every line's pricing snapshot verbatim. */
+        post: operations["QuotesController_convert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/quotes/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT quote. */
+        post: operations["QuotesController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List sales orders for the active company. */
+        get: operations["SalesOrdersController_list"];
+        put?: never;
+        /** Create a DRAFT sales order directly (without a quote). */
+        post: operations["SalesOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a sales order's lines. */
+        get: operations["SalesOrdersController_listOrderLines"];
+        put?: never;
+        /** Add a pricing-snapshot line to a DRAFT sales order. */
+        post: operations["SalesOrdersController_addOrderLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a DRAFT order: reserves inventory for every line, compensating (releasing) already-reserved lines if any line fails. */
+        post: operations["SalesOrdersController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT or CONFIRMED order, releasing any attached reservations. */
+        post: operations["SalesOrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders/{id}/fulfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fulfill a CONFIRMED order: releases each line's reservation and issues real stock. */
+        post: operations["SalesOrdersController_fulfill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List returns for the active company. */
+        get: operations["SalesReturnsController_list"];
+        put?: never;
+        /** Record a return against a FULFILLED order: posts a real RETURN inventory movement per line and rejects returning more than was ever fulfilled. */
+        post: operations["SalesReturnsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/returns/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a return's lines. */
+        get: operations["SalesReturnsController_listReturnLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List payments for the active company, optionally scoped to one sales order. */
+        get: operations["PaymentsController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Capture a payment against a sales order via CASH or BANK_TRANSFER. Idempotent by idempotencyKey — a retried request returns the original outcome instead of capturing twice. */
+        post: operations["PaymentsController_capture"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refund a CAPTURED payment in full. */
+        post: operations["PaymentsController_refund"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2210,7 +2470,7 @@ export interface components {
             productId: string;
             productVariantId: string | null;
             /** @enum {string} */
-            type: "RECEIPT" | "ISSUE" | "ADJUSTMENT" | "TRANSFER_OUT" | "TRANSFER_IN" | "TRANSFER_CANCELLED" | "RESERVATION" | "RELEASE";
+            type: "RECEIPT" | "ISSUE" | "ADJUSTMENT" | "TRANSFER_OUT" | "TRANSFER_IN" | "TRANSFER_CANCELLED" | "RESERVATION" | "RELEASE" | "RETURN";
             /**
              * @description Signed — the exact delta this row applied.
              * @example -5.0000
@@ -2218,7 +2478,7 @@ export interface components {
             quantity: string;
             reason: string | null;
             /** @enum {string|null} */
-            referenceType: "TRANSFER" | "RESERVATION" | "MANUAL" | null;
+            referenceType: "TRANSFER" | "RESERVATION" | "MANUAL" | "SALES_ORDER" | "SALES_RETURN" | null;
             referenceId: string | null;
             correlationId: string;
             createdByUserId: string;
@@ -2240,6 +2500,15 @@ export interface components {
             /** @description Required only if the product has variants. */
             productVariantId?: string;
             /** @example 5.0000 */
+            quantity: string;
+            reason?: string;
+        };
+        RecordReturnDto: {
+            warehouseId: string;
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @example 2.0000 */
             quantity: string;
             reason?: string;
         };
@@ -2309,6 +2578,200 @@ export interface components {
             destinationWarehouseId: string;
             /** @example 25.0000 */
             quantity: string;
+        };
+        QuoteResponseDto: {
+            id: string;
+            customerId: string;
+            /** @enum {string} */
+            channel: "ERP" | "POS" | "ECOMMERCE" | "B2B" | "MARKETPLACE" | "MOBILE" | "API";
+            /** @enum {string} */
+            status: "DRAFT" | "CONVERTED" | "CANCELLED";
+            currency: string;
+            notes: string | null;
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            convertedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreateQuoteDto: {
+            customerId: string;
+            /** @enum {string} */
+            channel?: "ERP" | "POS" | "ECOMMERCE" | "B2B" | "MARKETPLACE" | "MOBILE" | "API";
+            /** @example USD */
+            currency: string;
+            notes?: string;
+        };
+        QuoteLineResponseDto: {
+            id: string;
+            quoteId: string;
+            productId: string;
+            productVariantId: string | null;
+            taxId: string | null;
+            /** @example 2.0000 */
+            quantity: string;
+            /** @example 19.9900 */
+            unitPrice: string;
+            /** @example 0.0000 */
+            discountAmount: string;
+            /**
+             * @description Percentage snapshot, e.g. 12.0000 means 12%.
+             * @example 12.0000
+             */
+            taxRate: string;
+            /**
+             * @description Tax-inclusive: (quantity × unitPrice − discount) + tax.
+             * @example 44.7776
+             */
+            lineTotal: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AddQuoteLineDto: {
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            taxId?: string;
+            /** @description Snapshot from this price list when the product has no variants. */
+            priceListId?: string;
+            /** @example 2.0000 */
+            quantity: string;
+            /** @description Overrides the resolved default (variant/product price or price-list snapshot). */
+            unitPrice?: string;
+            /** @example 0.0000 */
+            discountAmount?: string;
+        };
+        ConvertQuoteDto: {
+            /** @description Applied to every converted line whose product tracks inventory. */
+            warehouseId?: string;
+        };
+        SalesOrderResponseDto: {
+            id: string;
+            customerId: string;
+            quoteId: string | null;
+            /** @enum {string} */
+            channel: "ERP" | "POS" | "ECOMMERCE" | "B2B" | "MARKETPLACE" | "MOBILE" | "API";
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "FULFILLED" | "CANCELLED";
+            currency: string;
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            confirmedAt: string | null;
+            /** Format: date-time */
+            fulfilledAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreateSalesOrderDto: {
+            customerId: string;
+            /** @enum {string} */
+            channel?: "ERP" | "POS" | "ECOMMERCE" | "B2B" | "MARKETPLACE" | "MOBILE" | "API";
+            /** @example USD */
+            currency: string;
+        };
+        SalesOrderLineResponseDto: {
+            id: string;
+            salesOrderId: string;
+            warehouseId: string | null;
+            productId: string;
+            productVariantId: string | null;
+            taxId: string | null;
+            /** @example 2.0000 */
+            quantity: string;
+            /** @example 19.9900 */
+            unitPrice: string;
+            /** @example 0.0000 */
+            discountAmount: string;
+            /** @example 12.0000 */
+            taxRate: string;
+            /** @example 44.7776 */
+            lineTotal: string;
+            /** @description Set once, on confirm — never cleared afterward. */
+            reservationId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AddSalesOrderLineDto: {
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            /** @description Required only if the product tracks inventory. */
+            warehouseId?: string;
+            taxId?: string;
+            /** @description Snapshot from this price list when the product has no variants. */
+            priceListId?: string;
+            /** @example 2.0000 */
+            quantity: string;
+            /** @description Overrides the resolved default (variant/product price or price-list snapshot). */
+            unitPrice?: string;
+            /** @example 0.0000 */
+            discountAmount?: string;
+        };
+        SalesReturnResponseDto: {
+            id: string;
+            salesOrderId: string;
+            reason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateSalesReturnLineDto: {
+            salesOrderLineId: string;
+            /** @example 1.0000 */
+            quantity: string;
+        };
+        CreateSalesReturnDto: {
+            salesOrderId: string;
+            reason?: string;
+            lines: components["schemas"]["CreateSalesReturnLineDto"][];
+        };
+        SalesReturnLineResponseDto: {
+            id: string;
+            salesReturnId: string;
+            salesOrderLineId: string;
+            /** @example 1.0000 */
+            quantity: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PaymentResponseDto: {
+            id: string;
+            salesOrderId: string;
+            /** @enum {string} */
+            method: "CASH" | "BANK_TRANSFER";
+            /** @enum {string} */
+            status: "CAPTURED" | "REFUNDED" | "FAILED";
+            /** @example 150.0000 */
+            amount: string;
+            currency: string;
+            gatewayReference: string | null;
+            failureReason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            capturedAt: string | null;
+            /** Format: date-time */
+            refundedAt: string | null;
+        };
+        CapturePaymentDto: {
+            salesOrderId: string;
+            /** @enum {string} */
+            method: "CASH" | "BANK_TRANSFER";
+            /** @example 150.0000 */
+            amount: string;
+            /** @example USD */
+            currency: string;
+            /** @description Deduplicates a retried capture request — see docs/ROADMAP.md §8. */
+            idempotencyKey: string;
+            /** @description Required for BANK_TRANSFER — the transfer confirmation number. */
+            reference?: string;
         };
     };
     responses: never;
@@ -4796,7 +5259,7 @@ export interface operations {
                 warehouseId?: string;
                 productId?: string;
                 productVariantId?: string;
-                referenceType?: "TRANSFER" | "RESERVATION" | "MANUAL";
+                referenceType?: "TRANSFER" | "RESERVATION" | "MANUAL" | "SALES_ORDER" | "SALES_RETURN";
                 referenceId?: string;
                 limit?: number;
             };
@@ -4881,6 +5344,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    InventoryController_return_: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordReturnDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMovementResponseDto"];
+                };
             };
         };
     };
@@ -5121,6 +5612,547 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryTransferResponseDto"];
+                };
+            };
+        };
+    };
+    QuotesController_list: {
+        parameters: {
+            query?: {
+                status?: "DRAFT" | "CONVERTED" | "CANCELLED";
+                customerId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponseDto"][];
+                };
+            };
+        };
+    };
+    QuotesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateQuoteDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponseDto"];
+                };
+            };
+        };
+    };
+    QuotesController_listQuoteLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteLineResponseDto"][];
+                };
+            };
+        };
+    };
+    QuotesController_addQuoteLine: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddQuoteLineDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteLineResponseDto"];
+                };
+            };
+        };
+    };
+    QuotesController_convert: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertQuoteDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+        };
+    };
+    QuotesController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuoteResponseDto"];
+                };
+            };
+        };
+    };
+    SalesOrdersController_list: {
+        parameters: {
+            query?: {
+                status?: "DRAFT" | "CONFIRMED" | "FULFILLED" | "CANCELLED";
+                customerId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"][];
+                };
+            };
+        };
+    };
+    SalesOrdersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSalesOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+        };
+    };
+    SalesOrdersController_listOrderLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderLineResponseDto"][];
+                };
+            };
+        };
+    };
+    SalesOrdersController_addOrderLine: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSalesOrderLineDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderLineResponseDto"];
+                };
+            };
+        };
+    };
+    SalesOrdersController_confirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY_FOR_ORDER */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SalesOrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+        };
+    };
+    SalesOrdersController_fulfill: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+        };
+    };
+    SalesReturnsController_list: {
+        parameters: {
+            query?: {
+                salesOrderId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesReturnResponseDto"][];
+                };
+            };
+        };
+    };
+    SalesReturnsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSalesReturnDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesReturnResponseDto"];
+                };
+            };
+            /** @description SALES_RETURN_EXCEEDS_FULFILLED_QUANTITY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SalesReturnsController_listReturnLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesReturnLineResponseDto"][];
+                };
+            };
+        };
+    };
+    PaymentsController_list: {
+        parameters: {
+            query?: {
+                salesOrderId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentResponseDto"][];
+                };
+            };
+        };
+    };
+    PaymentsController_capture: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapturePaymentDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentResponseDto"];
+                };
+            };
+            /** @description The gateway declined the capture; the payment is recorded as FAILED, not thrown as an error. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentsController_refund: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentResponseDto"];
                 };
             };
         };

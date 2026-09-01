@@ -1,15 +1,18 @@
 # Project State
 
-Última actualización: 2026-08-31 (sesión 26), tras implementar Inventory
-completo — Movement Ledger, balances on-hand/reservado/disponible,
-reservas/liberaciones, ajustes y transferencias con estado explícito —
-**cerrando la Fase 3 por completo en un solo bloque de trabajo**. Ver
-"Hecho — sesión 26" en `docs/WORK_QUEUE.md` para el detalle completo,
-incluyendo la garantía de concurrencia de sus exit criteria ("Pruebas
-concurrentes no permiten oversell/reservas negativas") verificada con
-escritores concurrentes reales contra Postgres real, no solo razonada, y
-la segunda dependencia genuina entre módulos de negocio del código base
-(Inventory → Catalog + Warehouses). Modelo de trabajo vigente:
+Última actualización: 2026-08-31 (sesión 27), tras implementar Sales y
+Payments completos — Quotes/Sales Orders/lines con reserva de inventario
+vía un port transaccional real, Returns como registro independiente, y
+captura/reembolso de pagos idempotentes vía CASH/BANK_TRANSFER —
+**cerrando la Fase 4 por completo en un solo bloque de trabajo**. Ver
+"Hecho — sesión 27" en `docs/WORK_QUEUE.md` para el detalle completo,
+incluyendo las garantías de sus exit criteria ("Confirm/cancel/return
+tienen invariantes y compensaciones probadas", "Duplicar request no
+duplica orden, cargo ni refund") verificadas contra Postgres real, no
+solo razonadas, dos bugs reales encontrados y corregidos antes/durante la
+verificación (una invariante de bodega violada en la conversión de
+cotizaciones; auditoría duplicada en una recaptura idempotente de pago), y
+ADR-009 nuevo (Payment Gateway Adapters V1). Modelo de trabajo vigente:
 `docs/WORK_QUEUE.md` (reemplaza `docs/tasks/FOUNDATION-00X.md`/
 `CURRENT.md`, que quedan como historial).
 
@@ -28,6 +31,37 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
+PHASE 4 — Sales y Payments, **iniciada y formalmente cerrada el
+2026-08-31 (sesión 27, en un solo bloque de trabajo)**: Quote/QuoteLine
+(`DRAFT → CONVERTED | CANCELLED`, nunca reserva inventario),
+SalesOrder/SalesOrderLine (`DRAFT → CONFIRMED → FULFILLED`, `CANCELLED`
+solo desde `DRAFT`/`CONFIRMED`), SalesReturn/SalesReturnLine (registro
+propio append-only, nunca una mutación de estado de la orden), y Payment
+(agregado independiente, `CASH`/`BANK_TRANSFER`, captura/reembolso
+idempotentes) — `apps/api/src/modules/sales`,
+`apps/api/src/modules/payments`, ver "Hecho — sesión 27" en
+`docs/WORK_QUEUE.md` para el detalle completo. El patrón de transacción
+compensatoria de `ConfirmSalesOrderUseCase` (libera toda reserva ya hecha
+en el intento actual si una línea posterior falla por stock insuficiente)
+y la idempotencia real de `CapturePaymentUseCase` (constraint
+`@@unique([tenantId, companyId, idempotencyKey])`, no solo un chequeo de
+aplicación) fueron verificados con escenarios genuinamente concurrentes
+contra Postgres real (`apps/api/test/integration/sales.integration-spec.ts`,
+`.../payments.integration-spec.ts`), cumpliendo los exit criteria de
+`docs/ROADMAP.md` §8 directamente, no solo por inspección de código.
+Tercera dependencia genuina entre módulos de negocio del código base
+(Sales → Catalog + Warehouses + Taxes + Pricing + Customers + Inventory,
+la más transversal hasta ahora) y primer módulo (Payments → Sales) que
+depende de otro módulo de negocio, no solo del Core/Master Data. Alcance
+deliberadamente fuera de Fase 4, sin aprobación explícita (ver ADR-009):
+un motor de reglas fiscales real, resolución automática de lista de
+precios, número de orden/cotización legible, confirm/fulfill parcial por
+línea, Invoice/Shipment, adapters de pago con credenciales reales,
+verificación de webhooks, reconciliación por timeout, reembolso parcial —
+ver "Known limitations" en `docs/SECURITY.md` "Sales"/"Payments". Próxima
+fase no bloqueada: PHASE 5 — Purchasing (`docs/ROADMAP.md` §9), salvo
+indicación distinta del usuario.
+
 PHASE 3 — Inventory, **iniciada y formalmente cerrada el 2026-08-31
 (sesión 26, en un solo bloque de trabajo)**: Movement Ledger
 (`InventoryMovement`, append-only, `quantity` decimal con signo),
@@ -43,10 +77,10 @@ reales contra Postgres real (`apps/api/test/integration/
 inventory.integration-spec.ts`), cumpliendo el exit criteria de
 `docs/ROADMAP.md` §7 directamente, no solo por inspección de código.
 Alcance deliberadamente fuera de Fase 3, sin aprobación explícita:
-ubicaciones/bins de bodega, lote/serie/vencimiento, conexión real desde
-Sales/Purchasing/POS (todavía no existen) — ver "Known limitations" en
-`docs/SECURITY.md` "Inventory". Próxima fase no bloqueada: PHASE 4 —
-Sales (`docs/ROADMAP.md` §8), salvo indicación distinta del usuario.
+ubicaciones/bins de bodega, lote/serie/vencimiento — ver "Known
+limitations" en `docs/SECURITY.md` "Inventory" (su hueco de conexión con
+Sales/Purchasing/POS ya cerró parcialmente en la sesión 27: Sales es
+ahora un llamador real).
 
 PHASE 2 — Master Data, **iniciada el 2026-08-31 (sesión 23) y formalmente
 cerrada el 2026-08-31 (sesión 25)**, los tres bloques descritos en
@@ -883,9 +917,85 @@ bloqueen.
   de `correlation_id` confirmados directamente vía `psql`, auditoría real
   confirmada. Detalle completo en `docs/WORK_QUEUE.md`
   ("Hecho — sesión 26").
-- 592 tests unitarios pasando (api 480, api-client 14, erp-web 32) + 27 en
-  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 28
-  tests de integración con Postgres real + **10 tests E2E de Playwright
+- **Sales y Payments — Fase 4, completa** (`apps/api/src/modules/sales`,
+  `apps/api/src/modules/payments`, Claude, sesión 27, en un solo bloque de
+  trabajo): `Quote`/`QuoteLine` (`DRAFT → CONVERTED | CANCELLED`, nunca
+  reserva inventario — solo un `SalesOrder` confirmado lo hace),
+  `SalesOrder`/`SalesOrderLine` (`DRAFT → CONFIRMED → FULFILLED`,
+  `CANCELLED` alcanzable solo desde `DRAFT`/`CONFIRMED` — una orden
+  despachada se corrige con una devolución, no una cancelación),
+  `SalesReturn`/`SalesReturnLine` (registro propio append-only, sin
+  columna de estado — nunca una mutación de `SalesOrder`). **Patrón nuevo:
+  entidades de doble factory** — `QuoteLine`/`SalesOrderLine` tienen
+  `.create()` (calcula `lineTotal` vía `domain/decimal.ts`, aritmética
+  `BigInt` sin dependencias — `tax = applyPercentage(subtotal, taxRate)`,
+  primeras operaciones de multiplicación/porcentaje de este código base)
+  y `.fromProps()` (confía en el valor persistido) porque `lineTotal` es
+  un hecho histórico, no un valor que deba recalcularse silenciosamente
+  al leer. **Módulo más transversal del código base hasta ahora**: 6
+  dependencias directas y sin ciclos (Catalog, Warehouses, Taxes, Pricing,
+  Customers, Inventory). `ConfirmSalesOrderUseCase` implementa el patrón
+  de transacción compensatoria que `docs/ROADMAP.md` §8 exige
+  explícitamente: reserva línea por línea vía el `CreateReservationUseCase`
+  real de Inventory, y si una línea falla por stock insuficiente, libera
+  cada reserva ya hecha en el intento actual antes de relanzar el error —
+  **verificado contra Postgres real con un escenario multi-línea genuino**
+  donde la segunda línea falla de verdad: reservas previas liberadas,
+  saldo completamente disponible, orden permanece `DRAFT`.
+  `FulfillSalesOrderUseCase` reutiliza `ReleaseReservationUseCase` +
+  `RecordIssueUseCase` de Inventory en vez de un tipo de movimiento nuevo.
+  `CreateSalesReturnUseCase` valida contra la suma corriente de todas las
+  devoluciones previas de una línea (lectura de ledger, nunca un contador
+  guardado) y postea `RETURN` real vía Inventory. **Bug real encontrado y
+  corregido antes del primer commit**: `ConvertQuoteToSalesOrderUseCase`
+  asignaba `warehouseId` a toda línea convertida sin verificar
+  `product.trackInventory`, violando la invariante que
+  `ConfirmSalesOrderUseCase` asume — corregido resolviendo cada línea vía
+  el `GetProductUseCase` público de Catalog. **`apps/api/src/modules/
+  payments/`**: `Payment` (agregado independiente de `SalesOrder`),
+  `PaymentGateway` (puerto con `capture()`/`refund()` síncronos y siempre
+  terminales), `CashPaymentGatewayAdapter` (siempre exitoso, sin
+  referencia), `BankTransferPaymentGatewayAdapter` (exige una referencia
+  de transferencia real o falla con razón explícita). **Deliberadamente
+  sin ningún adapter con credenciales** (Stripe/PayPal/etc., ver ADR-009
+  nuevo) — fabricar uno así habría violado MASTER_SPEC §90 más gravemente
+  que cualquier otra simulación ya evitada, precisamente por tratarse de
+  dinero real. Idempotencia real de `CapturePaymentUseCase` vía
+  `@@unique([tenantId, companyId, idempotencyKey])`, con reacción real a
+  `PaymentIdempotencyConflictError` para la carrera concurrente genuina —
+  **verificado contra Postgres real con 5 capturas genuinamente
+  concurrentes**: las 5 resuelven con éxito, coinciden en el mismo
+  `Payment.id`, exactamente una creó la fila y las otras 4 fueron réplicas
+  reales, y exactamente una fila existe al final. **Segundo bug real
+  encontrado por el propio smoke test manual**: cada recaptura idempotente
+  escribía una segunda entrada de auditoría (`payments.payment.captured`)
+  para un único cargo real — corregido haciendo que `CapturePaymentUseCase.
+  execute()` devuelva `{ payment, wasReplayed }` y que el controller solo
+  audite cuando `!wasReplayed`; re-verificado contra Postgres real (14
+  entradas de auditoría → 13, con una sola captura). 8 permisos nuevos
+  (`sales.quotes.*`/`sales.orders.*`/`sales.returns.*`/`payments.*`),
+  auditoría real en las 11 acciones de escritura nuevas. Tabla nueva
+  (migración `20260831224651_sales_and_payments`, **generada y aplicada
+  directamente contra Postgres real**, combinando ambos módulos en una
+  sola migración). Contrato HTTP nuevo (`/api/v1/sales/quotes`,
+  `/api/v1/sales/orders`, `/api/v1/sales/returns`, `/api/v1/payments`).
+  UI nueva ("Ventas", `apps/erp-web/src/features/sales`, ruta `/sales`)
+  con pestañas Cotizaciones/Pedidos/Devoluciones; convertir una cotización
+  cambia automáticamente a la pestaña Pedidos y abre el detalle de la
+  orden recién creada; los Pagos viven dentro del detalle de un pedido, no
+  como página propia. **Verificado con un E2E de Playwright real**
+  (`apps/e2e/tests/sales.spec.ts`): ciclo de vida completo por navegador
+  real — cliente y producto reales, cotización → línea → conversión a
+  pedido → confirmación (reserva real) → captura de pago CASH real →
+  despacho real → saldo de inventario real verificado → devolución real →
+  saldo restaurado verificado. **Smoke test manual adicional verificado
+  contra Docker/Postgres real**: ciclo completo con precisión decimal
+  confirmada, reintento idempotente confirmado (`sameAsFirst: true`), y
+  las 13 entradas de auditoría esperadas confirmadas tras el fix. Detalle
+  completo en `docs/WORK_QUEUE.md` ("Hecho — sesión 27").
+- 734 tests unitarios pasando (api 617, api-client 15, erp-web 36) + 27 en
+  `@erp/events` + 33 en `@erp/notifications` + 6 en `@erp/worker` + 31
+  tests de integración con Postgres real + **11 tests E2E de Playwright
   pasando contra infraestructura real completa** (Chromium real,
   Postgres+Redis+MinIO efímeros vía Testcontainers, API y worker
   compilados reales, Vite real), incluyendo pruebas de wiring real de
@@ -896,7 +1006,8 @@ bloqueen.
   `app-registry.module.spec.ts`, `catalog.module.spec.ts`,
   `customers.module.spec.ts`, `suppliers.module.spec.ts`,
   `taxes.module.spec.ts`, `warehouses.module.spec.ts`,
-  `pricing.module.spec.ts`, `inventory.module.spec.ts` en `apps/api`;
+  `pricing.module.spec.ts`, `inventory.module.spec.ts`,
+  `sales.module.spec.ts`, `payments.module.spec.ts` en `apps/api`;
   `outbox-dispatcher.module.spec.ts`/`notifications.module.spec.ts` en
   `@erp/events`/`@erp/notifications`; `worker.module.spec.ts` (ahora
   también verifica `TenantProvisionedNotificationHandler`) en
@@ -957,39 +1068,47 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — **Fase 3 (Inventory) quedó formalmente cerrada en la
-sesión 26**, en un solo bloque de trabajo (ver Completed arriba y
-"Hecho — sesión 26" en `docs/WORK_QUEUE.md`). El siguiente bloque no
-bloqueado es Fase 4 (Sales) según `docs/ROADMAP.md` §8, salvo indicación
-distinta del usuario.
+Ninguno activo — **Fase 4 (Sales y Payments) quedó formalmente cerrada en
+la sesión 27**, en un solo bloque de trabajo (ver Completed arriba y
+"Hecho — sesión 27" en `docs/WORK_QUEUE.md`). El siguiente bloque no
+bloqueado es Fase 5 (Purchasing) según `docs/ROADMAP.md` §9, salvo
+indicación distinta del usuario.
 
 ## Pending
 
 Ningún ítem de la cola original de Foundation queda pendiente
 (`docs/WORK_QUEUE.md`), ningún ítem del alcance de Fase 2 descrito en
 `docs/ARCHITECTURE.md` §5.2 queda pendiente, y ningún ítem del alcance de
-Fase 3 (`docs/ROADMAP.md` §7) queda pendiente. También pendiente, sin
-bloquear Fase 4: ratificar ADR-001, ADR-002 y ADR-003 formalmente
-(ADR-004, ADR-005, ADR-006, ADR-007 y ADR-008 ya están ratificados) — sus
-decisiones ya están implementadas y verificadas, solo falta el documento
-formal. La UI de RBAC (incluida la invitación de miembros), el E2E de
-sesión, la UI de Configuración, la UI de Platform Administration
+Fase 3 (`docs/ROADMAP.md` §7) ni de Fase 4 (`docs/ROADMAP.md` §8) queda
+pendiente. También pendiente, sin bloquear Fase 5: ratificar ADR-001,
+ADR-002 y ADR-003 formalmente (ADR-004 a ADR-009 ya están ratificados) —
+sus decisiones ya están implementadas y verificadas, solo falta el
+documento formal. La UI de RBAC (incluida la invitación de miembros), el
+E2E de sesión, la UI de Configuración, la UI de Platform Administration
 (sesión 18), la UI de Apps (sesión 22), la UI de Catálogo (sesión 23), la
 UI de Contactos/Customers/Suppliers (sesión 24), la UI de Comercial/
-Taxes/Warehouses/Pricing (sesión 25) y la UI de Inventario (sesión 26) ya
-están hechas e integradas (ver Completed); la UI de Files (subida/
-listado/descarga) y de Notifications (bandeja/badge de no leídas) todavía
-no se han construido — quedan como mejoras de UX sin dependencia de
-arquitectura, a retomar si el usuario las pide o cuando un módulo de
-negocio las necesite. Alcance deliberadamente diferido a fases futuras
-dentro de Master Data (no bloquea el cierre de Fase 2, ver "Known
-limitations" en `docs/SECURITY.md`): motor de reglas fiscales real,
-resolución de lista de precios aplicable a una venta, precios de lista por
-variante, asociación Warehouse↔Branch/Location, import/export masivo.
-Alcance deliberadamente diferido dentro de Inventory (no bloquea el cierre
-de Fase 3, ver "Known limitations" en `docs/SECURITY.md` "Inventory"):
-ubicaciones/bins de bodega, lote/serie/vencimiento, conexión real desde
-Sales/Purchasing/POS (todavía no existen).
+Taxes/Warehouses/Pricing (sesión 25), la UI de Inventario (sesión 26) y la
+UI de Ventas/Pagos (sesión 27) ya están hechas e integradas (ver
+Completed); la UI de Files (subida/listado/descarga) y de Notifications
+(bandeja/badge de no leídas) todavía no se han construido — quedan como
+mejoras de UX sin dependencia de arquitectura, a retomar si el usuario las
+pide o cuando un módulo de negocio las necesite. Alcance deliberadamente
+diferido a fases futuras dentro de Master Data (no bloquea el cierre de
+Fase 2, ver "Known limitations" en `docs/SECURITY.md`): motor de reglas
+fiscales real, resolución de lista de precios aplicable a una venta,
+precios de lista por variante, asociación Warehouse↔Branch/Location,
+import/export masivo. Alcance deliberadamente diferido dentro de
+Inventory (no bloquea el cierre de Fase 3, ver "Known limitations" en
+`docs/SECURITY.md` "Inventory"): ubicaciones/bins de bodega, lote/serie/
+vencimiento, conexión real desde Purchasing/POS (todavía no existen — la
+de Sales ya cerró en la sesión 27). Alcance deliberadamente diferido
+dentro de Sales/Payments (no bloquea el cierre de Fase 4, ver ADR-009 y
+"Known limitations" en `docs/SECURITY.md` "Sales"/"Payments"): motor de
+reglas fiscales real, resolución automática de lista de precios, número
+de orden/cotización legible, confirm/fulfill parcial por línea, Invoice/
+Shipment, adapters de pago con credenciales reales
+(Stripe/PayPal/BAC/Tilopay), verificación de webhooks, reconciliación por
+timeout del proveedor, reembolso parcial.
 
 ## Production Status
 
@@ -1405,5 +1524,46 @@ rechazados nunca tocaron la tabla), repetido para reservas concurrentes
 con el mismo resultado (`reservedQuantity: "10.0000"`, nunca negativo, sin
 sobre-reservar más allá de las 10 unidades reales de existencia). Los
 datos de prueba de esta sesión permanecen en la base, por el mismo motivo
+`onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
+anteriores.
+
+**Sesión 27 (2026-08-31, Sales y Payments — Fase 4)**: migración
+`20260831224651_sales_and_payments` (`quotes`, `quote_lines`,
+`sales_orders`, `sales_order_lines`, `sales_returns`, `sales_return_lines`,
+`payments`, más `@@unique([tenantId, id])` nuevo en `customers` y `taxes`)
+generada y **aplicada directamente contra Postgres real** vía el mismo
+workaround no-interactivo de `prisma migrate diff --script` ya
+establecido, aplicada limpiamente al primer intento pese a combinar dos
+módulos en una sola migración — `prisma migrate status` confirma las 18
+migraciones aplicadas sin drift. Verificado con el servidor real
+reconstruido y un smoke test manual completo vía HTTP: registro y
+provisioning con compañía real → cliente, unidad de medida, producto y
+bodega reales vía Customers/Catalog/Warehouses reales → recepción real de
+50 unidades → orden de venta real con una línea real
+(`lineTotal: "75.0000"`, 3 × 25.00, precisión decimal real confirmada) →
+confirmación real (reserva real vía Inventory) → captura de pago CASH
+real (`status: "CAPTURED"`) → **reintento con la misma `idempotencyKey`
+confirmado devolviendo el mismo `Payment.id`** (`sameAsFirst: true`,
+verificado antes y después del fix de auditoría descrito en Completed) →
+despacho real (`status: "FULFILLED"`) → reembolso real
+(`status: "REFUNDED"`) → `GET /api/v1/audit-entries` confirma primero 14
+entradas (con el bug de auditoría duplicada todavía presente) y, tras el
+fix y reinicio del servidor real, exactamente 13 entradas con una sola
+`payments.payment.captured` — el bug real encontrado por este mismo smoke
+test, documentado en Completed y docs/DATABASE.md "Payments table".
+Adicionalmente, verificado con capturas **genuinamente concurrentes**
+contra el Postgres efímero de Testcontainers (mismo nivel de realismo que
+el resto de la suite de integración): 5 llamadas concurrentes reales a
+`CapturePaymentUseCase.execute()` vía `Promise.allSettled` con la misma
+`idempotencyKey`, confirmando las 5 resueltas con éxito, las 5 coincidiendo
+en el mismo `Payment.id`, exactamente una con `wasReplayed: false` y
+cuatro con `wasReplayed: true`, y exactamente una fila real en la tabla
+`payments` al final. El escenario de compensación multi-línea de
+`ConfirmSalesOrderUseCase` (una línea de 3 unidades reservada con éxito,
+una segunda de 5 unidades fallando contra solo 4 unidades restantes) se
+verificó igualmente contra el Postgres efímero de Testcontainers,
+confirmando que la primera reserva quedó liberada, el saldo volvió a
+estar completamente disponible, y la orden permaneció `DRAFT`. Los datos
+de prueba de esta sesión permanecen en la base, por el mismo motivo
 `onDelete: Restrict` de `audit_entries.user_id` ya documentado en sesiones
 anteriores.

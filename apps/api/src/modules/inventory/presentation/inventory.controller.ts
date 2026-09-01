@@ -8,6 +8,7 @@ import { PermissionGuard, RequirePermission } from "../../../core/access-control
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { RecordReceiptUseCase } from "../application/use-cases/record-receipt.use-case";
 import { RecordIssueUseCase } from "../application/use-cases/record-issue.use-case";
+import { RecordReturnUseCase } from "../application/use-cases/record-return.use-case";
 import { AdjustInventoryUseCase } from "../application/use-cases/adjust-inventory.use-case";
 import { ListInventoryBalancesUseCase } from "../application/use-cases/list-inventory-balances.use-case";
 import { ListInventoryMovementsUseCase } from "../application/use-cases/list-inventory-movements.use-case";
@@ -25,6 +26,7 @@ import {
   ListInventoryMovementsQueryDto,
   RecordIssueDto,
   RecordReceiptDto,
+  RecordReturnDto,
 } from "./dto/inventory-movement.dto";
 import {
   CreateReservationDto,
@@ -44,6 +46,7 @@ export class InventoryController {
   constructor(
     private readonly recordReceipt: RecordReceiptUseCase,
     private readonly recordIssue: RecordIssueUseCase,
+    private readonly recordReturn: RecordReturnUseCase,
     private readonly adjustInventory: AdjustInventoryUseCase,
     private readonly listBalances: ListInventoryBalancesUseCase,
     private readonly listMovements: ListInventoryMovementsUseCase,
@@ -170,6 +173,40 @@ export class InventoryController {
         tenantId: ctx.tenantId,
         companyId,
         action: "inventory.movement.issue",
+        resource: "InventoryMovement",
+        resourceId: movement.id,
+        newValues: { warehouseId: movement.warehouseId, productId: movement.productId, quantity: movement.quantity, onHand: balance.onHandQuantity },
+        correlationId: ctx.correlationId,
+      });
+      return InventoryMovementResponseDto.fromDomain(movement);
+    } catch (error) {
+      handleInventoryError(error);
+    }
+  }
+
+  @Post("movements/return")
+  @UseGuards(PermissionGuard)
+  @RequirePermission("inventory.movements.manage")
+  @ApiOperation({ summary: "Post a manual customer return: stock coming back into a warehouse." })
+  @ApiResponse({ status: HttpStatus.CREATED, type: InventoryMovementResponseDto })
+  async return_(
+    @Body() dto: RecordReturnDto,
+    @CurrentTenantContext() ctx: TenantExecutionContext,
+  ): Promise<InventoryMovementResponseDto> {
+    try {
+      const companyId = requireCompanyId(ctx);
+      const { movement, balance } = await this.recordReturn.execute({
+        tenantId: ctx.tenantId,
+        companyId,
+        actorUserId: ctx.actor.userId,
+        correlationId: ctx.correlationId,
+        ...dto,
+      });
+      await this.recordAuditEntry.execute({
+        userId: ctx.actor.userId,
+        tenantId: ctx.tenantId,
+        companyId,
+        action: "inventory.movement.return",
         resource: "InventoryMovement",
         resourceId: movement.id,
         newValues: { warehouseId: movement.warehouseId, productId: movement.productId, quantity: movement.quantity, onHand: balance.onHandQuantity },

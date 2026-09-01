@@ -1038,3 +1038,182 @@ minus the two hand-added partial indexes and the `correlation_id` type
 fix), then applied via `prisma migrate deploy`. Applied cleanly against
 both the real `erp_platform` Postgres container and the ephemeral
 Testcontainers Postgres used by the integration/E2E suites.
+
+## Sales tables (Phase 4A, 2026-08-31)
+
+Scope: `docs/ROADMAP.md` §8 (4A) — Quotes, Sales Orders and lines with
+explicit status/transitions, pricing snapshot with discounts/taxes/channel,
+inventory reservation via a transactional port into Inventory, and Returns
+kept structurally separate from an Order status mutation. `apps/api/src/
+modules/sales`.
+
+### `quotes` / `sales_orders`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `customer_id` | `uuid` | → `customers(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `quote_id` | `uuid?` | `sales_orders` only — → `quotes(tenantId, id)`, `NULL` for an order created directly (not via conversion). |
+| `channel` | `SalesChannel` | `ERP` \| `POS` \| `ECOMMERCE` \| `B2B` \| `MARKETPLACE` \| `MOBILE` \| `API` (MASTER_SPEC §21). Defaults to `ERP`. |
+| `status` | `QuoteStatus` / `SalesOrderStatus` | `DRAFT` → `CONVERTED` \| `CANCELLED` (Quote, both terminal); `DRAFT` → `CONFIRMED` → `FULFILLED`, with `CANCELLED` reachable only from `DRAFT`/`CONFIRMED` — never after `FULFILLED` (SalesOrder). No `PENDING`/`PROCESSING`/`PARTIALLY_FULFILLED`/`REFUNDED`: this slice has no per-line fulfillment tracking or invoicing to make those states real, same "don't model a state with no distinct behavior yet" reasoning ADR-005 already used for `TenantApp`. |
+| `currency` | `varchar(3)` | ISO 4217, uppercased in the domain. |
+| `notes` | `varchar(1000)?` | `quotes` only. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+| `converted_at` / `cancelled_at` (Quote), `confirmed_at` / `fulfilled_at` / `cancelled_at` (SalesOrder) | `timestamptz(6)?` | |
+
+No human-readable `ORD-000001`/`QUO-000001` correlative number in this
+slice — MASTER_SPEC §34 explicitly frames these as optional ("puede
+existir"), and a genuinely safe generator needs the same bounded-retry-on-
+conflict machinery `inventory_balances`' partial unique indexes required;
+building it half-safe would be worse than deferring it (see
+docs/SECURITY.md "Sales").
+
+### `quote_lines` / `sales_order_lines`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` | `uuid` | Required (no separate `company_id` — scoped through the parent Quote/SalesOrder). |
+| `quote_id` / `sales_order_id` | `uuid` | → parent, `ON DELETE RESTRICT`. |
+| `warehouse_id` | `uuid?` | `sales_order_lines` only — `NULL` unless the product tracks inventory (a Quote line never has a warehouse at all; see `Quote`'s own docstring). |
+| `product_id` / `product_variant_id` / `tax_id` | `uuid` / `uuid?` / `uuid?` | Same shape as Inventory/Pricing's own line-target fields. |
+| `quantity` / `unit_price` / `discount_amount` | `numeric(14,4)` | Real money/quantity fields — first Sales table with monetary columns, same `numeric(14,4)` precision already used by Catalog/Pricing. |
+| `tax_rate` | `numeric(7,4)` | Percentage snapshot, matching `taxes.rate`'s own precision — `"12.0000"` means 12%. |
+| `line_total` | `numeric(14,4)` | `(quantity × unitPrice − discountAmount) + tax`, computed once by `QuoteLine.create()`/`SalesOrderLine.create()` (`apps/api/src/modules/sales/domain/decimal.ts`, dependency-free BigInt arithmetic — domain must not depend on Prisma's `Decimal`, docs/ARCHITECTURE.md §6) and **never recomputed on read** — see the dual-factory pattern below. |
+| `reservation_id` | `uuid?` | `sales_order_lines` only. `NULL` until `ConfirmSalesOrderUseCase` attaches it exactly once; never cleared afterward — a permanent pointer to which `InventoryReservation` this line used, even after it is released. |
+| `created_at` | `timestamptz(6)` | |
+
+**Dual-factory entities, a genuinely new pattern in this codebase**:
+`QuoteLine`/`SalesOrderLine` have `.create()` (computes `lineTotal` from
+the other fields — used for real creation) and `.fromProps()` (trusts the
+stored value as-is — used for reconstruction from persistence, and for
+`ConvertQuoteToSalesOrderUseCase` copying a QuoteLine's already-computed
+snapshot verbatim into a new SalesOrderLine). Every prior entity in this
+codebase safely reused a single factory for both creation and
+reconstruction because none had a computed field; `lineTotal` is a
+historical fact of what the customer was quoted/sold, not a value that
+should silently change on read if a future rounding-rule change would
+compute it slightly differently.
+
+**Real bug found and fixed before this module's first commit**:
+`ConvertQuoteToSalesOrderUseCase` originally assigned the caller-supplied
+`warehouseId` to *every* converted line unconditionally, regardless of
+whether that line's product tracks inventory. `ConfirmSalesOrderUseCase`
+decides whether to reserve inventory for a line solely from
+`line.warehouseId !== null` — so a converted line for a non-tracked
+product would have carried a `warehouseId` it should never have, causing
+`ConfirmSalesOrderUseCase` to attempt a real reservation against
+Inventory's `ResolveProductTargetUseCase`, which correctly rejects it with
+`ProductInventoryNotTrackedError` — an error type `ConfirmSalesOrderUseCase`'s
+compensation logic doesn't catch (it only compensates
+`InsufficientInventoryError`), so it would have propagated as a raw,
+unmapped 500 instead of a clean, compensated failure. Fixed by having
+`ConvertQuoteToSalesOrderUseCase` call Catalog's `GetProductUseCase` per
+line and only carry the warehouse through when `product.trackInventory` is
+true — verified with a dedicated unit test asserting the untracked line's
+`warehouseId` is `null` after conversion even when a warehouse was
+supplied for the whole conversion.
+
+### `sales_returns` / `sales_return_lines`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` (both) / `company_id` (`sales_returns` only) | `uuid` | |
+| `sales_order_id` | `uuid` | → `sales_orders(tenantId, id)`, `ON DELETE RESTRICT`. Requires the order to be `FULFILLED` — enforced in the domain, not a DB constraint. |
+| `reason` | `varchar(500)?` | `sales_returns` only. |
+| `sales_return_id` / `sales_order_line_id` | `uuid` / `uuid` | `sales_return_lines` only — → parent return, → the fulfilled order line being returned against. |
+| `quantity` | `numeric(14,4)` | Unsigned. Validated against the running sum of every prior `sales_return_line` for the same `sales_order_line_id` (a ledger read via `listBySalesOrderLine`, not a stored running total — same philosophy as `inventory_balances`), never a stored counter that could drift. |
+| `created_at` | `timestamptz(6)` | |
+
+**No status column on `sales_returns`** — a return is its own append-only
+record, never a `SalesOrder` status mutation (a `FULFILLED` order stays
+`FULFILLED` regardless of how many returns are later recorded against
+it — see `SalesOrder`'s own docstring). `CreateSalesReturnUseCase` posts a
+real `RETURN` inventory movement per line whose order line has a
+`warehouseId` (via Inventory's public `RecordReturnUseCase`,
+`referenceType: "SALES_RETURN"`), restoring on-hand stock.
+
+### Migration
+
+`packages/database/prisma/migrations/20260831224651_sales_and_payments/` —
+combines the Sales and Payments schemas (below) in one migration, same
+"combine several new modules in one migration" pattern already used by
+the Taxes/Warehouses/Pricing closing block. Also adds
+`@@unique([tenantId, id])` to `customers` and `taxes` — neither had one
+before, since Sales is their first FK-referencing consumer (mirroring the
+same requirement Pricing's `AddPriceListItemUseCase` created for
+`products` in Phase 2). Generated via the same non-interactive `prisma
+migrate diff --from-config-datasource --to-schema ... --script` workaround
+already used throughout this project (Prisma's interactive warning prompt
+about new unique constraints on existing data fails non-interactively),
+applied via `prisma migrate deploy`, verified against real Postgres —
+`prisma migrate status` confirms no drift.
+
+## Payments table (Phase 4B, 2026-08-31)
+
+Scope: `docs/ROADMAP.md` §8 (4B) — a `Payment` aggregate independent of
+`SalesOrder`, a `PaymentGateway` port with real adapters, idempotent
+capture, and refund. `apps/api/src/modules/payments`. Deliberately
+**not** built: webhook verification and provider-timeout reconciliation —
+both are only meaningful once a real asynchronous gateway exists; see
+docs/SECURITY.md "Payments" and `docs/DECISIONS.md` for the scope decision
+that ships only credential-free adapters in this slice.
+
+### `payments`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | Required. |
+| `sales_order_id` | `uuid` | → `sales_orders(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `method` | `PaymentMethod` | `CASH` \| `BANK_TRANSFER` only — see `docs/DECISIONS.md`, Payments section, for why no credential-requiring provider (`StripeAdapter`/`PayPalAdapter`) is faked here (MASTER_SPEC §90). |
+| `status` | `PaymentStatus` | `CAPTURED` \| `REFUNDED` \| `FAILED`. A capture always resolves synchronously to one of these — never `PENDING` — since neither method has an asynchronous confirmation step to reconcile later. |
+| `amount` | `numeric(14,4)` | |
+| `currency` | `varchar(3)` | Must match the sales order's own currency — enforced in `CapturePaymentUseCase`, not a DB constraint. |
+| `idempotency_key` | `varchar(100)` | Caller-supplied, deduplicates a retried capture request. |
+| `gateway_reference` | `varchar(200)?` | The bank transfer confirmation number for `BANK_TRANSFER`; always `NULL` for `CASH` (no external reference exists). |
+| `failure_reason` | `varchar(500)?` | Set only when `status = FAILED` (e.g. a `BANK_TRANSFER` capture with no reference). |
+| `created_at` / `captured_at` / `refunded_at` | `timestamptz(6)` / `timestamptz(6)?` / `timestamptz(6)?` | |
+
+`@@unique([tenantId, companyId, idempotencyKey])` is the real frontier
+that satisfies `docs/ROADMAP.md` §8's exit criteria ("duplicar request no
+duplica... cargo") — not an application-level check alone.
+`CapturePaymentUseCase` pre-checks `findByIdempotencyKey` before calling
+the gateway (covers the common sequential-retry case), and
+`PrismaPaymentRepository.save()` translates a real unique-constraint
+violation (a genuine concurrent race between two first-time requests with
+the same key) into `PaymentIdempotencyConflictError`, which the use case
+catches and reacts to by re-fetching the real winner — never leaking a raw
+Prisma error type across the module boundary (docs/ARCHITECTURE.md §6).
+Verified against real Postgres, not just reasoned about:
+`apps/api/test/integration/payments.integration-spec.ts` fires five
+genuinely concurrent `CapturePaymentUseCase.execute()` calls with the same
+idempotency key and asserts all five resolve successfully, all five agree
+on the exact same `Payment.id`, exactly one attempt actually created the
+row (`wasReplayed: false`) and the other four were real replays
+(`wasReplayed: true`), and exactly one row exists in the table afterward.
+
+**Real bug found and fixed by this table's own manual smoke test against
+real Postgres, before this session's commit**: `CapturePaymentUseCase`
+originally returned the bare `Payment` from `execute()`, and
+`PaymentsController.capture()` unconditionally wrote a
+`payments.payment.captured` audit entry after every call — including a
+call that only replayed an already-captured payment via the idempotency
+pre-check. A retried capture request (the exact scenario idempotency
+exists to make safe) was therefore writing a **second** audit entry for
+what was really a single real charge, falsely implying in the audit trail
+that the payment had been captured twice. Fixed by having
+`CapturePaymentUseCase.execute()` return `{ payment, wasReplayed }`, and
+`PaymentsController.capture()` only records the audit entry when
+`!wasReplayed`. Re-verified against real Postgres: the same idempotent
+retry that previously produced 14 audit entries for the smoke test's full
+lifecycle now produces exactly 13, with exactly one
+`payments.payment.captured` row.
+
+### Migration
+
+Combined with `sales_and_payments` above (`packages/database/prisma/
+migrations/20260831224651_sales_and_payments/`).

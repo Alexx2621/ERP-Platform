@@ -9,12 +9,14 @@ import { CreateCustomerUseCase } from "./application/use-cases/create-customer.u
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.use-case";
 import { ListCustomersUseCase } from "./application/use-cases/list-customers.use-case";
 import { SetCustomerStatusUseCase } from "./application/use-cases/set-customer-status.use-case";
+import { GetCustomerUseCase } from "./application/use-cases/get-customer.use-case";
 import { CustomersController } from "./presentation/customers.controller";
 
 /**
  * Phase 2 (Master Data) module — sibling of Catalog, deliberately outside
- * `core/` (docs/ARCHITECTURE.md §5.3-§5.4). Nothing depends on Customers, so
- * — like Catalog/Configuration/Files — there is no module-loading cycle risk.
+ * `core/` (docs/ARCHITECTURE.md §5.3-§5.4). Sales (Phase 4) imports this
+ * module for `GetCustomerUseCase`, a directed, cycle-free dependency
+ * (docs/ARCHITECTURE.md §6) — Customers itself has zero knowledge of Sales.
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
@@ -25,7 +27,8 @@ import { CustomersController } from "./presentation/customers.controller";
     UpdateCustomerUseCase,
     ListCustomersUseCase,
     SetCustomerStatusUseCase,
+    GetCustomerUseCase,
   ],
-  exports: [CreateCustomerUseCase, ListCustomersUseCase],
+  exports: [CreateCustomerUseCase, ListCustomersUseCase, GetCustomerUseCase],
 })
 export class CustomersModule {}

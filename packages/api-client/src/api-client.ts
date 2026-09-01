@@ -2,6 +2,8 @@ import type {
   AcceptMembershipInvitationInput,
   AddPriceListItemInput,
   AddProductVariantInput,
+  AddQuoteLineInput,
+  AddSalesOrderLineInput,
   AdjustInventoryInput,
   AppConfigurationResponse,
   AppDefinitionResponse,
@@ -10,14 +12,19 @@ import type {
   AuditEntryResponse,
   AuthenticatedUser,
   BrandResponse,
+  CapturePaymentInput,
   CategoryResponse,
+  ConvertQuoteInput,
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
   CreatePriceListInput,
   CreateProductInput,
+  CreateQuoteInput,
   CreateReservationInput,
   CreateRoleInput,
+  CreateSalesOrderInput,
+  CreateSalesReturnInput,
   CreateSupplierInput,
   CreateTaxInput,
   CreateTransferInput,
@@ -34,9 +41,14 @@ import type {
   ListInventoryMovementsFilter,
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
+  ListPaymentsFilter,
+  ListQuotesFilter,
+  ListSalesOrdersFilter,
+  ListSalesReturnsFilter,
   LoginInput,
   MembershipResponse,
   MembershipWithUserResponse,
+  PaymentResponse,
   PendingInvitationResponse,
   PermissionResponse,
   PlatformSettingResponse,
@@ -48,11 +60,17 @@ import type {
   ProductVariantResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
+  QuoteLineResponse,
+  QuoteResponse,
   RecordIssueInput,
   RecordReceiptInput,
   RegisterInput,
   RoleAssignmentResponse,
   RoleResponse,
+  SalesOrderLineResponse,
+  SalesOrderResponse,
+  SalesReturnLineResponse,
+  SalesReturnResponse,
   SetAppConfigurationInput,
   SetCustomerStatusInput,
   SetMasterDataStatusInput,
@@ -1294,6 +1312,289 @@ export class ApiClient {
     id: string,
   ): Promise<InventoryTransferResponse> {
     return this.request<InventoryTransferResponse>(`/inventory/transfers/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listQuotes(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListQuotesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<QuoteResponse[]> {
+    return this.request<QuoteResponse[]>(`/sales/quotes${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createQuote(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateQuoteInput,
+  ): Promise<QuoteResponse> {
+    return this.request<QuoteResponse>("/sales/quotes", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listQuoteLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    quoteId: string,
+    signal?: AbortSignal,
+  ): Promise<QuoteLineResponse[]> {
+    return this.request<QuoteLineResponse[]>(`/sales/quotes/${encodeURIComponent(quoteId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addQuoteLine(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    quoteId: string,
+    input: AddQuoteLineInput,
+  ): Promise<QuoteLineResponse> {
+    return this.request<QuoteLineResponse>(`/sales/quotes/${encodeURIComponent(quoteId)}/lines`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async convertQuoteToSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    quoteId: string,
+    input: ConvertQuoteInput = {},
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>(`/sales/quotes/${encodeURIComponent(quoteId)}/convert`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async cancelQuote(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    quoteId: string,
+  ): Promise<QuoteResponse> {
+    return this.request<QuoteResponse>(`/sales/quotes/${encodeURIComponent(quoteId)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listSalesOrders(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListSalesOrdersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<SalesOrderResponse[]> {
+    return this.request<SalesOrderResponse[]>(`/sales/orders${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateSalesOrderInput,
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>("/sales/orders", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listSalesOrderLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<SalesOrderLineResponse[]> {
+    return this.request<SalesOrderLineResponse[]>(`/sales/orders/${encodeURIComponent(salesOrderId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addSalesOrderLine(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+    input: AddSalesOrderLineInput,
+  ): Promise<SalesOrderLineResponse> {
+    return this.request<SalesOrderLineResponse>(`/sales/orders/${encodeURIComponent(salesOrderId)}/lines`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async confirmSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>(`/sales/orders/${encodeURIComponent(salesOrderId)}/confirm`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async cancelSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>(`/sales/orders/${encodeURIComponent(salesOrderId)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async fulfillSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>(`/sales/orders/${encodeURIComponent(salesOrderId)}/fulfill`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listSalesReturns(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListSalesReturnsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<SalesReturnResponse[]> {
+    return this.request<SalesReturnResponse[]>(`/sales/returns${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createSalesReturn(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateSalesReturnInput,
+  ): Promise<SalesReturnResponse> {
+    return this.request<SalesReturnResponse>("/sales/returns", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listSalesReturnLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesReturnId: string,
+    signal?: AbortSignal,
+  ): Promise<SalesReturnLineResponse[]> {
+    return this.request<SalesReturnLineResponse[]>(`/sales/returns/${encodeURIComponent(salesReturnId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listPayments(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPaymentsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PaymentResponse[]> {
+    return this.request<PaymentResponse[]>(`/payments${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async capturePayment(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CapturePaymentInput,
+  ): Promise<PaymentResponse> {
+    return this.request<PaymentResponse>("/payments/capture", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async refundPayment(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    paymentId: string,
+  ): Promise<PaymentResponse> {
+    return this.request<PaymentResponse>(`/payments/${encodeURIComponent(paymentId)}/refund`, {
       method: "POST",
       accessToken,
       tenantSlug,

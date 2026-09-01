@@ -1063,12 +1063,134 @@ this section's threat model centers on that.
   non-transactional trade-off" for the full reasoning and why growing
   every repository interface to accept an externally supplied transaction
   client was judged disproportionate to this specific, narrow risk.
-- **No connection to Sales, Purchasing, or POS yet** — nothing in this
-  codebase calls `RecordReceiptUseCase`/`RecordIssueUseCase`/
-  `CreateReservationUseCase` except direct API/UI callers. Purchasing
-  (Phase 5) and Sales (Phase 4) are expected to become real callers of
-  this module's use cases, the same way Pricing became Catalog's first
-  real cross-module consumer.
+- ~~No connection to Sales, Purchasing, or POS yet~~ — **closed 2026-08-31,
+  Phase 4**: Sales is now a real caller of `CreateReservationUseCase`/
+  `ReleaseReservationUseCase`/`RecordIssueUseCase`/`RecordReturnUseCase`
+  (`ConfirmSalesOrderUseCase`/`FulfillSalesOrderUseCase`/
+  `CreateSalesReturnUseCase`), the same way Pricing became Catalog's first
+  real cross-module consumer in Phase 2 — see "Sales" below. Purchasing
+  (Phase 5) and POS (Phase 6) remain the only two callers still deferred.
 - **No backfill of the 7 new permissions for tenants provisioned before
+  this change**, same accepted gap already documented for every prior
+  permission addition.
+
+## Sales (Phase 4A, 2026-08-31)
+
+Scope: `apps/api/src/modules/sales` — Quotes, Sales Orders and lines,
+Returns. The most heavily cross-cutting module yet: directed, cycle-free
+dependencies on Catalog, Warehouses, Taxes, Pricing, Customers, and
+Inventory (docs/ARCHITECTURE.md §6).
+
+### Assets
+
+- `sales.quotes.read`/`.manage`, `sales.orders.read`/`.manage`,
+  `sales.returns.read`/`.manage` — 6 new permissions.
+- `QuoteLine`/`SalesOrderLine.unitPrice`/`.discountAmount`/`.taxRate`/
+  `.lineTotal` — the first genuinely monetary computation this codebase
+  performs on write (Catalog/Pricing/Taxes only ever stored/validated
+  already-given decimal strings; Sales is the first module that
+  multiplies and applies a percentage to derive one).
+- `SalesOrderLine.reservationId` — the pointer that ties a sold line to
+  the real inventory it earmarked; losing or corrupting it would leave a
+  reservation that can never be released or fulfilled correctly through
+  normal channels.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A quote/order line is added, or an order is confirmed/fulfilled/cancelled/returned, for a resource (quote, order, customer, product, warehouse, tax) belonging to a different company | Every use case re-verifies `entity.companyId !== input.companyId` before acting and throws the same `NotFoundError` a genuinely-missing entity would (IDOR-resistant, same pattern every prior module uses) — verified with real cross-company fixtures in both the unit and integration suites. |
+| Confirming a multi-line order partially reserves inventory (some lines succeed) before a later line fails for insufficient stock, leaving the order in an inconsistent, partially-committed state | `ConfirmSalesOrderUseCase` implements the compensating-transaction pattern `docs/ROADMAP.md` §8's exit criteria explicitly names ("Confirm/cancel/return tienen invariantes y compensaciones probadas"): every reservation already made in the current attempt is released again before the `InsufficientInventoryForOrderError` is thrown, and the order itself is never marked `CONFIRMED`. Verified against **real concurrent Postgres**, not reasoned about in isolation: `apps/api/test/integration/sales.integration-spec.ts` confirms a real multi-line order where the second line's reservation genuinely fails, then asserts every prior reservation was released, the balance is back to fully available, and the order stays `DRAFT`. |
+| A quote is converted into a sales order, and the converted line for a product that does **not** track inventory is nonetheless given a warehouse, causing a later confirm to attempt an invalid reservation | Real bug found and fixed before this module's first commit — see docs/DATABASE.md "Sales tables" for the full account. `ConvertQuoteToSalesOrderUseCase` now resolves each line's product via Catalog's `GetProductUseCase` and only carries the warehouse through when `product.trackInventory` is true. |
+| A return is recorded for more than was ever fulfilled for a given order line, either in one request or by accumulating several separate return requests over time | `CreateSalesReturnUseCase` computes the already-returned quantity as a running sum over **every** prior `SalesReturnLine` for that order line (`listBySalesOrderLine`, a ledger read, not a stored counter that could drift — same philosophy as `InventoryBalance`), and rejects with `SalesReturnExceedsFulfilledQuantityError` the moment the cumulative total would exceed the line's fulfilled quantity. Verified with three sequential returns against the same line: two that fit exactly, a third that doesn't. |
+| A return is recorded against an order that was never fulfilled, or is recorded with no lines at all | `CreateSalesReturnUseCase` requires `order.status === "FULFILLED"` (`SalesOrderNotFulfilledError`) and `input.lines.length > 0` (`SalesReturnHasNoLinesError`) before doing anything else. |
+| A sales order line is added, or a quote/order is confirmed, for a `hasVariants` product with no variant specified (or a non-variant product with a variant id supplied), or a tracked-inventory product with no warehouse (or a non-tracked product with a warehouse supplied) | `ResolveSalesLineTargetUseCase` enforces all four cases explicitly before any line is created — the same validation shape Inventory's own `ResolveProductTargetUseCase`/`ResolveWarehouseTargetUseCase` already established, duplicated (not reused directly) because Sales' line-target resolution genuinely differs (it also resolves an optional tax rate, and Quote lines skip the warehouse requirement entirely via `requireWarehouse: false`) — see the use case's own docstring for the explicit "bounded, accepted cost" reasoning. |
+| A line's pricing snapshot silently changes after the fact — e.g. a later Catalog/Pricing update to the underlying product retroactively alters what a customer was already quoted or sold | `QuoteLine`/`SalesOrderLine.unitPrice`/`.discountAmount`/`.taxRate`/`.lineTotal` are computed exactly once at line-creation time and stored — no use case ever re-derives them from live Catalog/Pricing/Taxes data on read. `ConvertQuoteToSalesOrderUseCase` copies a QuoteLine's snapshot verbatim into the new SalesOrderLine via `.fromProps()`, never `.create()`, so conversion itself cannot silently recompute anything either. |
+| A caller submits a zero, negative, or malformed quantity/price/discount where a valid decimal is required | DTOs enforce shape (`@Matches`) before any use case runs (`400`, not a generic `500`), and the domain's own `assertValidPositiveDecimal`/`assertValidNonNegativeDecimal` (`apps/api/src/modules/sales/domain/decimal.ts`) is the second, unbypassable layer — same belt-and-suspenders pattern Inventory already established. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No human-readable order/quote number** (`ORD-000001`/`QUO-000001`).
+  MASTER_SPEC §34 frames these as optional; a safe generator needs the
+  same bounded-retry-on-conflict machinery `inventory_balances`' partial
+  unique indexes required, and building it half-safe would be worse than
+  deferring it.
+- **No real tax rules engine.** A line's `taxRate` is a flat percentage
+  snapshot from an existing `Tax` record chosen by the caller — no
+  jurisdiction logic, no tax composition, no automatic resolution of
+  which tax applies. MASTER_SPEC §31's fuller vision stays deferred to
+  whichever phase actually needs it.
+- **No automatic price-list resolution.** `AddQuoteLineUseCase`/
+  `AddSalesOrderLineUseCase` accept an explicit `priceListId` the caller
+  chooses; nothing resolves "which price list applies to this customer/
+  channel" automatically. Same gap already documented in Pricing's own
+  "Known limitations".
+- **No partial confirm/fulfill.** Confirming or fulfilling an order acts
+  on every line at once; there is no way to confirm/fulfill a subset of
+  an order's lines independently.
+- **No Invoice, Shipment, or accounting posting** — deliberately out of
+  scope per `docs/ROADMAP.md` §8's own closing line ("La facturación
+  fiscal y accounting posting no se simulan dentro de Sales; se integran
+  en sus fases").
+- **No backfill of the 6 new permissions for tenants provisioned before
+  this change**, same accepted gap already documented for every prior
+  permission addition.
+
+## Payments (Phase 4B, 2026-08-31)
+
+Scope: `apps/api/src/modules/payments` — a `Payment` aggregate
+independent of `SalesOrder`, real `CASH`/`BANK_TRANSFER` gateway adapters,
+idempotent capture, and refund. The first module in this codebase to
+touch real money movement end to end (not just store/validate a decimal
+someone else computed).
+
+### Assets
+
+- `payments.read`/`.manage` — 2 new permissions.
+- `Payment.amount`, `Payment.idempotencyKey` — a bug here means either a
+  real financial discrepancy (wrong amount) or a duplicated real charge
+  (broken idempotency), the highest-stakes fields in this codebase so
+  far.
+- `Payment.status`/`.capturedAt`/`.refundedAt` — the record of whether
+  money genuinely moved; must never be forgeable into `CAPTURED` without
+  a real gateway result backing it.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A retried capture request (client timeout, double-click, at-least-once delivery from an upstream caller) charges the customer twice | `CapturePaymentUseCase` pre-checks `findByIdempotencyKey` before ever calling the gateway (covers the common sequential-retry case) — but the real frontier is the `@@unique([tenantId, companyId, idempotencyKey])` Postgres constraint, not the pre-check alone. A genuine concurrent race between two first-time requests with the same key is caught by `PrismaPaymentRepository.save()` translating the real unique-constraint violation into `PaymentIdempotencyConflictError`, which the use case reacts to by re-fetching and returning the real winner. Verified against **real concurrent Postgres connections**, not reasoned about in isolation: `apps/api/test/integration/payments.integration-spec.ts` fires 5 genuinely concurrent captures with the same idempotency key and asserts all 5 resolve to the exact same `Payment.id`, with exactly one row ever created in the table — `docs/ROADMAP.md` §8's own exit criteria ("duplicar request/webhook no duplica orden, cargo ni refund"), verified directly. |
+| A payment is captured for more (or a different currency) than the sales order it's paying against | `CapturePaymentUseCase` resolves the order via Sales' public `GetSalesOrderUseCase` and rejects a currency mismatch with `PaymentCurrencyMismatchError` before calling any gateway — the amount itself is caller-supplied and not currently cross-checked against the order's own line totals (see Known limitations). |
+| A payment is captured or refunded against a sales order, or refunded for a payment, belonging to a different company | `CapturePaymentUseCase`/`RefundPaymentUseCase` check `order.companyId`/`payment.companyId !== input.companyId` and throw the same `NotFoundError` a genuinely-missing entity would (IDOR-resistant). |
+| A `BANK_TRANSFER` capture is recorded with no way to reconcile it against a real bank statement later | `BankTransferPaymentGatewayAdapter.capture()` requires a non-empty `reference` (the transfer confirmation number) and returns a real, structured `FAILED` result — not a thrown exception, not a simulated success — when it's missing. A `CASH` capture never needs one, since cash has no external reference to reconcile against at all. |
+| A payment is refunded twice, or a `FAILED` payment (which never actually took money) is refunded | `RefundPaymentUseCase` requires `payment.status === "CAPTURED"` before calling the gateway or mutating anything (`PaymentNotCapturedError` otherwise) — a `REFUNDED` or `FAILED` payment cannot be refunded again. |
+| The gateway declines a refund attempt | `RefundPaymentUseCase` throws `PaymentRefundFailedError` and leaves the payment's status untouched (`CAPTURED`) — verified with a fake declining gateway that the payment is neither marked `REFUNDED` nor left in some intermediate state. |
+| An idempotent capture replay is misrecorded in the audit trail as if it were a brand-new capture, making it look like the customer was charged twice when they were not | Real bug found and fixed by this module's own manual smoke test against real Postgres, before this session's commit — see docs/DATABASE.md "Payments table" for the full account. `CapturePaymentUseCase.execute()` now returns `{ payment, wasReplayed }`, and `PaymentsController.capture()` only writes the `payments.payment.captured` audit entry when `!wasReplayed`. |
+| A fabricated payment gateway pretends to call a real, credential-requiring provider (Stripe, PayPal) without real credentials, giving a false impression of production-readiness | Deliberately never built — see `docs/DECISIONS.md`, Payments section. Only `CashPaymentGatewayAdapter`/`BankTransferPaymentGatewayAdapter` exist, both requiring no external credentials and never claiming to call a real network service (MASTER_SPEC §90: "no simular integraciones o operaciones exitosas"). |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No credential-requiring gateway (Stripe, PayPal, etc.).** `docs/
+  ROADMAP.md` §8 (4B) lists "primeros adapters aprobados" — only
+  `CASH`/`BANK_TRANSFER` are approved for this slice; adding a real
+  processor is a distinct, separately-scoped piece of work requiring real
+  credentials and PCI-relevant handling this codebase has never needed
+  before.
+- **No webhook verification.** Both adapters are synchronous and
+  terminal — there is no asynchronous confirmation step to verify a
+  webhook signature for. Revisit once a real asynchronous gateway exists.
+- **No provider-timeout reconciliation.** Same reasoning: nothing in
+  this slice can time out mid-flight the way a real network call to an
+  external processor could.
+- **No cross-check between a captured amount and the sales order's own
+  line totals.** `CapturePaymentUseCase` validates currency but not
+  amount — a caller could in principle capture an amount that doesn't
+  match what the order's lines actually sum to. Revisit once a real
+  invoicing/payment-reconciliation workflow exists to define the correct
+  behavior (partial payments are a legitimate real-world case that a
+  naive equality check would wrongly reject).
+- **No partial refund.** `RefundPaymentUseCase` always refunds a
+  payment's entire `amount`; there is no way to refund a portion of it.
+- **No backfill of the 2 new permissions for tenants provisioned before
   this change**, same accepted gap already documented for every prior
   permission addition.

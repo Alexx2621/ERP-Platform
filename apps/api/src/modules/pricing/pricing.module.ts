@@ -16,13 +16,15 @@ import { AddPriceListItemUseCase } from "./application/use-cases/add-price-list-
 import { UpdatePriceListItemUseCase } from "./application/use-cases/update-price-list-item.use-case";
 import { RemovePriceListItemUseCase } from "./application/use-cases/remove-price-list-item.use-case";
 import { ListPriceListItemsUseCase } from "./application/use-cases/list-price-list-items.use-case";
+import { GetPriceListItemUseCase } from "./application/use-cases/get-price-list-item.use-case";
 import { PriceListsController } from "./presentation/price-lists.controller";
 
 /**
  * Phase 2 (Master Data) module — the first to import another business
  * module (`CatalogModule`, for `GetProductUseCase`), a directed,
  * cycle-free dependency (docs/ARCHITECTURE.md §6) — Catalog has zero
- * knowledge of Pricing.
+ * knowledge of Pricing. Sales (Phase 4) imports this module for
+ * `GetPriceListItemUseCase`.
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule],
@@ -38,7 +40,8 @@ import { PriceListsController } from "./presentation/price-lists.controller";
     UpdatePriceListItemUseCase,
     RemovePriceListItemUseCase,
     ListPriceListItemsUseCase,
+    GetPriceListItemUseCase,
   ],
-  exports: [CreatePriceListUseCase, ListPriceListsUseCase],
+  exports: [CreatePriceListUseCase, ListPriceListsUseCase, GetPriceListItemUseCase],
 })
 export class PricingModule {}

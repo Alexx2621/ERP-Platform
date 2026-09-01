@@ -40,6 +40,13 @@ export type {
   InventoryBalance,
   InventoryTransfer,
   InventoryReservation,
+  Quote,
+  QuoteLine,
+  SalesOrder,
+  SalesOrderLine,
+  SalesReturn,
+  SalesReturnLine,
+  Payment,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -60,6 +67,11 @@ export {
   InventoryMovementReferenceType,
   InventoryTransferStatus,
   InventoryReservationStatus,
+  SalesChannel,
+  QuoteStatus,
+  SalesOrderStatus,
+  PaymentMethod,
+  PaymentStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

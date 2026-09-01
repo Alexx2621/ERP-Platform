@@ -2,6 +2,7 @@
 export { Customer, type CustomerProps } from "./domain/customer.entity";
 export { CreateCustomerUseCase } from "./application/use-cases/create-customer.use-case";
 export { ListCustomersUseCase } from "./application/use-cases/list-customers.use-case";
+export { GetCustomerUseCase } from "./application/use-cases/get-customer.use-case";
 export * from "./application/errors";
 export { CustomersController } from "./presentation/customers.controller";
 export { CustomersModule } from "./customers.module";

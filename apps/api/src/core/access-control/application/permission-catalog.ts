@@ -83,4 +83,15 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "inventory.transfers.manage",
     description: "Create, complete and cancel inventory transfers between warehouses.",
   },
+  { key: "sales.quotes.read", description: "View the company's quotes and their lines." },
+  { key: "sales.quotes.manage", description: "Create, add lines to, convert and cancel quotes." },
+  { key: "sales.orders.read", description: "View the company's sales orders and their lines." },
+  {
+    key: "sales.orders.manage",
+    description: "Create, add lines to, confirm, cancel and fulfill sales orders.",
+  },
+  { key: "sales.returns.read", description: "View the company's sales returns and their lines." },
+  { key: "sales.returns.manage", description: "Record sales returns." },
+  { key: "payments.read", description: "View the company's payments." },
+  { key: "payments.manage", description: "Capture and refund payments." },
 ];

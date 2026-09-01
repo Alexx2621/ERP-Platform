@@ -5,6 +5,7 @@ import {
   Factory,
   LockKey,
   Package,
+  ShoppingCartSimple,
   SlidersHorizontal,
   ShieldCheck,
   SquaresFour,
@@ -71,6 +72,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/inventory")}>
             <Package size={17} weight="bold" aria-hidden="true" />
             Inventario
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/sales")}>
+            <ShoppingCartSimple size={17} weight="bold" aria-hidden="true" />
+            Ventas
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

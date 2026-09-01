@@ -17,6 +17,7 @@ import { ResolveWarehouseTargetUseCase } from "./application/use-cases/resolve-w
 import { ResolveProductTargetUseCase } from "./application/use-cases/resolve-product-target.use-case";
 import { RecordReceiptUseCase } from "./application/use-cases/record-receipt.use-case";
 import { RecordIssueUseCase } from "./application/use-cases/record-issue.use-case";
+import { RecordReturnUseCase } from "./application/use-cases/record-return.use-case";
 import { AdjustInventoryUseCase } from "./application/use-cases/adjust-inventory.use-case";
 import { ListInventoryBalancesUseCase } from "./application/use-cases/list-inventory-balances.use-case";
 import { ListInventoryMovementsUseCase } from "./application/use-cases/list-inventory-movements.use-case";
@@ -35,7 +36,10 @@ import { InventoryController } from "./presentation/inventory.controller";
  * `GetProductUseCase`/`GetProductVariantUseCase`) and Warehouses (for
  * `GetWarehouseUseCase`), both directed, cycle-free dependencies
  * (docs/ARCHITECTURE.md §6) — neither Catalog nor Warehouses knows
- * Inventory exists.
+ * Inventory exists. Sales (Phase 4) imports this module for
+ * `CreateReservationUseCase`/`ReleaseReservationUseCase`/
+ * `RecordIssueUseCase`/`RecordReturnUseCase` — the "port transaccional"
+ * ROADMAP §8 asks Sales to reserve/fulfill/return stock through.
  */
 @Module({
   imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule],
@@ -49,6 +53,7 @@ import { InventoryController } from "./presentation/inventory.controller";
     ResolveProductTargetUseCase,
     RecordReceiptUseCase,
     RecordIssueUseCase,
+    RecordReturnUseCase,
     AdjustInventoryUseCase,
     ListInventoryBalancesUseCase,
     ListInventoryMovementsUseCase,
@@ -60,6 +65,13 @@ import { InventoryController } from "./presentation/inventory.controller";
     CancelTransferUseCase,
     ListInventoryTransfersUseCase,
   ],
-  exports: [ListInventoryBalancesUseCase, ListInventoryMovementsUseCase],
+  exports: [
+    ListInventoryBalancesUseCase,
+    ListInventoryMovementsUseCase,
+    CreateReservationUseCase,
+    ReleaseReservationUseCase,
+    RecordIssueUseCase,
+    RecordReturnUseCase,
+  ],
 })
 export class InventoryModule {}

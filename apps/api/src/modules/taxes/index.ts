@@ -2,6 +2,7 @@
 export { Tax, type TaxProps } from "./domain/tax.entity";
 export { CreateTaxUseCase } from "./application/use-cases/create-tax.use-case";
 export { ListTaxesUseCase } from "./application/use-cases/list-taxes.use-case";
+export { GetTaxUseCase } from "./application/use-cases/get-tax.use-case";
 export * from "./application/errors";
 export { TaxesController } from "./presentation/taxes.controller";
 export { TaxesModule } from "./taxes.module";

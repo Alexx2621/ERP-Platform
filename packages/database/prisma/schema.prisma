@@ -133,6 +133,13 @@ model Tenant {
   inventoryBalances     InventoryBalance[]
   inventoryTransfers    InventoryTransfer[]
   inventoryReservations InventoryReservation[]
+  quotes                Quote[]
+  quoteLines            QuoteLine[]
+  salesOrders           SalesOrder[]
+  salesOrderLines       SalesOrderLine[]
+  salesReturns          SalesReturn[]
+  salesReturnLines      SalesReturnLine[]
+  payments              Payment[]
 
   @@map("tenants")
 }
@@ -228,6 +235,10 @@ model Company {
   inventoryBalances     InventoryBalance[]
   inventoryTransfers    InventoryTransfer[]
   inventoryReservations InventoryReservation[]
+  quotes                Quote[]
+  salesOrders           SalesOrder[]
+  salesReturns          SalesReturn[]
+  payments              Payment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -830,6 +841,8 @@ model Product {
   inventoryBalances     InventoryBalance[]
   inventoryTransfers    InventoryTransfer[]
   inventoryReservations InventoryReservation[]
+  salesOrderLines       SalesOrderLine[]
+  quoteLines            QuoteLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -866,6 +879,8 @@ model ProductVariant {
   inventoryBalances     InventoryBalance[]
   inventoryTransfers    InventoryTransfer[]
   inventoryReservations InventoryReservation[]
+  salesOrderLines       SalesOrderLine[]
+  quoteLines            QuoteLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, sku])
@@ -910,6 +925,10 @@ model Customer {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
+  salesOrders SalesOrder[]
+  quotes      Quote[]
+
+  @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@unique([tenantId, companyId, taxId])
   @@index([tenantId, companyId])
@@ -964,6 +983,10 @@ model Tax {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
+  salesOrderLines SalesOrderLine[]
+  quoteLines      QuoteLine[]
+
+  @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, companyId])
   @@map("taxes")
@@ -998,6 +1021,7 @@ model Warehouse {
   transfersAsSource      InventoryTransfer[]    @relation("TransferSource")
   transfersAsDestination InventoryTransfer[]    @relation("TransferDestination")
   inventoryReservations  InventoryReservation[]
+  salesOrderLines        SalesOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1082,12 +1106,15 @@ enum InventoryMovementType {
   TRANSFER_CANCELLED
   RESERVATION
   RELEASE
+  RETURN
 }
 
 enum InventoryMovementReferenceType {
   TRANSFER
   RESERVATION
   MANUAL
+  SALES_ORDER
+  SALES_RETURN
 }
 
 /// Append-only ledger — the single source of truth for every balance change
@@ -1215,10 +1242,14 @@ enum InventoryReservationStatus {
 
 /// Earmarks on-hand stock as unavailable for new promises without physically
 /// moving it — `RESERVATION`/`RELEASE` affect `InventoryBalance.reservedQuantity`,
-/// never `onHandQuantity`. `referenceType`/`referenceId` are free-form
-/// (unlike `InventoryMovement`'s closed enum) because the real consumer of
-/// a reservation — a future Sales Order — doesn't exist as a module yet;
-/// constraining this to a real FK today would be speculative.
+/// never `onHandQuantity`. `referenceType`/`referenceId` stayed free-form
+/// (unlike `InventoryMovement`'s closed enum) even after Sales (Phase 4)
+/// became this table's first real consumer (`ConfirmSalesOrderUseCase`
+/// passes `referenceType: "SALES_ORDER"` as a plain string, not an enum
+/// value) — a genuine FK would need to point at whichever module reserves
+/// stock, and POS (Phase 6) is expected to become a second, independent
+/// one; a free string avoids re-widening this column's type every time a
+/// new caller module appears.
 model InventoryReservation {
   id               String                     @id @db.Uuid
   tenantId         String                     @map("tenant_id") @db.Uuid
@@ -1243,4 +1274,278 @@ model InventoryReservation {
   @@index([tenantId, companyId, warehouseId, status])
   @@index([tenantId, productId, status])
   @@map("inventory_reservations")
+}
+
+// ---------------------------------------------------------------------------
+// Sales (Phase 4A, docs/ROADMAP.md §8). Quote/SalesOrder/SalesReturn are
+// deliberately separate from Invoice (MASTER_SPEC §21: "no asumir que una
+// venta equivale automáticamente a una factura") — Invoice is not built in
+// this slice at all. Every line snapshots its own unitPrice/discountAmount/
+// taxRate/lineTotal at creation time; nothing here re-reads live Catalog
+// prices or Pricing price lists later, so a later price change never
+// retroactively changes a historical order. Deliberately out of scope, per
+// "solo según alcance aprobado": human-readable order/quote numbers
+// (MASTER_SPEC §34 explicitly frames these as optional — "puede existir" —
+// and a genuinely safe generator needs the same bounded-retry-on-conflict
+// machinery already proven for `inventory_balances`' partial unique
+// indexes; deferred rather than built half-safe), PENDING/PROCESSING/
+// PARTIALLY_FULFILLED order states (MASTER_SPEC §21 lists them, but this
+// slice has no per-line fulfillment tracking to make them real — see
+// docs/SECURITY.md "Sales"), and Invoice itself.
+// ---------------------------------------------------------------------------
+
+enum SalesChannel {
+  ERP
+  POS
+  ECOMMERCE
+  B2B
+  MARKETPLACE
+  MOBILE
+  API
+}
+
+enum QuoteStatus {
+  DRAFT
+  CONVERTED
+  CANCELLED
+}
+
+/// A non-binding proposal with its own pricing snapshot, convertible into a
+/// real SalesOrder (`ConvertQuoteToSalesOrderUseCase`). Never reserves
+/// inventory — only a confirmed SalesOrder does.
+model Quote {
+  id          String       @id @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  companyId   String       @map("company_id") @db.Uuid
+  customerId  String       @map("customer_id") @db.Uuid
+  channel     SalesChannel @default(ERP)
+  status      QuoteStatus  @default(DRAFT)
+  currency    String       @db.VarChar(3)
+  notes       String?      @db.VarChar(1000)
+  version     Int          @default(1)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  convertedAt DateTime?    @map("converted_at") @db.Timestamptz(6)
+  cancelledAt DateTime?    @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  customer    Customer     @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  lines       QuoteLine[]
+  salesOrders SalesOrder[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@map("quotes")
+}
+
+/// Pricing snapshot at the moment the line was added — `unitPrice`/
+/// `discountAmount`/`taxRate`/`lineTotal` never change afterward, even if
+/// converted into a SalesOrder (the SalesOrderLine gets its own fresh copy).
+model QuoteLine {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  quoteId          String   @map("quote_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  productVariantId String?  @map("product_variant_id") @db.Uuid
+  taxId            String?  @map("tax_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(14, 4)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(14, 4)
+  discountAmount   Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 4)
+  taxRate          Decimal  @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal        Decimal  @map("line_total") @db.Decimal(14, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  quote          Quote           @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Cascade)
+  product        Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+  tax            Tax?            @relation(fields: [tenantId, taxId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, quoteId])
+  @@map("quote_lines")
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  FULFILLED
+  CANCELLED
+}
+
+/// `DRAFT -> CONFIRMED -> FULFILLED`, with `CANCELLED` reachable from
+/// `DRAFT`/`CONFIRMED` only (never after `FULFILLED` — a fulfilled order is
+/// corrected via a SalesReturn, not a cancellation). No `REFUNDED` status
+/// here: a return doesn't retroactively change what was shipped, it is its
+/// own record (`SalesReturn`) — see that model's docstring. Confirming
+/// reserves inventory for every line through Inventory's own public
+/// contract (`CreateReservationUseCase`); fulfilling releases those
+/// reservations and issues real stock (`ReleaseReservationUseCase` +
+/// `RecordIssueUseCase`, `referenceType: "SALES_ORDER"`).
+model SalesOrder {
+  id          String           @id @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  customerId  String           @map("customer_id") @db.Uuid
+  quoteId     String?          @map("quote_id") @db.Uuid
+  channel     SalesChannel     @default(ERP)
+  status      SalesOrderStatus @default(DRAFT)
+  currency    String           @db.VarChar(3)
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  confirmedAt DateTime?        @map("confirmed_at") @db.Timestamptz(6)
+  fulfilledAt DateTime?        @map("fulfilled_at") @db.Timestamptz(6)
+  cancelledAt DateTime?        @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company  Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  customer Customer         @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  quote    Quote?           @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Restrict)
+  lines    SalesOrderLine[]
+  returns  SalesReturn[]
+  payments Payment[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, customerId])
+  @@map("sales_orders")
+}
+
+/// `warehouseId` is nullable — required only when the product tracks
+/// inventory (validated at the application layer, the same conditional
+/// requirement `productVariantId` already has based on `hasVariants`); a
+/// service-type line with `trackInventory = false` never reserves stock at
+/// all. `reservationId` is set once, on confirm, and never cleared — a
+/// historical pointer to which `InventoryReservation` this line used, even
+/// after it is released on fulfillment or cancellation.
+model SalesOrderLine {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  salesOrderId     String   @map("sales_order_id") @db.Uuid
+  warehouseId      String?  @map("warehouse_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  productVariantId String?  @map("product_variant_id") @db.Uuid
+  taxId            String?  @map("tax_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(14, 4)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(14, 4)
+  discountAmount   Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 4)
+  taxRate          Decimal  @default(0) @map("tax_rate") @db.Decimal(7, 4)
+  lineTotal        Decimal  @map("line_total") @db.Decimal(14, 4)
+  reservationId    String?  @map("reservation_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  salesOrder       SalesOrder        @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Cascade)
+  warehouse        Warehouse?        @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  product          Product           @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant   ProductVariant?   @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+  tax              Tax?              @relation(fields: [tenantId, taxId], references: [tenantId, id], onDelete: Restrict)
+  salesReturnLines SalesReturnLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, salesOrderId])
+  @@map("sales_order_lines")
+}
+
+/// A return is its own record, not a SalesOrder status mutation (see
+/// `SalesOrder`'s docstring) — a `FULFILLED` order stays `FULFILLED`
+/// regardless of how many returns are later recorded against it.
+/// `CreateSalesReturnUseCase` posts a real `RETURN` inventory movement per
+/// line (`referenceType: "SALES_RETURN"`) and rejects returning more than
+/// was ever fulfilled for a given `SalesOrderLine`, computed as a running
+/// sum over `SalesReturnLine` — a ledger read, not a stored running total
+/// that could drift (same philosophy as `InventoryBalance`).
+model SalesReturn {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  salesOrderId String   @map("sales_order_id") @db.Uuid
+  reason       String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company           @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  salesOrder SalesOrder        @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+  lines      SalesReturnLine[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@index([tenantId, salesOrderId])
+  @@map("sales_returns")
+}
+
+model SalesReturnLine {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  salesReturnId    String   @map("sales_return_id") @db.Uuid
+  salesOrderLineId String   @map("sales_order_line_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(14, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  salesReturn    SalesReturn    @relation(fields: [tenantId, salesReturnId], references: [tenantId, id], onDelete: Cascade)
+  salesOrderLine SalesOrderLine @relation(fields: [tenantId, salesOrderLineId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, salesReturnId])
+  @@index([tenantId, salesOrderLineId])
+  @@map("sales_return_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Payments (Phase 4B, docs/ROADMAP.md §8). Only adapters that need no
+// external credentials are built for real in this slice — `CASH`/
+// `BANK_TRANSFER`, both explicitly named as valid gateway adapters in
+// MASTER_SPEC §22. A real `StripeAdapter`/`PayPalAdapter` needs live
+// provider credentials this environment doesn't have; fabricating one that
+// pretends to call a real provider would violate MASTER_SPEC §90 ("no
+// simular integraciones o operaciones exitosas") far more seriously than
+// any other adapter gap in this codebase, since it involves real money.
+// `PaymentGateway` (the application-layer port) is designed so a real async
+// adapter can be added later without touching this schema or the domain.
+// Webhook signature verification and provider-timeout reconciliation
+// (ROADMAP §8) are deferred with it — both are only meaningful once a real
+// asynchronous gateway exists to receive a webhook from.
+// ---------------------------------------------------------------------------
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  CAPTURED
+  REFUNDED
+  FAILED
+}
+
+/// `idempotencyKey` + the real `@@unique([tenantId, companyId, idempotencyKey])`
+/// constraint is what satisfies "duplicar request no duplica... cargo"
+/// (docs/ROADMAP.md §8 exit criteria) — retrying `CapturePaymentUseCase`
+/// with the same key returns the already-captured `Payment` instead of
+/// creating a second one, verified against a real Postgres unique
+/// violation, not just an application-level check.
+model Payment {
+  id               String        @id @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  companyId        String        @map("company_id") @db.Uuid
+  salesOrderId     String        @map("sales_order_id") @db.Uuid
+  method           PaymentMethod
+  status           PaymentStatus
+  amount           Decimal       @db.Decimal(14, 4)
+  currency         String        @db.VarChar(3)
+  idempotencyKey   String        @map("idempotency_key") @db.VarChar(100)
+  gatewayReference String?       @map("gateway_reference") @db.VarChar(200)
+  failureReason    String?       @map("failure_reason") @db.VarChar(500)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  capturedAt       DateTime?     @map("captured_at") @db.Timestamptz(6)
+  refundedAt       DateTime?     @map("refunded_at") @db.Timestamptz(6)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  salesOrder SalesOrder @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, idempotencyKey])
+  @@index([tenantId, companyId, salesOrderId])
+  @@map("payments")
 }

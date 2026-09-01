@@ -8,6 +8,8 @@ actually been written appear below — this is not a placeholder index. ADR-001
 still pending; they belong to whoever ratifies the broader Architecture V1
 proposal, not to a single module task. ADR-005 (Plugin Architecture V1 mínimo)
 was ratified once the App Registry mechanism was implemented — see below.
+ADR-009 (Payment Gateway Adapters V1) was ratified once Payments (Phase 4B)
+was implemented — see below.
 
 ---
 
@@ -726,3 +728,108 @@ Membership-invitation notifications (`MembershipsController.invite()`,
 session 15) deliberately remain a direct call, not an event — that action
 has no corresponding outbox event and is a real-time, user-triggered
 request where a direct call is the correct shape, not a gap to close.
+
+---
+
+## ADR-009 — Payment Gateway Adapters V1 (Credential-Free Only: CASH and BANK_TRANSFER)
+
+**Status:** Accepted (scope: the two adapters actually shipped, the
+`PaymentGateway` port they implement, and the idempotency/audit contract
+`CapturePaymentUseCase`/`RefundPaymentUseCase` build on top of it; not the
+full future scope of a real card/wallet processor integration)
+
+**Context**
+
+`docs/ROADMAP.md` §8 (4B) lists Payments' deliverables as "Payment
+aggregate independiente", "`PaymentGateway` ports y primeros adapters
+aprobados", idempotency, and capture/cancel/refund — but does not name
+which adapters are "aprobados" for this slice. MASTER_SPEC §22 names
+`StripeAdapter`/`PayPalAdapter`/`BACAdapter`/`TilopayAdapter`/
+`TransferAdapter`/`CashAdapter` as illustrative examples of the pattern,
+not a mandate to build all of them now. This ADR makes the concrete choice
+of which adapters this slice actually ships, and why.
+
+**Decision**
+
+1. **Only `CASH` and `BANK_TRANSFER` are implemented.** Both are
+   synchronous, terminal, and require zero external credentials, API
+   keys, or network calls — `CashPaymentGatewayAdapter`/
+   `BankTransferPaymentGatewayAdapter` (`apps/api/src/modules/payments/
+   infrastructure/`) are pure in-process logic. No `StripeAdapter`/
+   `PayPalAdapter`/or any other credential-requiring provider is built,
+   stubbed, or faked — a fabricated adapter that pretends to call a real
+   payment processor without real credentials would violate MASTER_SPEC
+   §90 ("no simular integraciones o operaciones exitosas") far more
+   seriously than any other integration gap already accepted elsewhere in
+   this codebase (SMTP email, for instance, fails closed with a clear
+   reason when unconfigured — it never pretends to have sent an email).
+   Real money is the highest-stakes domain this codebase touches; the bar
+   for "don't simulate" is at its strictest here.
+2. **`PaymentGateway.capture()`/`.refund()` are both synchronous and
+   always terminal**, resolving to `{ success, gatewayReference,
+   failureReason }` in the same call — never `PENDING`. Neither `CASH`
+   nor `BANK_TRANSFER` has a genuine asynchronous confirmation step to
+   reconcile later (a cash payment is definitionally settled the instant
+   it is recorded; a bank transfer's confirmation number is
+   caller-supplied, not polled from a bank API). `verifyPayment()`/
+   `handleWebhook()` from MASTER_SPEC §22's fuller contract are therefore
+   not built — there is nothing for them to verify yet.
+3. **`BANK_TRANSFER.capture()` requires a non-empty `reference`** (the
+   transfer confirmation number); `CASH.capture()` requires none. This is
+   a real, load-bearing validation, not a placeholder: without a
+   reference, a bank transfer payment could never be reconciled against
+   an actual bank statement later. Both `.refund()` implementations
+   always succeed — an internal bookkeeping reversal, not a call to an
+   external system that could decline.
+4. **Idempotency is enforced by a real database unique constraint**
+   (`@@unique([tenantId, companyId, idempotencyKey])`), with
+   `CapturePaymentUseCase` pre-checking the common sequential-retry case
+   and reacting to the constraint's own P2002 violation (translated to
+   `PaymentIdempotencyConflictError` by `PrismaPaymentRepository`, per
+   docs/ARCHITECTURE.md §6's "infrastructure must not leak a raw Prisma
+   error across the module boundary") for the genuine concurrent-race
+   case — mirroring the exact same claim/lease shape ADR-004's outbox and
+   ADR-008's inbox already established, applied here to a third kind of
+   real-world race.
+
+**Consequences**
+
+- Adding a real, credential-requiring processor (Stripe, a local
+  Guatemalan gateway like BAC/Tilopay, etc.) is a distinct, separately
+  scoped future task — it needs real API credentials, a real sandbox to
+  test against, PCI-relevant handling this codebase has never needed
+  before (even tokenized, MASTER_SPEC §22 forbids storing card data
+  directly), and almost certainly a genuinely asynchronous `capture()`
+  that can return `PENDING` — a shape `PaymentGateway`'s current contract
+  does not yet accommodate and would need to be extended for.
+- No webhook infrastructure, no provider-timeout reconciliation exists
+  yet — both are meaningless without an asynchronous gateway to receive
+  webhooks from or time out against. Revisit both the moment the first
+  real processor is added.
+- `docs/ROADMAP.md` §8's exit criteria ("Fallos del provider son
+  reconciliables y observables") is satisfied today only in the narrow
+  sense that both adapters' failures are synchronous and immediately
+  visible (`Payment.status = FAILED` with a `failureReason`) — there is
+  no "provider is down/ambiguous" state to reconcile because neither
+  adapter can enter one.
+
+**Alternatives considered**
+
+- **Building a fake `StripeAdapter` that returns a hardcoded success**,
+  to have a "complete-looking" set of adapters matching MASTER_SPEC §22's
+  example list: rejected outright — this is exactly the kind of
+  simulated integration MASTER_SPEC §90 prohibits, and doing so for real
+  money specifically would be materially worse than any other simulation
+  this codebase has ever avoided.
+- **Deferring Payments (4B) entirely until a real processor's credentials
+  are available**: rejected — `CASH`/`BANK_TRANSFER` are themselves real,
+  commonly used payment methods (MASTER_SPEC §22 lists both explicitly),
+  not placeholders; Sales orders need a genuine way to be paid today, and
+  building the full idempotency/audit/refund contract now against two
+  real, simple adapters de-risks adding a third, more complex one later.
+- **A generic "manual" payment method with no `PaymentMethod` enum
+  distinction** instead of separate `CASH`/`BANK_TRANSFER` values:
+  rejected — the two have genuinely different validation rules (a bank
+  transfer needs a reference, cash does not) and reporting value (a real
+  business cares which one was used), so collapsing them would lose real
+  information for no simplification benefit.

@@ -8,9 +8,15 @@ export type InventoryMovementType =
   | "TRANSFER_IN"
   | "TRANSFER_CANCELLED"
   | "RESERVATION"
-  | "RELEASE";
+  | "RELEASE"
+  | "RETURN";
 
-export type InventoryMovementReferenceType = "TRANSFER" | "RESERVATION" | "MANUAL";
+export type InventoryMovementReferenceType =
+  | "TRANSFER"
+  | "RESERVATION"
+  | "MANUAL"
+  | "SALES_ORDER"
+  | "SALES_RETURN";
 
 export interface InventoryMovementProps {
   id: string;
@@ -34,6 +40,7 @@ const POSITIVE_TYPES: ReadonlySet<InventoryMovementType> = new Set([
   "TRANSFER_IN",
   "TRANSFER_CANCELLED",
   "RESERVATION",
+  "RETURN",
 ]);
 const NEGATIVE_TYPES: ReadonlySet<InventoryMovementType> = new Set(["ISSUE", "TRANSFER_OUT", "RELEASE"]);
 const ON_HAND_TYPES: ReadonlySet<InventoryMovementType> = new Set([
@@ -43,6 +50,7 @@ const ON_HAND_TYPES: ReadonlySet<InventoryMovementType> = new Set([
   "TRANSFER_OUT",
   "TRANSFER_IN",
   "TRANSFER_CANCELLED",
+  "RETURN",
 ]);
 
 /**
@@ -56,8 +64,9 @@ const ON_HAND_TYPES: ReadonlySet<InventoryMovementType> = new Set([
  * `quantity` is a SIGNED decimal string: the balance delta for any row is
  * always exactly its own value, so there is no separate "direction" column
  * that could drift out of sync with `type`. RECEIPT/TRANSFER_IN/
- * TRANSFER_CANCELLED/RESERVATION are always positive; ISSUE/TRANSFER_OUT/
- * RELEASE are always negative; ADJUSTMENT may be either sign but requires a
+ * TRANSFER_CANCELLED/RESERVATION/RETURN are always positive; ISSUE/
+ * TRANSFER_OUT/RELEASE are always negative; ADJUSTMENT may be either sign
+ * but requires a
  * non-empty `reason` (MASTER_SPEC §10 — an inventory correction must be
  * explained). These sign/reason invariants are internal — every real use
  * case in this module constructs `type`/`quantity` together itself, never

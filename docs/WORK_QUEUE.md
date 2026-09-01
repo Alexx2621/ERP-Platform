@@ -6,10 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-08-30 (sesión 22,
-App Registry mínimo implementado — cierra el último ítem restante de esta
-cola original y formaliza el cierre de Foundation). Modelo operativo
-actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-08-31 (sesión 27,
+Sales y Payments implementados — cierra la Fase 4 por completo). Modelo
+operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,20 +21,212 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 3 (Inventory) está completa** — ver "Hecho — sesión 26" abajo. El
-siguiente trabajo no bloqueado es Fase 4 (Sales) según `docs/ROADMAP.md`
-§8, salvo que el usuario indique otra prioridad. Alcance deliberadamente
-fuera de Fase 3 y diferido (no simulado, sin aprobación explícita per
-`docs/ROADMAP.md` §7): ubicaciones/bins de bodega, lote/serie/vencimiento,
-conexión real desde Sales/Purchasing/POS (todavía no existen) a
-`RecordReceiptUseCase`/`RecordIssueUseCase`/`CreateReservationUseCase` —
-ver "Known limitations" en la sección "Inventory" de `docs/SECURITY.md`.
-Alcance fuera de Fase 2 y aún diferido de sesiones previas, sin cambios:
-un motor de reglas fiscales real (Sales/Phase 4), resolución de qué lista
-de precios aplica a una venta (Sales/Phase 4), precios de lista por
+**Fase 4 (Sales y Payments) está completa** — ver "Hecho — sesión 27"
+abajo. El siguiente trabajo no bloqueado es Fase 5 (Purchasing) según
+`docs/ROADMAP.md` §9, salvo que el usuario indique otra prioridad.
+Alcance deliberadamente fuera de Fase 4 y diferido (no simulado, ver
+ADR-009 y "Known limitations" en "Sales"/"Payments" de
+`docs/SECURITY.md`): un motor de reglas fiscales real, resolución
+automática de lista de precios, número de orden/cotización legible,
+confirm/fulfill parcial por línea, Invoice/Shipment, adapters de
+procesador de pago con credenciales reales (Stripe/PayPal/BAC/Tilopay),
+verificación de webhooks, reconciliación por timeout del proveedor,
+reembolso parcial. Alcance fuera de Fase 3 y aún diferido, sin cambios:
+ubicaciones/bins de bodega, lote/serie/vencimiento — ver "Known
+limitations" en "Inventory" de `docs/SECURITY.md` (su hueco de conexión
+con Sales/Purchasing/POS ya cerró parcialmente: Sales es ahora un
+llamador real, Purchasing/POS siguen pendientes). Alcance fuera de Fase 2
+y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 27 (Sales y Payments — Fase 4, completa de una vez)
+
+Fase 4 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("continua con la fase 4 y terminalo todo en una sola sesión"):
+Quotes/Sales Orders/lines con estados explícitos, pricing snapshot con
+descuentos/impuestos/canal, reserva de inventario vía un port
+transaccional real hacia Inventory, Returns como registro propio (nunca
+una mutación de estado de la orden), y un módulo de Payments independiente
+con captura/reembolso idempotentes — los entregables de `docs/ROADMAP.md`
+§8 (4A y 4B), con las garantías de sus exit criteria ("Confirm/cancel/
+return tienen invariantes y compensaciones probadas", "Duplicar request
+no duplica orden, cargo ni refund") verificadas contra Postgres real, no
+solo razonadas.
+
+- **`apps/api/src/modules/sales/`** (módulo nuevo, el más transversal del
+  código base hasta ahora): 6 dependencias directas y sin ciclos —
+  Catalog, Warehouses, Taxes, Pricing, Customers, Inventory
+  (docs/ARCHITECTURE.md §6). `Quote`/`QuoteLine` (`DRAFT` →
+  `CONVERTED`/`CANCELLED`, nunca reserva inventario), `SalesOrder`/
+  `SalesOrderLine` (`DRAFT` → `CONFIRMED` → `FULFILLED`, `CANCELLED`
+  alcanzable solo desde `DRAFT`/`CONFIRMED` — nunca después de
+  `FULFILLED`, una orden despachada se corrige con una devolución, no una
+  cancelación), `SalesReturn`/`SalesReturnLine` (registro propio
+  append-only, sin columna de estado). Deliberadamente **sin**
+  `PENDING`/`PROCESSING`/`PARTIALLY_FULFILLED`/`REFUNDED` en
+  `SalesOrderStatus` ni número de orden/cotización legible — ver ADR-009
+  y docs/DATABASE.md "Sales tables" para el razonamiento completo de cada
+  decisión de alcance.
+- **Patrón nuevo: entidades de doble factory.** `QuoteLine`/
+  `SalesOrderLine` tienen `.create()` (calcula `lineTotal` a partir de
+  cantidad/precio/descuento/impuesto vía `domain/decimal.ts`, aritmética
+  BigInt sin dependencias) y `.fromProps()` (confía en el valor
+  persistido tal cual) — necesario porque `lineTotal` es un hecho
+  histórico de lo que se cotizó/vendió, no un valor que deba
+  recalcularse silenciosamente al leer si una futura regla de redondeo
+  cambiara el resultado.
+- **`ConfirmSalesOrderUseCase`**: implementa el patrón de transacción
+  compensatoria que el exit criteria de `docs/ROADMAP.md` §8 pide
+  explícitamente — reserva inventario línea por línea vía el
+  `CreateReservationUseCase` real de Inventory; si una línea falla por
+  stock insuficiente, libera cada reserva ya hecha en el intento actual
+  antes de relanzar el error, y la orden nunca queda marcada
+  `CONFIRMED`. **Verificado contra Postgres real con un escenario
+  multi-línea genuino** donde la segunda línea falla de verdad: todas las
+  reservas previas quedan liberadas, el saldo vuelve a estar
+  completamente disponible, y la orden permanece `DRAFT`.
+- **`FulfillSalesOrderUseCase`**: reutiliza los use cases ya existentes de
+  Inventory (`ReleaseReservationUseCase` + `RecordIssueUseCase`, dos filas
+  de ledger) en vez de inventar un tipo de movimiento combinado nuevo —
+  efecto neto verificado: on-hand disminuye, reservado disminuye por la
+  misma cantidad, disponible no cambia.
+- **`CreateSalesReturnUseCase`**: valida cada línea contra la suma
+  corriente de todas las `SalesReturnLine` previas para esa
+  `SalesOrderLine` (lectura de ledger vía `listBySalesOrderLine`, nunca un
+  contador guardado que pudiera desincronizarse), y postea un movimiento
+  `RETURN` real por línea con `warehouseId` vía el `RecordReturnUseCase`
+  real de Inventory.
+- **Bug real encontrado y corregido antes del primer commit de este
+  módulo**: `ConvertQuoteToSalesOrderUseCase` asignaba el `warehouseId`
+  recibido a **todas** las líneas convertidas sin verificar
+  `product.trackInventory`, violando la invariante que
+  `ConfirmSalesOrderUseCase` asume (solo reserva cuando
+  `line.warehouseId !== null`). Para un producto sin rastreo de
+  inventario esto habría disparado un intento de reserva real que
+  Inventory rechaza con `ProductInventoryNotTrackedError` — un error que
+  el catch de compensación de `ConfirmSalesOrderUseCase` no captura (solo
+  compensa `InsufficientInventoryError`), propagándose como un `500` sin
+  mapear. Corregido resolviendo cada línea vía el `GetProductUseCase`
+  público de Catalog y solo propagando la bodega cuando
+  `product.trackInventory` es verdadero — ver docs/DATABASE.md "Sales
+  tables" para el detalle completo.
+- **`apps/api/src/modules/payments/`** (módulo nuevo, Fase 4B): `Payment`
+  (agregado independiente de `SalesOrder`), `PaymentGateway` (puerto con
+  `capture()`/`refund()` síncronos y siempre terminales — ni `CASH` ni
+  `BANK_TRANSFER` tienen un paso de confirmación asíncrono que
+  reconciliar), `CashPaymentGatewayAdapter` (siempre exitoso, sin
+  referencia externa), `BankTransferPaymentGatewayAdapter` (exige una
+  referencia de transferencia real, o falla con una razón explícita — una
+  validación real, no simulada). **Deliberadamente sin ningún adapter que
+  requiera credenciales** (Stripe/PayPal/etc.) — ver ADR-009 nuevo para
+  el razonamiento completo: fabricar un adapter así habría violado
+  MASTER_SPEC §90 más gravemente que cualquier otra simulación ya
+  evitada en este código base, precisamente porque involucra dinero real.
+- **Idempotencia real de `CapturePaymentUseCase`**: pre-chequeo por
+  `idempotencyKey` para el caso común de reintento secuencial, y reacción
+  real a `PaymentIdempotencyConflictError` (traducido desde una violación
+  real de `@@unique([tenantId, companyId, idempotencyKey])` por
+  `PrismaPaymentRepository`, nunca una excepción cruda de Prisma filtrada
+  a través del límite de módulo) para la carrera concurrente genuina.
+  **Verificado contra Postgres real con 5 capturas genuinamente
+  concurrentes** con la misma `idempotencyKey`: las 5 resuelven con
+  éxito, las 5 coinciden en el mismo `Payment.id`, exactamente un intento
+  creó la fila (`wasReplayed: false`) y los otros 4 fueron réplicas reales
+  (`wasReplayed: true`), y exactamente una fila existe en la tabla al
+  final — el exit criteria de `docs/ROADMAP.md` §8 ("duplicar request no
+  duplica... cargo") verificado directamente, no solo razonado.
+- **Segundo bug real encontrado y corregido, esta vez por el propio smoke
+  test manual contra Postgres real**: `CapturePaymentUseCase.execute()`
+  devolvía el `Payment` desnudo, y `PaymentsController.capture()`
+  auditaba (`payments.payment.captured`) cada llamada sin condición —
+  incluyendo una que solo repetía un pago ya capturado vía el
+  pre-chequeo de idempotencia. Un reintento idempotente (exactamente el
+  escenario que la idempotencia existe para volver seguro) escribía una
+  **segunda** entrada de auditoría para un único cargo real, sugiriendo
+  falsamente en el rastro de auditoría que el pago se había capturado dos
+  veces. Corregido haciendo que `execute()` devuelva
+  `{ payment, wasReplayed }` y que el controller solo audite cuando
+  `!wasReplayed` — re-verificado contra Postgres real: el mismo escenario
+  de smoke test que antes producía 14 entradas de auditoría ahora produce
+  exactamente 13, con una sola `payments.payment.captured`.
+- 8 permisos nuevos: `sales.quotes.read/.manage`, `sales.orders.read/
+  .manage`, `sales.returns.read/.manage`, `payments.read/.manage`.
+  Auditoría real en las 9 acciones nuevas de Sales
+  (`sales.quote.created/_line.added/.converted/.cancelled`,
+  `sales.order.created/_line.added/.confirmed/.cancelled/.fulfilled`,
+  `sales.return.created`) y 2 de Payments
+  (`payments.payment.captured/.refunded`).
+- Tablas nuevas (migración `20260831224651_sales_and_payments`,
+  **generada y aplicada directamente contra Postgres real** vía el
+  workaround no-interactivo ya establecido de `prisma migrate diff`,
+  combinando ambos módulos en una sola migración, aplicada limpiamente al
+  primer intento pese a agregar `@@unique([tenantId, id])` a `customers`
+  y `taxes` — ninguna lo tenía antes, ya que Sales es su primer
+  consumidor por FK). Detalle completo en `docs/DATABASE.md` "Sales
+  tables"/"Payments table".
+- Contrato HTTP nuevo: `GET/POST /api/v1/sales/quotes`,
+  `GET/POST .../:id/lines`, `POST .../:id/convert`, `POST .../:id/cancel`;
+  `GET/POST /api/v1/sales/orders`, `GET/POST .../:id/lines`,
+  `POST .../:id/confirm`, `POST .../:id/cancel`, `POST .../:id/fulfill`;
+  `GET/POST /api/v1/sales/returns`, `GET .../:id/lines`;
+  `GET /api/v1/payments`, `POST /api/v1/payments/capture`,
+  `POST /api/v1/payments/:id/refund`.
+- **`@erp/api-client`**: ~18 tipos y ~19 métodos nuevos generados desde el
+  spec OpenAPI real (mismo flujo de la sesión 21), sin bugs de fidelidad
+  de decoradores esta vez — todos los DTOs de Sales/Payments llevaron
+  `type:`/`nullable:` explícitos desde el inicio, la lección de la sesión
+  21 aplicada proactivamente.
+- **UI** (`apps/erp-web/src/features/sales/`, ruta nueva `/sales`, botón
+  "Ventas" en el workspace): pestañas Cotizaciones/Pedidos/Devoluciones.
+  Convertir una cotización cambia automáticamente a la pestaña Pedidos y
+  abre el detalle de la orden recién creada. Los Pagos viven dentro del
+  detalle de un pedido (captura + reembolso), no como su propia página de
+  nivel superior, ya que un pago siempre pertenece a una orden. Reutiliza
+  el componente compartido `LineTargetFields` (producto + variante +
+  bodega condicional + impuesto) entre los formularios de línea de
+  cotización y de pedido, replicando la misma regla de negocio de
+  `ResolveSalesLineTargetUseCase` en el cliente para que la UI nunca
+  ofrezca una combinación que el backend rechazaría.
+- Tests: 113 tests unitarios nuevos en `apps/api` (57 de dominio, 56 de
+  aplicación, incluyendo la prueba de compensación multi-línea y la
+  validación de suma corriente de devoluciones) — 617 tests unitarios
+  totales en `apps/api` (antes 504, sumando también los de Payments).
+  Suite de integración con 2 escenarios reales nuevos contra Postgres
+  (`sales.integration-spec.ts`, `payments.integration-spec.ts`): ciclo de
+  vida completo Quote→SalesOrder→Confirm→Fulfill→Return con llamadas
+  cross-module reales, el escenario de compensación multi-línea, captura
+  BANK_TRANSFER sin referencia como fila `FAILED` real, y la carrera de
+  idempotencia con 5 capturas genuinamente concurrentes — 31/31 en total
+  (antes 28). 4 tests nuevos en `apps/erp-web`
+  (`sales-page.spec.tsx`) — 36/36 en total (antes 32). **E2E real nuevo**
+  (`apps/e2e/tests/sales.spec.ts`, Chromium vía Testcontainers): ciclo de
+  vida completo por navegador real — cliente y producto reales, cotización
+  → línea → conversión a pedido → confirmación (reserva real) → captura de
+  pago CASH real → despacho real → saldo de inventario real verificado →
+  devolución real → saldo restaurado verificado — 11/11 Playwright en
+  total (antes 9).
+- **Smoke test manual verificado contra Docker/Postgres real** (además de
+  la suite automatizada): registro y provisioning reales → cliente,
+  producto, bodega y recepción de stock reales → orden real con línea real
+  (`lineTotal` con precisión decimal real confirmada) → confirmación real
+  → captura de pago real con reintento idempotente confirmado
+  (`sameAsFirst: true`) → despacho real → reembolso real →
+  `GET /audit-entries` confirma las 13 entradas reales esperadas de la
+  sesión completa (encontrando y permitiendo corregir el bug de
+  duplicación de auditoría descrito arriba, antes de darlo por cerrado).
+- **ADR-009** nuevo (Payment Gateway Adapters V1) ratificando el alcance
+  de solo `CASH`/`BANK_TRANSFER`, sin ningún adapter con credenciales.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (617 api + 27 events + 33 notifications + 6
+  worker + 15 api-client + 36 erp-web = 734, verificado limpio en
+  corridas aisladas por paquete — la corrida concurrente de todo el
+  monorepo mostró fallos aislados por timeout bajo contención de recursos
+  de esta sesión larga, mismo patrón ya documentado en la sesión 25,
+  descartado con corridas aisladas limpias repetidas), `pnpm --filter
+  @erp/api test:integration` (31/31 contra Postgres real), `pnpm --filter
+  @erp/e2e test:e2e` (11/11 Playwright) — todo verde.
 
 ### Hecho — sesión 26 (Inventory — Fase 3, completa de una vez)
 

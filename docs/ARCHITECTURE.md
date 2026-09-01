@@ -8,10 +8,12 @@ Customers, Suppliers, Product Catalog, Pricing, Taxes, Warehousing master
 data) está implementado y cerrado — Fase 2, sesión 25, 2026-08-31. El
 sub-alcance de Inventory (Movement Ledger, balances, reservas,
 transferencias) también está implementado y cerrado — Fase 3, sesión 26,
-2026-08-31. El resto del alcance descrito en §5.2 (Sales, Purchasing,
-Payments, Accounting, CRM, Manufacturing, Reporting/BI, Channels,
-Integrations) sigue vigente como diseño de referencia para las fases
-futuras del roadmap, todavía sin implementar.**
+2026-08-31. El sub-alcance de Sales y Payments (Quotes, Sales Orders,
+Returns, captura/reembolso de pagos vía CASH/BANK_TRANSFER) también está
+implementado y cerrado — Fase 4, sesión 27, 2026-08-31. El resto del
+alcance descrito en §5.2 (Purchasing, Accounting, CRM, Manufacturing,
+Reporting/BI, Channels, Integrations) sigue vigente como diseño de
+referencia para las fases futuras del roadmap, todavía sin implementar.**
 
 Alcance: arquitectura objetivo de la primera versión y Foundation
 

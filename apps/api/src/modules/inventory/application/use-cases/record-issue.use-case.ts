@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { newId } from "@erp/database";
 import { assertValidPositiveDecimal, negateDecimal } from "../../domain/decimal";
-import { InventoryMovement } from "../../domain/inventory-movement.entity";
+import { InventoryMovement, InventoryMovementReferenceType } from "../../domain/inventory-movement.entity";
 import { InventoryBalance } from "../../domain/inventory-balance.entity";
 import { INVENTORY_BALANCE_REPOSITORY, InventoryBalanceRepository } from "../../domain/inventory-balance.repository";
 import { ResolveWarehouseTargetUseCase } from "./resolve-warehouse-target.use-case";
@@ -18,12 +18,17 @@ export interface RecordIssueInput {
   /** Positive amount to remove from on-hand stock — negated internally before it reaches the ledger. */
   quantity: string;
   reason?: string | null;
+  /** Omitted → MANUAL (a direct UI-driven issue). Sales passes SALES_ORDER + its order id on fulfillment. */
+  referenceType?: InventoryMovementReferenceType;
+  referenceId?: string | null;
 }
 
 /**
- * Stock leaving a warehouse with no corresponding InventoryTransfer (e.g. a
- * write-off, sample, or shipment recorded outside a formal sales flow —
- * Sales, Phase 4, will call this once it exists). Rejected by
+ * Stock leaving a warehouse with no corresponding InventoryTransfer — a
+ * manual write-off/sample (`referenceType: "MANUAL"`, the default) or,
+ * since Sales (Phase 4), a real order fulfillment
+ * (`referenceType: "SALES_ORDER"`, `referenceId: salesOrderId` — see
+ * `FulfillSalesOrderUseCase`). Rejected by
  * `InventoryBalanceRepository.applyMovement` with `InsufficientInventoryError`
  * if it would drive on-hand below the already-reserved quantity.
  */
@@ -55,8 +60,8 @@ export class RecordIssueUseCase {
       type: "ISSUE",
       quantity: negateDecimal(positiveQuantity),
       reason: input.reason ?? null,
-      referenceType: "MANUAL",
-      referenceId: null,
+      referenceType: input.referenceType ?? "MANUAL",
+      referenceId: input.referenceId ?? null,
       correlationId: input.correlationId,
       createdByUserId: input.actorUserId,
       createdAt: new Date(),
