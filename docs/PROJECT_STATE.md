@@ -1,6 +1,22 @@
 # Project State
 
-Última actualización: 2026-09-01 (sesión 29), tras implementar Purchasing
+Última actualización: 2026-09-01 (sesión 30), tras implementar POS
+completo — Registers, Shifts, Cash Movements, Sales (ring-up de un pedido
+real vía el contrato público de Sales/Payments, idempotente por
+`idempotencyKey`) y Returns (con reembolso opcional del pago original) —
+**cerrando la Fase 6 por completo en un solo bloque de trabajo**, a pedido
+explícito del usuario ("Continua con la fase 6 y dejala terminada de una
+vez"). Ver "Hecho — sesión 30" en `docs/WORK_QUEUE.md` para el detalle
+completo, incluyendo la verificación directa contra Postgres real de sus
+exit criteria ("Cierres y cash movements son auditables y Decimal-safe",
+"Reintentos de terminal no duplican ventas/pagos") y el límite documentado
+y honesto de esa segunda garantía bajo una carrera genuinamente simultánea
+(no una reintentona secuencial). Quinto módulo de negocio del código base
+y el primero cuyo flujo de escritura principal es en sí mismo una
+orquestación de otros dos módulos de negocio (Sales y Payments) en vez de
+poseer su propio dominio transaccional.
+
+Actualización previa: 2026-09-01 (sesión 29), tras implementar Purchasing
 completo — Purchase Orders/lines con aprobación separada de administración
 (segregation of duties real, no solo diseñada), Receipts genuinamente
 parciales contra el ledger de Inventory, Returns a proveedor, y Supplier
@@ -84,6 +100,56 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
+PHASE 6 — POS, **iniciada y formalmente cerrada el 2026-09-01 (sesión 30,
+en un solo bloque de trabajo)**: PosRegister (una caja/terminal atada a
+una `Warehouse`), PosShift (`OPEN → CLOSED`, a lo sumo un turno `OPEN` por
+caja a la vez — invariante de aplicación, no un índice parcial),
+PosCashMovement (ledger append-only de ingresos/egresos de efectivo),
+PosSale (creado únicamente después de que un `SalesOrder` real, canal
+`POS`, se confirma y despacha y su `Payment` real queda `CAPTURED` —
+`RingUpSaleUseCase` orquesta la creación de la orden, la línea, la
+confirmación, la captura del pago y el despacho enteramente a través de
+los contratos públicos de Sales y Payments, nunca una ruta de escritura
+paralela), y PosReturn (mismo patrón, con reembolso opcional siempre por
+el monto completo del pago original) — `apps/api/src/modules/pos`, ver
+"Hecho — sesión 30" en `docs/WORK_QUEUE.md` para el detalle completo. El
+exit criteria de `docs/ROADMAP.md` §10 ("Cierres y cash movements son
+auditables y Decimal-safe") se verificó con un turno real que combina
+movimientos de caja, una venta en efectivo y una devolución con reembolso
+completo, confirmando contra Postgres real que el efectivo esperado
+calculado coincide exactamente con la aritmética hecha a mano, usando
+únicamente BigInt (nunca floats de JavaScript). El otro exit criteria
+("Reintentos de terminal no duplican ventas/pagos") se verificó con 5
+solicitudes de `ringUpSale` genuinamente concurrentes contra Postgres real
+compartiendo la misma `idempotencyKey`: las 5 resuelven con éxito, las 5
+convergen en el mismo `PosSale.id`, y existe exactamente una fila al
+final — pero esa garantía tiene un límite documentado explícitamente, no
+oculto: bajo una carrera genuinamente simultánea (no una reintentona
+secuencial tras perder la respuesta, que es el caso real que un terminal
+POS produce en la práctica), cada llamador puede crear su propia
+`SalesOrder`/`Payment` real antes de que cualquiera confirme el
+`PosSale`, dejando órdenes reales huérfanas aunque el `PosSale` final siga
+siendo único — ver "Known limitations" en `docs/SECURITY.md` "POS" y el
+docstring de `RingUpSaleUseCase` para el razonamiento completo de por qué
+esto se dejó fuera de alcance deliberadamente. Quinto módulo de negocio
+del código base, con tres dependencias directas y sin ciclos a
+Warehouses, Sales y Payments — el primero cuyo flujo de escritura
+principal es en sí mismo una orquestación de otros dos módulos de negocio
+en vez de poseer su propio dominio transaccional; `payments` ganó su
+primer `@@unique([tenantId, id])` (primer consumidor de FK, mismo patrón
+ya usado por `customers`/`taxes`/`suppliers` antes). Alcance
+deliberadamente fuera de Fase 6, sin aprobación explícita: adapters de
+hardware real (lector de código de barras, impresora térmica, gaveta,
+pantalla de cliente — MASTER_SPEC §24 y la "Restricción" del propio
+`docs/ROADMAP.md` §10 los difieren hasta que exista hardware real que
+validar), operación offline (explícitamente excluida por la misma
+"Restricción" hasta que exista un ADR sobre device identity, ledger
+local, resolución de conflictos, correlativos, reservas y
+reconciliación), reembolso parcial (heredado de ADR-009), y número de
+venta/ticket legible — ver "Known limitations" en `docs/SECURITY.md`
+"POS". Próxima fase no bloqueada: PHASE 7 — Commerce (`docs/ROADMAP.md`
+§11), salvo indicación distinta del usuario.
+
 PHASE 5 — Purchasing, **iniciada y formalmente cerrada el 2026-09-01
 (sesión 29, en un solo bloque de trabajo)**: PurchaseOrder/PurchaseOrderLine
 (`DRAFT → CONFIRMED → CLOSED`, `CANCELLED` solo desde `DRAFT`/`CONFIRMED`
@@ -117,9 +183,7 @@ lo tenía, vía Sales), y `InventoryMovementReferenceType` ganó
 orden), número de orden legible, impuestos en líneas de orden, validación
 cruzada entre el monto de una factura de proveedor y las líneas/recepciones
 de su orden, y cualquier conexión real con Payments — ver "Known
-limitations" en `docs/SECURITY.md` "Purchasing". Próxima fase no
-bloqueada: PHASE 6 — POS (`docs/ROADMAP.md` §10), salvo indicación
-distinta del usuario.
+limitations" en `docs/SECURITY.md` "Purchasing".
 
 PHASE 4 — Sales y Payments, **iniciada y formalmente cerrada el
 2026-08-31 (sesión 27, en un solo bloque de trabajo)**: Quote/QuoteLine
@@ -1282,6 +1346,97 @@ bloqueen.
   saldo de inventario real verificado → devolución real (5 unidades) →
   saldo restaurado verificado → factura de proveedor real creada y
   cancelada — 13/13 Playwright en total (antes 12).
+- **POS — Fase 6, completa** (`apps/api/src/modules/pos`, Claude, sesión
+  30, en un solo bloque de trabajo): PosRegister/PosShift (`OPEN → CLOSED`,
+  a lo sumo un turno `OPEN` por caja a la vez — invariante de aplicación
+  verificada con `PosShiftRepository.findOpenByRegister`, no un índice
+  parcial), PosCashMovement (ledger append-only de ingresos/egresos),
+  PosSale/PosReturn (registros propios creados únicamente después de que
+  el flujo real de Sales/Payments termina con éxito). Tercera dependencia
+  transversal de negocio del código base tras Sales/Purchasing, y la
+  primera cuyo caso de uso principal (`RingUpSaleUseCase`) no posee su
+  propio dominio transaccional: orquesta `CreateSalesOrderUseCase`/
+  `AddSalesOrderLineUseCase`/`ConfirmSalesOrderUseCase`/
+  `CapturePaymentUseCase`/`FulfillSalesOrderUseCase` enteramente a través
+  de los contratos públicos de Sales y Payments (ambos módulos ganaron
+  export nuevos en esta sesión: `CreateSalesOrderUseCase`,
+  `AddSalesOrderLineUseCase`, `CancelSalesOrderUseCase`,
+  `FulfillSalesOrderUseCase`, `CreateSalesReturnUseCase` en Sales;
+  `CapturePaymentUseCase`, `RefundPaymentUseCase` en Payments — este
+  último ya estaba exportado desde `index.ts` pero nunca había sido
+  agregado al arreglo `exports` del propio `PaymentsModule` de Nest, el
+  mismo hueco real que Sales tenía con `ConfirmSalesOrderUseCase` antes de
+  esta sesión). Cualquier falla después de crear la orden dispara la misma
+  compensación que `ConfirmSalesOrderUseCase` ya estableció: cancela la
+  orden (mejor esfuerzo, nunca oculta el error real), cubriendo tanto una
+  orden aún `DRAFT` (falla al agregar línea o confirmar) como una
+  `CONFIRMED` (pago rechazado, `amountTendered` insuficiente) sin lógica
+  duplicada. **Límite de concurrencia documentado explícitamente, no
+  oculto**: el pre-chequeo de idempotencia de `RingUpSaleUseCase` corre
+  una sola vez, al inicio, así que una reintentona *secuencial* tras
+  perder la respuesta (el caso real que un terminal produce en la
+  práctica) queda completamente cubierta, pero una carrera genuinamente
+  *simultánea* puede dejar más de una `SalesOrder`/`Payment` real creada
+  antes de que cualquiera confirme el `PosSale` final — la garantía real
+  verificada es que exactamente una fila `PosSale` sobrevive y todos los
+  llamadores convergen en ella (no que solo se creó un `SalesOrder`), un
+  límite razonado explícitamente en el propio docstring de
+  `RingUpSaleUseCase` y en `docs/SECURITY.md` "POS" en vez de resolverse
+  con un mecanismo de claim-antes-del-efecto (que habría espejado el
+  patrón del inbox, ADR-008, fuera de alcance de esta fase). 10 permisos
+  nuevos (`pos.registers.read/.manage`, `pos.shifts.read/.manage`,
+  `pos.cash-movements.read/.manage`, `pos.sales.read/.manage`,
+  `pos.returns.read/.manage`), auditoría real en las 6 acciones de
+  escritura (`pos.register.created/.status_changed`,
+  `pos.shift.opened/.closed`, `pos.cash_movement.recorded`,
+  `pos.sale.rung_up`, `pos.return.created`). Tablas nuevas (migración
+  `20260901194057_pos`, **generada y aplicada directamente contra
+  Postgres real** vía el mismo workaround no-interactivo ya establecido,
+  combinando cinco tablas nuevas, dos enums nuevos, y
+  `@@unique([tenantId, id])` nuevo en `payments` —su primer consumidor de
+  FK— aplicada limpiamente al primer intento). Contrato HTTP nuevo
+  (`/api/v1/pos/registers`, `.../shifts`, `.../shifts/:id/cash-movements`,
+  `.../sales`, `.../returns`). **`@erp/api-client`**: ~16 tipos y 14
+  métodos nuevos generados desde el spec OpenAPI real, sin bugs de
+  fidelidad de decoradores. **UI** (`apps/erp-web/src/features/pos/`, ruta
+  nueva `/pos`, botón "Punto de venta" en el workspace): pestañas
+  Vender/Cajas/Ventas. A diferencia de Purchasing/Sales, la lista de cajas
+  se carga una sola vez a nivel de página (no por pestaña activa) porque
+  la pestaña "Vender" —activa por defecto al entrar— la necesita antes de
+  que el usuario visite jamás la pestaña "Cajas"; un intento inicial de
+  cargarla de forma perezosa por pestaña (el mismo patrón ya usado en el
+  resto de esta UI) habría dejado el selector de caja vacío en el primer
+  render, un bug real encontrado y corregido durante el propio diseño,
+  antes de escribir ningún test. El carrito de venta reutiliza el mismo
+  componente `ProductLineFields` (producto + variante + impuesto
+  opcional) sin selector de bodega, ya que `RingUpSaleUseCase` resuelve la
+  bodega del lado del servidor a partir de la caja del turno, nunca desde
+  la entrada del usuario. El ticket se imprime con `window.print()` del
+  navegador — soporte real, no una simulación de una impresora térmica
+  específica, consistente con la decisión de no fabricar adapters de
+  hardware sin hardware real que validar (ver "Known limitations" en
+  `docs/SECURITY.md` "POS"). Tests: 72 tests unitarios nuevos en
+  `apps/api` (29 de dominio incluyendo la aritmética decimal propia del
+  módulo, 40 de aplicación incluyendo el escenario de compensación por
+  pago rechazado y la reacción real a un conflicto de idempotencia
+  simulado, 3 de wiring del módulo) — 790 tests unitarios totales en
+  `apps/api` (antes 718). Suite de integración con 2 escenarios reales
+  nuevos contra Postgres (`pos.integration-spec.ts`): ciclo de vida
+  completo Register→Shift→RingUpSale→CashMovement→Return→Close con
+  llamadas cross-module reales a Sales/Payments/Inventory, y 5 solicitudes
+  de `ringUpSale` genuinamente concurrentes con la misma `idempotencyKey`
+  confirmando exactamente una fila `PosSale` final — 36/36 en total (antes
+  34). 1 test nuevo en `@erp/api-client` — 18/18 en total (antes 17). 3
+  tests nuevos en `apps/erp-web` (`pos-page.spec.tsx`) — 45/45 en total
+  (antes 42). **E2E real nuevo** (`apps/e2e/tests/pos.spec.ts`, Chromium
+  vía Testcontainers, pasó a la primera sin colisiones de
+  `getByText`/`getByLabel`): ciclo de vida completo por navegador real —
+  cliente y producto reales, recepción de stock real, caja real creada,
+  turno abierto con fondo inicial real, venta real en efectivo con vuelto
+  calculado, saldo de inventario real verificado, devolución real con
+  reembolso completo, saldo restaurado verificado, y cierre de turno real
+  con efectivo esperado/diferencia calculados y verificados contra
+  Postgres real — 14/14 Playwright en total (antes 13).
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -1338,46 +1493,47 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — **Fase 5 (Purchasing) quedó formalmente cerrada en la
-sesión 29**, en un solo bloque de trabajo (ver Completed arriba y "Hecho —
-sesión 29" en `docs/WORK_QUEUE.md`). El siguiente bloque no bloqueado es
-Fase 6 (POS) según `docs/ROADMAP.md` §10, salvo indicación distinta del
-usuario.
+Ninguno activo — **Fase 6 (POS) quedó formalmente cerrada en la sesión
+30**, en un solo bloque de trabajo (ver Completed arriba y "Hecho —
+sesión 30" en `docs/WORK_QUEUE.md`). El siguiente bloque no bloqueado es
+Fase 7 (Commerce) según `docs/ROADMAP.md` §11, salvo indicación distinta
+del usuario.
 
 ## Pending
 
 Ningún ítem de la cola original de Foundation queda pendiente
 (`docs/WORK_QUEUE.md`), ningún ítem del alcance de Fase 2 descrito en
 `docs/ARCHITECTURE.md` §5.2 queda pendiente, y ningún ítem del alcance de
-Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8) ni Fase 5
-(`docs/ROADMAP.md` §9) queda pendiente. También pendiente, sin bloquear
-Fase 6: ratificar ADR-001, ADR-002 y ADR-003 formalmente (ADR-004 a
-ADR-009 ya están ratificados) — sus decisiones ya están implementadas y
-verificadas, solo falta el documento formal. La UI de RBAC (incluida la
-invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
-de Platform Administration (sesión 18), la UI de Apps (sesión 22), la UI
-de Catálogo (sesión 23), la UI de Contactos/Customers/Suppliers (sesión
-24), la UI de Comercial/Taxes/Warehouses/Pricing (sesión 25), la UI de
-Inventario (sesión 26), la UI de Ventas/Pagos (sesión 27) y la UI de
-Compras (sesión 29) ya están hechas e integradas (ver Completed); la UI de
-Files (subida/listado/descarga) y de Notifications (bandeja/badge de no
-leídas) todavía no se han construido — quedan como mejoras de UX sin
-dependencia de arquitectura, a retomar si el usuario las pide o cuando un
-módulo de negocio las necesite. Alcance deliberadamente diferido a fases
-futuras dentro de Master Data (no bloquea el cierre de Fase 2, ver "Known
+Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
+(`docs/ROADMAP.md` §9) ni Fase 6 (`docs/ROADMAP.md` §10) queda pendiente.
+También pendiente, sin bloquear Fase 7: ratificar ADR-001, ADR-002 y
+ADR-003 formalmente (ADR-004 a ADR-009 ya están ratificados) — sus
+decisiones ya están implementadas y verificadas, solo falta el documento
+formal. La UI de RBAC (incluida la invitación de miembros), el E2E de
+sesión, la UI de Configuración, la UI de Platform Administration (sesión
+18), la UI de Apps (sesión 22), la UI de Catálogo (sesión 23), la UI de
+Contactos/Customers/Suppliers (sesión 24), la UI de Comercial/Taxes/
+Warehouses/Pricing (sesión 25), la UI de Inventario (sesión 26), la UI de
+Ventas/Pagos (sesión 27), la UI de Compras (sesión 29) y la UI de POS
+(sesión 30) ya están hechas e integradas (ver Completed); la UI de Files
+(subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
+todavía no se han construido — quedan como mejoras de UX sin dependencia
+de arquitectura, a retomar si el usuario las pide o cuando un módulo de
+negocio las necesite. Alcance deliberadamente diferido a fases futuras
+dentro de Master Data (no bloquea el cierre de Fase 2, ver "Known
 limitations" en `docs/SECURITY.md`): motor de reglas fiscales real,
 resolución de lista de precios aplicable a una venta, precios de lista por
 variante, asociación Warehouse↔Branch/Location, import/export masivo.
 Alcance deliberadamente diferido dentro de Inventory (no bloquea el cierre
 de Fase 3, ver "Known limitations" en `docs/SECURITY.md` "Inventory"):
-ubicaciones/bins de bodega, lote/serie/vencimiento, conexión real desde
-POS (todavía no existe — Sales y Purchasing ya son llamadores reales
-desde las sesiones 27 y 29). Alcance deliberadamente diferido dentro de
-Sales/Payments (no bloquea el cierre de Fase 4, ver ADR-009 y "Known
-limitations" en `docs/SECURITY.md` "Sales"/"Payments"): motor de reglas
-fiscales real, resolución automática de lista de precios, número de
-orden/cotización legible, confirm/fulfill parcial por línea, Invoice/
-Shipment, adapters de pago con credenciales reales
+ubicaciones/bins de bodega, lote/serie/vencimiento — su hueco de conexión
+con Sales/Purchasing/POS ya cerró por completo: los tres son ahora
+llamadores reales desde las sesiones 27, 29 y 30. Alcance deliberadamente
+diferido dentro de Sales/Payments (no bloquea el cierre de Fase 4, ver
+ADR-009 y "Known limitations" en `docs/SECURITY.md` "Sales"/"Payments"):
+motor de reglas fiscales real, resolución automática de lista de precios,
+número de orden/cotización legible, confirm/fulfill parcial por línea,
+Invoice/Shipment, adapters de pago con credenciales reales
 (Stripe/PayPal/BAC/Tilopay), verificación de webhooks, reconciliación por
 timeout del proveedor, reembolso parcial. Alcance deliberadamente diferido
 dentro de Purchasing (no bloquea el cierre de Fase 5, ver "Known
@@ -1386,7 +1542,18 @@ limitations" en `docs/SECURITY.md` "Purchasing"): Purchase Requests
 justifique", nunca cumplido), número de orden legible, impuestos en
 líneas de orden, validación cruzada entre el monto de una factura de
 proveedor y las líneas/recepciones de su orden, y cualquier conexión real
-con Payments (accounts payable / egresos reales).
+con Payments (accounts payable / egresos reales). Alcance deliberadamente
+diferido dentro de POS (no bloquea el cierre de Fase 6, ver "Known
+limitations" en `docs/SECURITY.md` "POS"): adapters de hardware real
+(lector de código de barras, impresora térmica, gaveta, pantalla de
+cliente — diferidos hasta que exista hardware real que validar, misma
+razón ya aplicada a los payment gateways credenciados en ADR-009),
+operación offline (excluida explícitamente por la "Restricción" del
+propio `docs/ROADMAP.md` §10 hasta que exista un ADR sobre device
+identity/ledger local/reconciliación), el límite de concurrencia
+documentado sobre `RingUpSaleUseCase` bajo una carrera genuinamente
+simultánea (no una reintentona secuencial, que sí está cubierta), y
+número de venta/ticket legible.
 
 ## Production Status
 
@@ -1903,3 +2070,34 @@ independientes a nivel de permiso, el exit criteria de
 en total (antes 32). Los datos de prueba de esta sesión permanecen en la
 base, por el mismo motivo `onDelete: Restrict` de `audit_entries.user_id`
 ya documentado en sesiones anteriores.
+
+**Sesión 30 (2026-09-01, POS — Fase 6, completa de una vez)**: migración
+`20260901194057_pos` (`pos_registers`, `pos_shifts`, `pos_cash_movements`,
+`pos_sales`, `pos_returns`, más los enums nuevos `PosShiftStatus`/
+`PosCashMovementType` y `@@unique([tenantId, id])` nuevo en `payments`)
+generada vía el mismo workaround no-interactivo `prisma migrate diff
+--from-config-datasource --to-schema prisma/schema.prisma --script` ya
+establecido, aplicada vía `prisma migrate deploy` — `prisma migrate
+status` confirma las 20 migraciones aplicadas sin drift. Verificado con el
+servidor real reconstruido y la suite de integración real
+(`apps/api/test/integration/pos.integration-spec.ts`, 2 escenarios contra
+Postgres real vía Testcontainers): ciclo de vida completo real (producto y
+bodega reales → turno real abierto con fondo inicial real → movimiento de
+caja real → venta real en efectivo con vuelto real (`3 × 10.0000 =
+30.0000`, redondeo de Postgres real sin recorte de ceros) → saldo de
+inventario real verificado (`17.0000`) → devolución real sin reembolso
+(goods-only) → saldo restaurado real verificado (`18.0000`) → cierre de
+turno real con efectivo esperado calculado (`50 + 20 (cash-in) + 30
+(venta) = 100.0000`) y coincidiendo exactamente con lo contado, varianza
+`0.0000`) y el escenario de concurrencia genuina (5 llamadas reales
+concurrentes a `ringUpSale` compartiendo la misma `idempotencyKey` contra
+Postgres real, confirmando que las 5 resuelven con éxito, las 5 convergen
+en el mismo `PosSale.id`, y existe exactamente una fila `pos_sales` al
+final — el exit criteria de `docs/ROADMAP.md` §10 ("Reintentos de
+terminal no duplican ventas/pagos") verificado directamente para el caso
+que un terminal real produce en la práctica, con el límite de una carrera
+genuinamente simultánea documentado explícitamente en vez de ocultado, ver
+"Known limitations" en `docs/SECURITY.md` "POS"). Los datos de prueba de
+esta sesión permanecen en la base, por el mismo motivo `onDelete:
+Restrict` de `audit_entries.user_id` ya documentado en sesiones
+anteriores.

@@ -1106,6 +1106,130 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented POS endpoints", async () => {
+    const register = {
+      id: "register-1",
+      warehouseId: "wh-1",
+      code: "REG-1",
+      name: "Caja principal",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    };
+    const shift = {
+      id: "shift-1",
+      registerId: "register-1",
+      status: "OPEN",
+      openedByUserId: "user-1",
+      openedAt: "2026-09-01T08:00:00.000Z",
+      openingCash: "50.0000",
+      closedByUserId: null,
+      closedAt: null,
+      closingCashCounted: null,
+      closingCashExpected: null,
+      cashVariance: null,
+      notes: null,
+    };
+    const movement = {
+      id: "movement-1",
+      shiftId: "shift-1",
+      type: "CASH_IN",
+      amount: "20.0000",
+      reason: "Fondo adicional",
+      recordedByUserId: "user-1",
+      createdAt: "2026-09-01T09:00:00.000Z",
+    };
+    const sale = {
+      id: "pos-sale-1",
+      shiftId: "shift-1",
+      salesOrderId: "order-1",
+      paymentId: "payment-1",
+      paymentMethod: "CASH",
+      amount: "30.0000",
+      amountTendered: "50.0000",
+      changeDue: "20.0000",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    };
+    const posReturn = {
+      id: "pos-return-1",
+      shiftId: "shift-1",
+      posSaleId: "pos-sale-1",
+      salesReturnId: "sales-return-1",
+      refunded: true,
+      refundAmount: "30.0000",
+      refundMethod: "CASH",
+      reason: null,
+      createdAt: "2026-09-01T11:00:00.000Z",
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([register]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(register), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...register, status: "INACTIVE" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([shift]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(shift), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(shift), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...shift, status: "CLOSED", closingCashCounted: "100.0000" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([movement]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(movement), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([sale]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(sale), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(sale), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([posReturn]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(posReturn), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listPosRegisters("access-token", "grupo-aurora", "company-1", { status: "ACTIVE" });
+    await client.createPosRegister("access-token", "grupo-aurora", "company-1", { warehouseId: "wh-1", code: "REG-1", name: "Caja principal" });
+    await client.setPosRegisterStatus("access-token", "grupo-aurora", "company-1", "register-1", { status: "INACTIVE" });
+    await client.listPosShifts("access-token", "grupo-aurora", "company-1", { registerId: "register-1" });
+    await client.getPosShift("access-token", "grupo-aurora", "company-1", "shift-1");
+    await client.openShift("access-token", "grupo-aurora", "company-1", { registerId: "register-1", openingCash: "50.0000" });
+    await client.closeShift("access-token", "grupo-aurora", "company-1", "shift-1", { closingCashCounted: "100.0000" });
+    await client.listCashMovements("access-token", "grupo-aurora", "company-1", "shift-1");
+    await client.recordCashMovement("access-token", "grupo-aurora", "company-1", "shift-1", { type: "CASH_IN", amount: "20.0000", reason: "Fondo adicional" });
+    await client.listPosSales("access-token", "grupo-aurora", "company-1", { shiftId: "shift-1" });
+    await client.getPosSale("access-token", "grupo-aurora", "company-1", "pos-sale-1");
+    await client.ringUpSale("access-token", "grupo-aurora", "company-1", {
+      shiftId: "shift-1",
+      customerId: "customer-1",
+      currency: "USD",
+      paymentMethod: "CASH",
+      idempotencyKey: "ring-1",
+      lines: [{ productId: "product-1", quantity: "3.0000" }],
+    });
+    await client.listPosReturns("access-token", "grupo-aurora", "company-1", { shiftId: "shift-1" });
+    await client.createPosReturn("access-token", "grupo-aurora", "company-1", {
+      shiftId: "shift-1",
+      posSaleId: "pos-sale-1",
+      issueRefund: true,
+      idempotencyKey: "return-1",
+      lines: [{ salesOrderLineId: "order-line-1", quantity: "3.0000" }],
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/pos/registers?status=ACTIVE", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/pos/registers", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/pos/registers/register-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/pos/shifts?registerId=register-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/pos/shifts/shift-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/pos/shifts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/pos/shifts/shift-1/close", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/pos/shifts/shift-1/cash-movements", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/pos/shifts/shift-1/cash-movements", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/pos/sales?shiftId=shift-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/pos/sales/pos-sale-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/pos/sales", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/pos/returns?shiftId=shift-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(14, "/api/v1/pos/returns", expect.objectContaining({ method: "POST" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

@@ -311,6 +311,49 @@ export interface ListSupplierInvoicesFilter {
   limit?: number;
 }
 
+export type PosRegisterStatus = components["schemas"]["PosRegisterResponseDto"]["status"];
+export type PosRegisterResponse = components["schemas"]["PosRegisterResponseDto"];
+export type CreatePosRegisterInput = components["schemas"]["CreatePosRegisterDto"];
+export type SetPosRegisterStatusInput = components["schemas"]["SetPosRegisterStatusDto"];
+
+export type PosShiftStatus = components["schemas"]["PosShiftResponseDto"]["status"];
+export type PosShiftResponse = components["schemas"]["PosShiftResponseDto"];
+export type OpenShiftInput = components["schemas"]["OpenShiftDto"];
+export type CloseShiftInput = components["schemas"]["CloseShiftDto"];
+
+export type PosCashMovementType = components["schemas"]["PosCashMovementResponseDto"]["type"];
+export type PosCashMovementResponse = components["schemas"]["PosCashMovementResponseDto"];
+export type RecordCashMovementInput = components["schemas"]["RecordCashMovementDto"];
+
+export type PosSaleResponse = components["schemas"]["PosSaleResponseDto"];
+export type RingUpSaleLineInput = components["schemas"]["RingUpSaleLineDto"];
+export type RingUpSaleInput = components["schemas"]["RingUpSaleDto"];
+
+export type PosReturnResponse = components["schemas"]["PosReturnResponseDto"];
+export type CreatePosReturnLineInput = components["schemas"]["CreatePosReturnLineDto"];
+export type CreatePosReturnInput = components["schemas"]["CreatePosReturnDto"];
+
+export interface ListPosRegistersFilter {
+  status?: PosRegisterStatus;
+  limit?: number;
+}
+
+export interface ListPosShiftsFilter {
+  registerId?: string;
+  status?: PosShiftStatus;
+  limit?: number;
+}
+
+export interface ListPosSalesFilter {
+  shiftId?: string;
+  limit?: number;
+}
+
+export interface ListPosReturnsFilter {
+  shiftId?: string;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

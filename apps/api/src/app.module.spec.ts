@@ -77,6 +77,7 @@ import {
   ConfirmPurchaseOrderUseCase,
   GetPurchaseOrderUseCase,
 } from "./modules/purchasing";
+import { PosRegistersController, PosShiftsController, PosSalesController, PosReturnsController } from "./modules/pos";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -169,6 +170,10 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(SupplierInvoicesController)).toBeInstanceOf(SupplierInvoicesController);
     expect(moduleRef.get(ConfirmPurchaseOrderUseCase)).toBeInstanceOf(ConfirmPurchaseOrderUseCase);
     expect(moduleRef.get(GetPurchaseOrderUseCase)).toBeInstanceOf(GetPurchaseOrderUseCase);
+    expect(moduleRef.get(PosRegistersController)).toBeInstanceOf(PosRegistersController);
+    expect(moduleRef.get(PosShiftsController)).toBeInstanceOf(PosShiftsController);
+    expect(moduleRef.get(PosSalesController)).toBeInstanceOf(PosSalesController);
+    expect(moduleRef.get(PosReturnsController)).toBeInstanceOf(PosReturnsController);
 
     await moduleRef.close();
   });

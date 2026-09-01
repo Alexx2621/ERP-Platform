@@ -95,6 +95,17 @@ import { SalesReturnsController } from "./presentation/sales-returns.controller"
     ListSalesReturnLinesUseCase,
     GetSalesOrderUseCase,
   ],
-  exports: [ListSalesOrdersUseCase, ListSalesOrderLinesUseCase, GetSalesOrderUseCase],
+  exports: [
+    ListSalesOrdersUseCase,
+    ListSalesOrderLinesUseCase,
+    GetSalesOrderUseCase,
+    ConfirmSalesOrderUseCase,
+    CreateSalesOrderUseCase,
+    AddSalesOrderLineUseCase,
+    CancelSalesOrderUseCase,
+    FulfillSalesOrderUseCase,
+    CreateSalesReturnUseCase,
+    ListSalesReturnLinesUseCase,
+  ],
 })
 export class SalesModule {}

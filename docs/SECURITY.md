@@ -1369,3 +1369,77 @@ out `docs/ROADMAP.md`'s phased backlog.
   (session 28) now closes this gap automatically on every API boot for
   every tenant's Owner role specifically, not just tenants provisioned
   after this change.
+
+## POS (Phase 6, 2026-09-01)
+
+Scope: `apps/api/src/modules/pos` — Registers, Shifts, Cash Movements,
+Sales, Returns. Three direct, cycle-free dependencies (docs/ARCHITECTURE.md
+§6): Warehouses (a register's home warehouse), Sales, and Payments —
+`RingUpSaleUseCase`/`CreatePosReturnUseCase` orchestrate a real
+`SalesOrder`/`Payment` end to end purely through those modules' own public
+contracts, never a parallel write path. The fifth business module to close
+out `docs/ROADMAP.md`'s phased backlog, and the first whose primary write
+path is itself an orchestration of two *other* business modules rather
+than owning its own transactional domain data.
+
+### Assets
+
+- `pos.registers.read`/`.manage`, `pos.shifts.read`/`.manage`,
+  `pos.cash-movements.read`/`.manage`, `pos.sales.read`/`.manage`,
+  `pos.returns.read`/`.manage` — 10 new permissions.
+- `PosSale`/`PosReturn` — real money and real inventory movements, one
+  level removed: a bug here doesn't corrupt `SalesOrder`/`Payment`
+  directly, but can misrepresent which shift a real sale/refund belongs
+  to, corrupting a shift's own cash reconciliation (see below).
+- `PosShift.opening_cash`/`.closing_cash_counted`/`.closing_cash_expected`/
+  `.cash_variance` — the numbers a cashier is held accountable to at the
+  end of a shift; a bug here could show a false shortage or overage
+  against a real person.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A POS sale is rung up against a shift that is `CLOSED`, or a register that was never opened at all | `RingUpSaleUseCase` re-validates `shift.status === "OPEN"` itself (never trusts a client-supplied "I have an open shift" claim) before touching Sales/Payments at all, throwing `PosShiftNotOpenError`/`PosShiftNotFoundError`. Same check in `RecordCashMovementUseCase`/`CreatePosReturnUseCase`. |
+| A ring-up attempt fails partway (insufficient inventory, a declined `BANK_TRANSFER`, `amountTendered` below the total) and leaves a real `SalesOrder` reserved/confirmed with nothing to show for it | `RingUpSaleUseCase` compensates on **any** failure after the order is created by calling `CancelSalesOrderUseCase` — the same use case already handles both a still-`DRAFT` order (nothing to release) and a `CONFIRMED` one (releases the reservation), so one call covers every failure path. The compensating cancel is best-effort (its own failure is swallowed, never masking the real error). Verified against real in-memory fixtures for each failure mode (insufficient inventory, declined bank transfer, low `amountTendered`) confirming the order ends `CANCELLED` and no stock stays reserved. |
+| A terminal retries the exact same ring-up/return request after losing the response (a network timeout, not a crash) | Both `RingUpSaleUseCase` and `CreatePosReturnUseCase` are idempotent by a caller-supplied `idempotencyKey`, mirroring `CapturePaymentUseCase`'s own contract exactly: a pre-check for the common sequential-retry case, plus a real `@@unique([tenantId, companyId, idempotencyKey])` constraint and a translated-conflict re-fetch for a genuine concurrent race. Verified against **real Postgres** with 5 genuinely concurrent `ringUpSale` calls sharing one idempotency key: all 5 resolve successfully, all 5 converge on the exact same `PosSale.id`, and exactly one row exists at the end (`apps/api/test/integration/pos.integration-spec.ts`). |
+| **Known, documented boundary of that guarantee** — a *simultaneous* multi-request race (not a resend, but genuinely overlapping calls), as opposed to the realistic sequential-retry-after-timeout case | The idempotency pre-check runs once, at the very top of `RingUpSaleUseCase`, so every truly concurrent racer can pass it before any of them commits — each then independently creates and fulfills its own real `SalesOrder` (and its own real `Payment`, itself subject to the exact same convergence guarantee Payments' own concurrent-capture race already relies on). What is still guaranteed is that exactly one `PosSale` row ever survives and every caller's result converges on it (verified above) — **not** that only one underlying `SalesOrder`/`Payment` pair was ever created; the "losing" orders remain real, fulfilled, and orphaned (no `PosSale` references them) until an operator reconciles them by hand. This is deliberately not solved with a claim-before-effect mechanism (mirroring the inbox's claim-then-effect pattern, `docs/DECISIONS.md` ADR-008) in this phase — ratified as `docs/DECISIONS.md` ADR-010, which also covers `RingUpSaleUseCase`'s own docstring reasoning; a genuinely simultaneous double-submission (not a sequential retry) is judged to be a much rarer real-world event than what the exit criterion is actually about. |
+| Closing a shift understates or overstates the expected cash, hiding a real shortage or falsely accusing a cashier of one | `CloseShiftUseCase` computes `closingCashExpected` fresh, at close time, as a running sum over this shift's own real ledger (`opening_cash` + every `pos_cash_movements` row + every `CASH` `pos_sales.amount` − every `CASH` `pos_returns.refund_amount`) using only POS's own dependency-free BigInt decimal arithmetic (`apps/api/src/modules/pos/domain/decimal.ts`) — never a stored running counter that could drift, and never JS floating point. This is `docs/ROADMAP.md` §10's exit criterion ("Cierres y cash movements son auditables y Decimal-safe"), verified against real Postgres with a shift carrying real cash movements, a real `CASH` sale, and a real fully-refunded return, confirming the computed expected cash exactly matches hand-calculated arithmetic. |
+| A cash movement, sale, or return is recorded against a shift/register belonging to a different company | Every use case re-verifies `entity.companyId !== input.companyId` through the resource chain (shift → register → company) and throws the same `NotFoundError` a genuinely-missing entity would (IDOR-resistant, same pattern every prior module uses). |
+| A second `PosReturn` against the same `PosSale` attempts to refund an already-`REFUNDED` payment a second time | Not specially guarded in POS itself — `RefundPaymentUseCase` already rejects refunding a non-`CAPTURED` payment with `PaymentNotCapturedError`, which propagates through unchanged. A second return with `issueRefund: false` (goods-only) is always safe and is the documented way to record further partial returns after the first refund. |
+| A caller submits a zero, negative, or malformed cash amount | DTOs enforce shape (`@Matches`) before any use case runs (`400`, not a generic `500`), and the domain's own `assertValidPositiveDecimal`/`assertValidNonNegativeDecimal` is the second, unbypassable layer — same belt-and-suspenders pattern every prior monetary module already established. `openingCash`/`closingCashCounted` accept zero (a till can legitimately start/end with no cash); `PosCashMovement.amount` must be strictly positive (direction comes from `type`). |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No hardware adapters** (barcode scanner, thermal printer, cash
+  drawer, customer display). MASTER_SPEC §24 and this phase's own
+  "Restricción" (`docs/ROADMAP.md` §10) explicitly defer these until real
+  hardware exists to validate against — the same "don't simulate an
+  integration nobody can verify" principle ADR-009 already applied to
+  credentialed payment gateways. A USB barcode scanner behaves as a plain
+  keyboard (HID) and needs no server-side code at all — the UI's product
+  search field already works with one; ticket printing uses the browser's
+  own print dialog (`window.print()`), not a fabricated thermal-printer
+  SDK.
+- **No offline mode.** `docs/ROADMAP.md` §10's own "Restricción" is
+  explicit: "Offline transaccional no se incluye automáticamente. Antes
+  requiere ADR sobre device identity, local ledger, conflict resolution,
+  correlativos, reservas y reconciliación." None of that exists yet — POS
+  is online-first only, exactly as the entry names it ("Web/PWA
+  online-first").
+- **The genuinely-simultaneous-race gap documented above** (as opposed to
+  the realistic sequential-retry case, which is fully covered) — a
+  deliberate, bounded scope decision for this phase, not an oversight.
+- **No partial refund**, inherited directly from Payments (ADR-009) — a
+  `PosReturn` either refunds the original payment's full amount or
+  nothing at all.
+- **No cash-drawer count reconciliation beyond a single closing count.**
+  A shift closes with one `closingCashCounted` value; there is no
+  mid-shift cash count/spot-check feature.
+- **No human-readable sale/ticket number.** Same reasoning already
+  accepted for Sales' `SalesOrder`/`Quote` and Purchasing's
+  `PurchaseOrder` (MASTER_SPEC §34 frames these as optional; a safe
+  generator needs its own design).
+- **No backfill of the 10 new permissions for tenants provisioned before
+  this change** — `SyncOwnerRolePermissionsUseCase` (session 28) closes
+  this automatically on every API boot for every tenant's Owner role.

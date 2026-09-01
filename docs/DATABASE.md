@@ -1360,3 +1360,101 @@ fails in this environment), applied cleanly to real Postgres on the first
 attempt despite combining seven new tables and an enum extension in one
 migration, plus adding `@@unique([tenantId, id])` to `suppliers` (its
 first FK consumer).
+
+## POS tables (Phase 6, 2026-09-01)
+
+Scope: `docs/ROADMAP.md` §10 — Registers, Shifts, Cash Movements, Sales,
+Returns. `apps/api/src/modules/pos`. Unlike every prior business module,
+POS owns almost no domain data of its own beyond bookkeeping: a POS sale
+*is* a real `SalesOrder` (channel `POS`) plus a real `Payment`, created
+through Sales'/Payments' own public contracts exactly as the ERP Sales
+screen would (`RingUpSaleUseCase`); `pos_sales`/`pos_returns` exist to give
+a shift its own reporting surface and idempotency guarantee, not to
+duplicate Sales'/Payments' own tables.
+
+### `pos_registers`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `warehouse_id` | `uuid` | `warehouse_id` → `warehouses(tenantId, id)`, `ON DELETE RESTRICT` — every sale rung up on this register issues stock from this one warehouse, resolved server-side, never from client input. |
+| `code` / `name` | `varchar(50)` / `varchar(150)` | `@@unique([tenantId, companyId, code])`. |
+| `status` | `MasterDataStatus` | Reused `ACTIVE`/`INACTIVE` from Catalog/Warehouses/Taxes — `OpenShiftUseCase` rejects opening a shift on an `INACTIVE` register. |
+| `version` | `int` | Optimistic concurrency, same convention as every prior master-data entity. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `pos_shifts`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `register_id` | `uuid` | `register_id` → `pos_registers(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `status` | `PosShiftStatus` | `OPEN` → `CLOSED`, terminal. A register may have at most one `OPEN` shift at a time — `OpenShiftUseCase` enforces this by querying for one first (`findOpenByRegister`), an application-level invariant, not a partial unique index. |
+| `opened_by_user_id` / `closed_by_user_id` | `uuid` / `uuid?` | → `users(id)`, `ON DELETE RESTRICT` — same direct `User` FK precedent already established by `inventory_movements.created_by_user_id`. |
+| `opened_at` / `closed_at` | `timestamptz(6)` / `timestamptz(6)?` | |
+| `opening_cash` | `numeric(14,4)` | May legitimately be `0` (a till with no starting float). |
+| `closing_cash_counted` / `closing_cash_expected` / `cash_variance` | `numeric(14,4)?` | All three set exactly once, together, by `CloseShiftUseCase`. `closing_cash_expected` is computed fresh at close time from this shift's own ledger — `opening_cash` plus every `pos_cash_movements` row (`CASH_IN` adds, `CASH_OUT` subtracts) plus every `CASH` `pos_sales.amount` minus every `CASH` `pos_returns.refund_amount` — never a running counter that could drift, the same ledger-read philosophy `InventoryBalance` and every running-sum validation in Sales/Purchasing already established. `cash_variance = closing_cash_counted - closing_cash_expected`. |
+| `notes` | `varchar(500)?` | |
+
+### `pos_cash_movements`
+
+Append-only cash-drawer ledger entry — never updated or deleted, the same
+philosophy as `inventory_movements`/`audit_entries`. Only meaningful while
+its shift is `OPEN`; `RecordCashMovementUseCase` rejects one against a
+`CLOSED` shift.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `shift_id` | `uuid` | `shift_id` → `pos_shifts(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `type` | `PosCashMovementType` | `CASH_IN` / `CASH_OUT`. |
+| `amount` | `numeric(14,4)` | Always positive — direction comes from `type`, never a signed value. |
+| `reason` | `varchar(500)` | Required, not optional — a movement outside of a sale/return has no other way to explain itself later during a shift-close reconciliation. |
+| `recorded_by_user_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT`. |
+| `created_at` | `timestamptz(6)` | |
+
+### `pos_sales`
+
+The POS-owned record of a completed sale — created only after the real
+`SalesOrder` (channel `POS`) is confirmed and fulfilled and its `Payment`
+is `CAPTURED`; nothing is persisted here for an attempt that fails partway
+(`RingUpSaleUseCase` compensates by cancelling the order instead, the same
+pattern `ConfirmSalesOrderUseCase` already established — see
+docs/SECURITY.md "POS").
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `shift_id` | `uuid` | `shift_id` → `pos_shifts(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `sales_order_id` | `uuid` | → `sales_orders(tenantId, id)`, `ON DELETE RESTRICT`, `@@unique([tenantId, salesOrderId])` — a real `SalesOrder` created via POS belongs to exactly one `PosSale`. |
+| `payment_id` | `uuid` | → `payments(tenantId, id)`, `ON DELETE RESTRICT`, `@@unique([tenantId, paymentId])` — `payments` gained its first `@@unique([tenantId, id])` in this same migration (its first FK consumer, same situation `customers`/`taxes`/`suppliers` were in before Sales/Purchasing). |
+| `idempotency_key` | `varchar(100)` | `@@unique([tenantId, companyId, idempotencyKey])` — the real constraint that satisfies `docs/ROADMAP.md` §10's exit criterion ("Reintentos de terminal no duplican ventas/pagos") for the case that matters in practice: a terminal that resends the exact same request after losing the response. See docs/SECURITY.md "POS" for the documented boundary of this guarantee under a genuinely simultaneous (not sequential) multi-request race. |
+| `payment_method` / `amount` | `PaymentMethod` / `numeric(14,4)` | Snapshotted from the real `Payment` at creation time so `CloseShiftUseCase` can sum a shift's cash sales with one indexed query instead of joining out to `payments` per row — same "snapshot a fact that must never silently drift" reasoning `SalesOrderLine.unitPrice` already established. |
+| `amount_tendered` / `change_due` | `numeric(14,4)?` | Cashier-facing only (cash handed over vs. change to return) — informational, never re-derived from `amount`. |
+| `created_at` | `timestamptz(6)` | |
+
+### `pos_returns`
+
+Mirrors `pos_sales`: created only after the real `SalesReturn` (and, if
+`refunded`, the real `RefundPaymentUseCase` call against the original
+sale's `Payment`) succeed.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `shift_id` | `uuid` | `shift_id` → `pos_shifts(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `pos_sale_id` | `uuid` | → `pos_sales(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `sales_return_id` | `uuid` | → `sales_returns(tenantId, id)`, `ON DELETE RESTRICT`, `@@unique([tenantId, salesReturnId])`. |
+| `idempotency_key` | `varchar(100)` | `@@unique([tenantId, companyId, idempotencyKey])`, same reasoning as `pos_sales.idempotency_key`. |
+| `refunded` | `boolean` | `false` by default — a return can legitimately be goods-only (no money back). |
+| `refund_amount` / `refund_method` | `numeric(14,4)?` / `PaymentMethod?` | Set only when `refunded`; always the *original* payment's full amount — this codebase has no partial-refund capability yet (`docs/DECISIONS.md` ADR-009) — so at most one `pos_returns` row per `pos_sale` can ever have `refunded = true`; a second, goods-only return against the same sale is how a sale is returned more than once without attempting to refund an already-`REFUNDED` payment. |
+| `reason` | `varchar(500)?` | |
+| `created_at` | `timestamptz(6)` | |
+
+### Migration
+
+`packages/database/prisma/migrations/20260901194057_pos/` — same
+non-interactive `prisma migrate diff --script` workaround, applied cleanly
+to real Postgres on the first attempt: five new tables, two new enums
+(`PosShiftStatus`, `PosCashMovementType`), and `@@unique([tenantId, id])`
+added to `payments` (its first FK consumer).

@@ -1851,6 +1851,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pos/registers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List POS registers for the active company. */
+        get: operations["PosRegistersController_list"];
+        put?: never;
+        /** Create a POS register, tied to one warehouse. */
+        post: operations["PosRegistersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/registers/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a POS register. */
+        put: operations["PosRegistersController_setStatusRoute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List POS shifts for the active company. */
+        get: operations["PosShiftsController_list"];
+        put?: never;
+        /** Open a shift on a register — a register may have at most one OPEN shift at a time. */
+        post: operations["PosShiftsController_open"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/shifts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one POS shift. */
+        get: operations["PosShiftsController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/shifts/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an OPEN shift, computing the expected cash and variance from this shift's own ledger. */
+        post: operations["PosShiftsController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/shifts/{id}/cash-movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a shift's cash movements. */
+        get: operations["PosShiftsController_listCashMovementsRoute"];
+        put?: never;
+        /** Record a cash-in/cash-out movement against an OPEN shift. */
+        post: operations["PosShiftsController_recordCashMovementRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List completed POS sales for the active company, optionally scoped to one shift. */
+        get: operations["PosSalesController_list"];
+        put?: never;
+        /** Ring up a sale against an OPEN shift: creates and confirms a real SalesOrder (channel POS), captures a real Payment, and fulfills the order. Idempotent by idempotencyKey — a retried request returns the original sale instead of ringing up a second one. */
+        post: operations["PosSalesController_ringUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/sales/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one completed POS sale (e.g. to reprint a ticket). */
+        get: operations["PosSalesController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pos/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List POS returns for the active company, optionally scoped to one shift. */
+        get: operations["PosReturnsController_list"];
+        put?: never;
+        /** Return goods from a completed POS sale, posting a real SalesReturn (and the matching inventory movement) and, if issueRefund is true, a full refund of the sale's original Payment. Idempotent by idempotencyKey. */
+        post: operations["PosReturnsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3125,6 +3283,153 @@ export interface components {
             /** @example 2026-10-01 */
             dueDate?: string;
             notes?: string;
+        };
+        PosRegisterResponseDto: {
+            id: string;
+            warehouseId: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreatePosRegisterDto: {
+            warehouseId: string;
+            /** @example REG-1 */
+            code: string;
+            /** @example Caja principal */
+            name: string;
+        };
+        SetPosRegisterStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        PosShiftResponseDto: {
+            id: string;
+            registerId: string;
+            /** @enum {string} */
+            status: "OPEN" | "CLOSED";
+            openedByUserId: string;
+            /** Format: date-time */
+            openedAt: string;
+            /** @example 50.0000 */
+            openingCash: string;
+            closedByUserId: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            /** @example 150.0000 */
+            closingCashCounted: string | null;
+            /** @example 148.5000 */
+            closingCashExpected: string | null;
+            /** @example 1.5000 */
+            cashVariance: string | null;
+            notes: string | null;
+        };
+        OpenShiftDto: {
+            registerId: string;
+            /** @example 50.0000 */
+            openingCash: string;
+            notes?: string;
+        };
+        CloseShiftDto: {
+            /** @example 150.0000 */
+            closingCashCounted: string;
+        };
+        PosCashMovementResponseDto: {
+            id: string;
+            shiftId: string;
+            /** @enum {string} */
+            type: "CASH_IN" | "CASH_OUT";
+            /** @example 20.0000 */
+            amount: string;
+            reason: string;
+            recordedByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecordCashMovementDto: {
+            /** @enum {string} */
+            type: "CASH_IN" | "CASH_OUT";
+            /** @example 20.0000 */
+            amount: string;
+            /** @example Fondo de cambio */
+            reason: string;
+        };
+        PosSaleResponseDto: {
+            id: string;
+            shiftId: string;
+            salesOrderId: string;
+            paymentId: string;
+            /** @enum {string} */
+            paymentMethod: "CASH" | "BANK_TRANSFER";
+            /** @example 42.5000 */
+            amount: string;
+            /** @example 50.0000 */
+            amountTendered: string | null;
+            /** @example 7.5000 */
+            changeDue: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RingUpSaleLineDto: {
+            productId: string;
+            /** @description Required only if the product has variants. */
+            productVariantId?: string;
+            taxId?: string;
+            /** @example 1.0000 */
+            quantity: string;
+            /** @description Overrides the resolved default (variant/product base price). */
+            unitPrice?: string;
+            /** @example 0.0000 */
+            discountAmount?: string;
+        };
+        RingUpSaleDto: {
+            shiftId: string;
+            customerId: string;
+            /** @example USD */
+            currency: string;
+            /** @enum {string} */
+            paymentMethod: "CASH" | "BANK_TRANSFER";
+            /** @description Required for BANK_TRANSFER. */
+            paymentReference?: string;
+            /** @description Cash handed over by the customer — used only to compute changeDue. */
+            amountTendered?: string;
+            /** @description Idempotency key for this terminal attempt — a retry with the same key returns the original sale. */
+            idempotencyKey: string;
+            lines: components["schemas"]["RingUpSaleLineDto"][];
+        };
+        PosReturnResponseDto: {
+            id: string;
+            shiftId: string;
+            posSaleId: string;
+            salesReturnId: string;
+            refunded: boolean;
+            /** @example 42.5000 */
+            refundAmount: string | null;
+            /** @enum {string|null} */
+            refundMethod: "CASH" | "BANK_TRANSFER" | null;
+            reason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreatePosReturnLineDto: {
+            salesOrderLineId: string;
+            /** @example 1.0000 */
+            quantity: string;
+        };
+        CreatePosReturnDto: {
+            shiftId: string;
+            posSaleId: string;
+            reason?: string;
+            /** @description Whether to fully refund the original sale's payment. */
+            issueRefund: boolean;
+            /** @description Idempotency key for this terminal attempt — a retry with the same key returns the original return. */
+            idempotencyKey: string;
+            lines: components["schemas"]["CreatePosReturnLineDto"][];
         };
     };
     responses: never;
@@ -6985,6 +7290,402 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplierInvoiceResponseDto"];
+                };
+            };
+        };
+    };
+    PosRegistersController_list: {
+        parameters: {
+            query?: {
+                status?: "ACTIVE" | "INACTIVE";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosRegisterResponseDto"][];
+                };
+            };
+        };
+    };
+    PosRegistersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePosRegisterDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosRegisterResponseDto"];
+                };
+            };
+        };
+    };
+    PosRegistersController_setStatusRoute: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPosRegisterStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosRegisterResponseDto"];
+                };
+            };
+        };
+    };
+    PosShiftsController_list: {
+        parameters: {
+            query?: {
+                registerId?: string;
+                status?: "OPEN" | "CLOSED";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosShiftResponseDto"][];
+                };
+            };
+        };
+    };
+    PosShiftsController_open: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenShiftDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosShiftResponseDto"];
+                };
+            };
+        };
+    };
+    PosShiftsController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosShiftResponseDto"];
+                };
+            };
+        };
+    };
+    PosShiftsController_close: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseShiftDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosShiftResponseDto"];
+                };
+            };
+        };
+    };
+    PosShiftsController_listCashMovementsRoute: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosCashMovementResponseDto"][];
+                };
+            };
+        };
+    };
+    PosShiftsController_recordCashMovementRoute: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordCashMovementDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosCashMovementResponseDto"];
+                };
+            };
+        };
+    };
+    PosSalesController_list: {
+        parameters: {
+            query?: {
+                shiftId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosSaleResponseDto"][];
+                };
+            };
+        };
+    };
+    PosSalesController_ringUp: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RingUpSaleDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosSaleResponseDto"];
+                };
+            };
+            /** @description INSUFFICIENT_INVENTORY_FOR_ORDER or POS_PAYMENT_FAILED */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PosSalesController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosSaleResponseDto"];
+                };
+            };
+        };
+    };
+    PosReturnsController_list: {
+        parameters: {
+            query?: {
+                shiftId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosReturnResponseDto"][];
+                };
+            };
+        };
+    };
+    PosReturnsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePosReturnDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PosReturnResponseDto"];
                 };
             };
         };

@@ -9,7 +9,8 @@ still pending; they belong to whoever ratifies the broader Architecture V1
 proposal, not to a single module task. ADR-005 (Plugin Architecture V1 mínimo)
 was ratified once the App Registry mechanism was implemented — see below.
 ADR-009 (Payment Gateway Adapters V1) was ratified once Payments (Phase 4B)
-was implemented — see below.
+was implemented — see below. ADR-010 (POS Terminal Idempotency Scope V1)
+was ratified once the POS module (Phase 6) was implemented — see below.
 
 ---
 
@@ -833,3 +834,120 @@ of which adapters this slice actually ships, and why.
   transfer needs a reference, cash does not) and reporting value (a real
   business cares which one was used), so collapsing them would lose real
   information for no simplification benefit.
+
+---
+
+## ADR-010 — POS Terminal Idempotency Scope V1 (Sequential-Retry Coverage, Documented Concurrent-Race Boundary)
+
+**Status:** Accepted (scope: `RingUpSaleUseCase`/`CreatePosReturnUseCase`'s
+idempotency contract as actually shipped — a pre-check plus a real unique
+constraint plus a translated-conflict re-fetch, identical in shape to
+`CapturePaymentUseCase`'s own contract; not a claim-before-effect
+mechanism)
+
+**Context**
+
+`docs/ROADMAP.md` §10's exit criterion for POS is explicit: "Reintentos de
+terminal no duplican ventas/pagos." Every other idempotent write in this
+codebase (`CapturePaymentUseCase`, ADR-004's outbox, ADR-008's inbox) uses
+the same shape: a pre-check for the common case, and a real database
+unique constraint (with a translated-conflict re-fetch) for a genuine
+race. Building `RingUpSaleUseCase` the same way was the natural default —
+but unlike a single-row write like `Payment`, ringing up a sale is a
+multi-step orchestration (create a real `SalesOrder`, add lines, confirm
+it — reserving real inventory, capture a real `Payment`, fulfill it —
+issuing real stock) *before* the one row (`PosSale`) that actually carries
+the idempotency key is ever written. This ADR makes explicit what that
+shape does and does not guarantee once genuine concurrency is considered,
+rather than leaving it as an implicit assumption inherited from the
+single-row precedent.
+
+**Decision**
+
+1. **The idempotency pre-check runs once, at the very top of
+   `RingUpSaleUseCase`/`CreatePosReturnUseCase`, before any Sales/Payments
+   call.** This fully covers the realistic "terminal retry" scenario the
+   exit criterion is actually about: a POS terminal that sends a request,
+   loses the response to a timeout, and resends the *same* request
+   sequentially. The second call finds the first's `PosSale` already
+   committed and returns it as a replay — verified against real Postgres
+   with 5 genuinely concurrent `ringUpSale` calls sharing one
+   `idempotencyKey` all converging on the same `PosSale.id`
+   (`apps/api/test/integration/pos.integration-spec.ts`).
+2. **A real `@@unique([tenantId, companyId, idempotencyKey])` constraint
+   on `pos_sales`/`pos_returns`, plus a translated-conflict re-fetch, is
+   what actually enforces "exactly one `PosSale` row ever survives"** —
+   the same claim/re-fetch shape `PrismaPaymentRepository.save` already
+   established, applied here as the second, database-level layer behind
+   the application-level pre-check.
+3. **What is explicitly *not* guaranteed, and is documented rather than
+   silently assumed**: under a genuinely *simultaneous* multi-request race
+   (not a resend, but truly overlapping calls — e.g. a buggy client firing
+   duplicate requests, or a double-tap faster than the UI can disable the
+   button), every racer can pass the pre-check before any of them commits.
+   Each then independently creates and fulfills its own real `SalesOrder`
+   (and, if using `CapturePaymentUseCase`'s own race-safe path, converges
+   on one real `Payment` — but a *distinct* `SalesOrder` per racer
+   regardless). Only one `PosSale` row ultimately wins the unique
+   constraint; the "losing" `SalesOrder`s remain real or, if
+   `RingUpSaleUseCase`'s own compensating cancel runs on the P2002 path,
+   inconsistently so — this ADR does not attempt to reconcile that
+   further. This is a real, load-bearing gap, not a theoretical one: it
+   was found and characterized during this same session's own design
+   review, not by a bug report.
+4. **A fuller fix — claiming the idempotency key in its own row *before*
+   any Sales/Payments call, mirroring the inbox's claim-then-effect
+   pattern (ADR-008) — is deliberately deferred**, not built in this
+   phase. It would require either a schema change (a nullable
+   `salesOrderId`/`paymentId` on `PosSale` until the flow completes, or a
+   separate claim table) or reusing the inbox mechanism for a purpose it
+   was not designed for (consuming a domain *event* exactly-once, not
+   claiming an arbitrary synchronous HTTP request's idempotency key) —
+   see "Alternatives considered" below for why both were rejected for
+   this slice.
+
+**Consequences**
+
+- The exit criterion is satisfied for the case that matters in practice —
+  a POS terminal's own retry-after-timeout behavior, which is
+  overwhelmingly sequential, not simultaneous, in real hardware and
+  real network conditions.
+- A genuinely concurrent double-submission (rare, but possible — a
+  malfunctioning client, or a UI bug that fails to disable a button fast
+  enough) can leave one or more real, fulfilled `SalesOrder`s with no
+  `PosSale` referencing them, consuming real inventory and possibly
+  capturing a real `Payment` that no cashier-facing screen will ever show.
+  This requires manual operator reconciliation until a claim-based fix is
+  built. Documented in `docs/SECURITY.md` "POS" and in
+  `RingUpSaleUseCase`'s own docstring, not hidden.
+- Any future fix must decide between the schema-change and
+  inbox-reuse approaches named above; neither is authorized by this ADR.
+
+**Alternatives considered**
+
+- **A claim-before-effect row, written in its own short transaction before
+  any Sales/Payments call**: the architecturally "correct" fix, but it
+  requires `PosSale` to exist in a genuinely incomplete state (no
+  `salesOrderId`/`paymentId` yet) or a separate claim table — a real
+  schema and control-flow change deferred to a future session once (or
+  if) the concurrent-race scenario is shown to matter in practice, per
+  MASTER_SPEC §59/§93's "no sobrearquitectura" — building it now, with no
+  evidence a real POS terminal ever fires genuinely simultaneous
+  duplicate requests, would be exactly the premature machinery this
+  codebase has consistently avoided elsewhere.
+- **Reusing the inbox (`InboxMessage`/`consumeIdempotently`, ADR-008)
+  as a generic claim primitive for this synchronous HTTP flow**: rejected
+  — the inbox exists specifically to make consuming a *domain event*
+  exactly-once, inside `apps/worker`; forcing a synchronous request
+  handler inside `apps/api` to "claim" against it would be reusing the
+  right-shaped tool for the wrong problem, and `apps/api` deliberately
+  does not depend on `@erp/events`' consumer-side pieces at all (ADR-004's
+  amendment: "`apps/api` depends on `@erp/events` only for
+  `appendOutboxMessage`/`OutboxMessage`").
+- **Leaving the limitation completely undocumented**, matching how a
+  single-row write's idempotency contract is usually described without
+  needing this level of caveat: rejected — because `RingUpSaleUseCase`'s
+  multi-step orchestration genuinely changes the guarantee's shape
+  compared to `CapturePaymentUseCase`'s single-row precedent, silently
+  inheriting that precedent's description would have overstated what is
+  actually verified.

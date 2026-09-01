@@ -34,15 +34,18 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  credential         UserCredential?
-  sessions           Session[]
-  memberships        Membership[]
-  preferences        UserPreference[]
-  auditEntries       AuditEntry[]
-  outboxMessages     OutboxMessage[]
-  ownedFiles         FileObject[]
-  notifications      Notification[]
-  inventoryMovements InventoryMovement[]
+  credential               UserCredential?
+  sessions                 Session[]
+  memberships              Membership[]
+  preferences              UserPreference[]
+  auditEntries             AuditEntry[]
+  outboxMessages           OutboxMessage[]
+  ownedFiles               FileObject[]
+  notifications            Notification[]
+  inventoryMovements       InventoryMovement[]
+  posShiftsOpened          PosShift[]          @relation("PosShiftsOpened")
+  posShiftsClosed          PosShift[]          @relation("PosShiftsClosed")
+  posCashMovementsRecorded PosCashMovement[]   @relation("PosCashMovementsRecorded")
 
   @@map("users")
 }
@@ -147,6 +150,11 @@ model Tenant {
   purchaseReturns       PurchaseReturn[]
   purchaseReturnLines   PurchaseReturnLine[]
   supplierInvoices      SupplierInvoice[]
+  posRegisters          PosRegister[]
+  posShifts             PosShift[]
+  posCashMovements      PosCashMovement[]
+  posSales              PosSale[]
+  posReturns            PosReturn[]
 
   @@map("tenants")
 }
@@ -250,6 +258,11 @@ model Company {
   purchaseReceipts      PurchaseReceipt[]
   purchaseReturns       PurchaseReturn[]
   supplierInvoices      SupplierInvoice[]
+  posRegisters          PosRegister[]
+  posShifts             PosShift[]
+  posCashMovements      PosCashMovement[]
+  posSales              PosSale[]
+  posReturns            PosReturn[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -1040,6 +1053,7 @@ model Warehouse {
   inventoryReservations  InventoryReservation[]
   salesOrderLines        SalesOrderLine[]
   purchaseOrderLines     PurchaseOrderLine[]
+  posRegisters           PosRegister[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1425,6 +1439,7 @@ model SalesOrder {
   lines    SalesOrderLine[]
   returns  SalesReturn[]
   payments Payment[]
+  posSale  PosSale?
 
   @@unique([tenantId, id])
   @@index([tenantId, companyId, status])
@@ -1488,6 +1503,7 @@ model SalesReturn {
   company    Company           @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
   salesOrder SalesOrder        @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
   lines      SalesReturnLine[]
+  posReturn  PosReturn?
 
   @@unique([tenantId, id])
   @@index([tenantId, companyId])
@@ -1564,7 +1580,9 @@ model Payment {
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
   salesOrder SalesOrder @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+  posSale    PosSale?
 
+  @@unique([tenantId, id])
   @@unique([tenantId, companyId, idempotencyKey])
   @@index([tenantId, companyId, salesOrderId])
   @@map("payments")
@@ -1790,4 +1808,207 @@ model SupplierInvoice {
   @@index([tenantId, supplierId])
   @@index([tenantId, purchaseOrderId])
   @@map("supplier_invoices")
+}
+
+// ---------------------------------------------------------------------------
+// POS (Phase 6, docs/ROADMAP.md §10). A register/shift/cash-movement domain
+// of its own, integrated with Sales/Payments/Inventory purely through their
+// public contracts (docs/ARCHITECTURE.md §6) — RingUpSaleUseCase creates a
+// real SalesOrder (channel POS) and captures a real Payment exactly as the
+// ERP Sales screen would, never a parallel/shortcut write path. No hardware
+// adapter tables here: MASTER_SPEC §24 and this phase's own "Restricción"
+// explicitly defer barcode-scanner/thermal-printer/cash-drawer adapters
+// until real hardware exists to validate against — the same "don't simulate
+// an integration nobody can verify" principle ADR-009 already applied to
+// credentialed payment gateways. A USB barcode scanner behaves as a plain
+// keyboard (HID) and needs no server-side code at all; ticket printing uses
+// the browser's native print, not a fabricated thermal-printer SDK.
+// ---------------------------------------------------------------------------
+
+enum PosShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum PosCashMovementType {
+  CASH_IN
+  CASH_OUT
+}
+
+/// A physical/logical POS terminal, always tied to one `Warehouse` — every
+/// sale rung up on this register issues stock from that warehouse
+/// (`RingUpSaleUseCase` fills `AddSalesOrderLineUseCase.warehouseId` with
+/// it). `MasterDataStatus` reused from Catalog/Warehouses/Taxes — the same
+/// `ACTIVE`/`INACTIVE` shape, no register-specific states needed.
+model PosRegister {
+  id          String           @id @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  companyId   String           @map("company_id") @db.Uuid
+  warehouseId String           @map("warehouse_id") @db.Uuid
+  code        String           @db.VarChar(50)
+  name        String           @db.VarChar(150)
+  status      MasterDataStatus @default(ACTIVE)
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company   Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  warehouse Warehouse  @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  shifts    PosShift[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("pos_registers")
+}
+
+/// `OPEN -> CLOSED`, terminal — a register may have at most one `OPEN`
+/// shift at a time, enforced by `OpenShiftUseCase` querying for one first
+/// (an application-level check, same style already used for
+/// `PurchaseOrderHasReceiptsError` — no partial unique index for this).
+/// `closingCashExpected`/`cashVariance` are computed exactly once, at close
+/// time, by `CloseShiftUseCase` — `openingCash` plus this shift's
+/// `PosCashMovement`s plus this shift's CASH `PosSale`s minus this shift's
+/// CASH `PosReturn` refunds — and never recomputed afterwards: a closed
+/// shift's numbers are a historical fact, the same "snapshot, don't
+/// silently recompute" reasoning `SalesOrderLine.unitPrice` already
+/// established.
+model PosShift {
+  id                  String         @id @db.Uuid
+  tenantId            String         @map("tenant_id") @db.Uuid
+  companyId           String         @map("company_id") @db.Uuid
+  registerId          String         @map("register_id") @db.Uuid
+  status              PosShiftStatus @default(OPEN)
+  openedByUserId      String         @map("opened_by_user_id") @db.Uuid
+  openedAt            DateTime       @default(now()) @map("opened_at") @db.Timestamptz(6)
+  openingCash         Decimal        @map("opening_cash") @db.Decimal(14, 4)
+  closedByUserId      String?        @map("closed_by_user_id") @db.Uuid
+  closedAt            DateTime?      @map("closed_at") @db.Timestamptz(6)
+  closingCashCounted  Decimal?       @map("closing_cash_counted") @db.Decimal(14, 4)
+  closingCashExpected Decimal?       @map("closing_cash_expected") @db.Decimal(14, 4)
+  cashVariance        Decimal?       @map("cash_variance") @db.Decimal(14, 4)
+  notes               String?        @db.VarChar(500)
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company           @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  register      PosRegister       @relation(fields: [tenantId, registerId], references: [tenantId, id], onDelete: Restrict)
+  openedBy      User              @relation("PosShiftsOpened", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  closedBy      User?             @relation("PosShiftsClosed", fields: [closedByUserId], references: [id], onDelete: Restrict)
+  cashMovements PosCashMovement[]
+  sales         PosSale[]
+  returns       PosReturn[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, registerId, status])
+  @@map("pos_shifts")
+}
+
+/// Append-only cash-drawer ledger entry — never updated/deleted, the same
+/// philosophy as `InventoryMovement`/`AuditEntry`. Only meaningful while its
+/// shift is `OPEN`; `RecordCashMovementUseCase` rejects one against a
+/// `CLOSED` shift.
+model PosCashMovement {
+  id               String              @id @db.Uuid
+  tenantId         String              @map("tenant_id") @db.Uuid
+  companyId        String              @map("company_id") @db.Uuid
+  shiftId          String              @map("shift_id") @db.Uuid
+  type             PosCashMovementType
+  amount           Decimal             @db.Decimal(14, 4)
+  reason           String              @db.VarChar(500)
+  recordedByUserId String              @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company  @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  shift      PosShift @relation(fields: [tenantId, shiftId], references: [tenantId, id], onDelete: Restrict)
+  recordedBy User     @relation("PosCashMovementsRecorded", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, shiftId])
+  @@map("pos_cash_movements")
+}
+
+/// The POS-owned record of a completed sale — created only after the real
+/// `SalesOrder` (channel `POS`) is confirmed and fulfilled and its
+/// `Payment` is `CAPTURED`; nothing is persisted here for an attempt that
+/// fails partway (`RingUpSaleUseCase` compensates by cancelling the order
+/// instead, the same pattern `ConfirmSalesOrderUseCase` already
+/// established). `paymentMethod`/`amount` are snapshotted from the real
+/// `Payment` at creation time so `CloseShiftUseCase` can sum a shift's cash
+/// sales with one indexed query instead of joining out to `Payment` per row
+/// — the same "snapshot a fact that must never silently drift" reasoning
+/// `SalesOrderLine.unitPrice` already established. `idempotencyKey` plus
+/// the real `@@unique([tenantId, companyId, idempotencyKey])` constraint is
+/// what satisfies this phase's exit criterion ("Reintentos de terminal no
+/// duplican ventas/pagos") for the common case — a retried ring-up with the
+/// same key returns the already-completed sale instead of creating a
+/// second `SalesOrder`/`Payment` — see `RingUpSaleUseCase`'s own docstring
+/// for the residual concurrency window this shares with
+/// `CapturePaymentUseCase` (docs/DECISIONS.md ADR-008's same accepted
+/// "narrow crash window, not full exactly-once" reasoning).
+model PosSale {
+  id             String        @id @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  companyId      String        @map("company_id") @db.Uuid
+  shiftId        String        @map("shift_id") @db.Uuid
+  salesOrderId   String        @map("sales_order_id") @db.Uuid
+  paymentId      String        @map("payment_id") @db.Uuid
+  idempotencyKey String        @map("idempotency_key") @db.VarChar(100)
+  paymentMethod  PaymentMethod @map("payment_method")
+  amount         Decimal       @db.Decimal(14, 4)
+  amountTendered Decimal?      @map("amount_tendered") @db.Decimal(14, 4)
+  changeDue      Decimal?      @map("change_due") @db.Decimal(14, 4)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company     @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  shift      PosShift    @relation(fields: [tenantId, shiftId], references: [tenantId, id], onDelete: Restrict)
+  salesOrder SalesOrder  @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+  payment    Payment     @relation(fields: [tenantId, paymentId], references: [tenantId, id], onDelete: Restrict)
+  returns    PosReturn[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, idempotencyKey])
+  @@unique([tenantId, salesOrderId])
+  @@unique([tenantId, paymentId])
+  @@index([tenantId, companyId, shiftId])
+  @@map("pos_sales")
+}
+
+/// The POS-owned record of a completed return — mirrors `PosSale`: created
+/// only after the real `SalesReturn` (and, if `refunded`, the real
+/// `RefundPaymentUseCase` call against the original sale's `Payment`)
+/// succeed. A refund is always the *original* payment's full amount — this
+/// codebase has no partial-refund capability yet (ADR-009) — so at most one
+/// `PosReturn` per `PosSale` can ever set `refunded = true`; a second return
+/// against the same sale can still record goods coming back
+/// (`refunded = false`) without attempting to refund an already-`REFUNDED`
+/// payment. `refundAmount`/`refundMethod` are snapshotted from the payment
+/// at refund time, for the same shift-close-math reason `PosSale.amount` is.
+model PosReturn {
+  id             String         @id @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  shiftId        String         @map("shift_id") @db.Uuid
+  posSaleId      String         @map("pos_sale_id") @db.Uuid
+  salesReturnId  String         @map("sales_return_id") @db.Uuid
+  idempotencyKey String         @map("idempotency_key") @db.VarChar(100)
+  refunded       Boolean        @default(false)
+  refundAmount   Decimal?       @map("refund_amount") @db.Decimal(14, 4)
+  refundMethod   PaymentMethod? @map("refund_method")
+  reason         String?        @db.VarChar(500)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company     Company     @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  shift       PosShift    @relation(fields: [tenantId, shiftId], references: [tenantId, id], onDelete: Restrict)
+  posSale     PosSale     @relation(fields: [tenantId, posSaleId], references: [tenantId, id], onDelete: Restrict)
+  salesReturn SalesReturn @relation(fields: [tenantId, salesReturnId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, idempotencyKey])
+  @@unique([tenantId, salesReturnId])
+  @@index([tenantId, companyId, shiftId])
+  @@index([tenantId, posSaleId])
+  @@map("pos_returns")
 }

@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-01 (sesión 29,
-Fase 5 — Purchasing completa en un solo bloque de trabajo, a pedido
-explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-01 (sesión 30,
+Fase 6 — POS completa en un solo bloque de trabajo, a pedido explícito del
+usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,33 +21,185 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 5 (Purchasing) está completa** — ver "Hecho — sesión 29" abajo, en
-un solo bloque de trabajo a pedido explícito del usuario. El siguiente
-trabajo no bloqueado es Fase 6 (POS) según `docs/ROADMAP.md` §10, salvo
-que el usuario indique otra prioridad. Alcance deliberadamente fuera de
-Fase 5 y diferido (no simulado, ver "Known limitations" en "Purchasing" de
-`docs/SECURITY.md`): Purchase Requests (el propio `docs/ROADMAP.md` §9 las
-condiciona a "cuando el workflow lo justifique", nunca cumplido en esta
-fase), número de orden de compra legible, impuestos en líneas de orden,
-validación cruzada entre el monto de una `SupplierInvoice` y las líneas/
-recepciones reales de su orden, y cualquier conexión real con Payments
-(cuentas por pagar / egresos reales). Alcance fuera de Fase 4 y diferido,
-sin cambios (ver ADR-009 y "Known limitations" en "Sales"/"Payments" de
-`docs/SECURITY.md`): un motor de reglas fiscales real, resolución
-automática de lista de precios, número de orden/cotización legible,
-confirm/fulfill parcial por línea, Invoice/Shipment, adapters de
-procesador de pago con credenciales reales (Stripe/PayPal/BAC/Tilopay),
-verificación de webhooks, reconciliación por timeout del proveedor,
-reembolso parcial. Alcance fuera de Fase 3 y aún diferido, sin cambios:
-ubicaciones/bins de bodega, lote/serie/vencimiento — ver "Known
+**Fase 6 (POS) está completa** — ver "Hecho — sesión 30" abajo, en un
+solo bloque de trabajo a pedido explícito del usuario. El siguiente
+trabajo no bloqueado es Fase 7 (Commerce) según `docs/ROADMAP.md` §11,
+salvo que el usuario indique otra prioridad. Alcance deliberadamente fuera
+de Fase 6 y diferido (no simulado, ver "Known limitations" en "POS" de
+`docs/SECURITY.md`): adapters de hardware real (lector de código de
+barras, impresora térmica, gaveta, pantalla de cliente — diferidos hasta
+que exista hardware real que validar, misma razón ya aplicada a los
+payment gateways credenciados en ADR-009), operación offline (excluida
+explícitamente por la "Restricción" del propio `docs/ROADMAP.md` §10
+hasta que exista un ADR sobre device identity/ledger local/
+reconciliación), el límite de concurrencia documentado sobre
+`RingUpSaleUseCase` bajo una carrera genuinamente simultánea (no una
+reintentona secuencial, que sí está cubierta y verificada), reembolso
+parcial (heredado de ADR-009), y número de venta/ticket legible. Alcance
+fuera de Fase 5 y diferido, sin cambios (no simulado, ver "Known
+limitations" en "Purchasing" de `docs/SECURITY.md`): Purchase Requests (el
+propio `docs/ROADMAP.md` §9 las condiciona a "cuando el workflow lo
+justifique", nunca cumplido), número de orden de compra legible,
+impuestos en líneas de orden, validación cruzada entre el monto de una
+`SupplierInvoice` y las líneas/recepciones reales de su orden, y
+cualquier conexión real con Payments (cuentas por pagar / egresos reales).
+Alcance fuera de Fase 4 y diferido, sin cambios (ver ADR-009 y "Known
+limitations" en "Sales"/"Payments" de `docs/SECURITY.md`): un motor de
+reglas fiscales real, resolución automática de lista de precios, número
+de orden/cotización legible, confirm/fulfill parcial por línea, Invoice/
+Shipment, adapters de pago con credenciales reales
+(Stripe/PayPal/BAC/Tilopay), verificación de webhooks, reconciliación por
+timeout del proveedor. Alcance fuera de Fase 3 y aún diferido, sin
+cambios: ubicaciones/bins de bodega, lote/serie/vencimiento — ver "Known
 limitations" en "Inventory" de `docs/SECURITY.md` (su hueco de conexión
-con Sales/Purchasing/POS ya cerró casi por completo: Sales y Purchasing ya
-son llamadores reales desde las sesiones 27 y 29, solo POS sigue
-pendiente). Alcance fuera de Fase 2 y aún diferido de sesiones previas,
-sin cambios: precios de lista por variante, asociación Warehouse↔Branch/
-Location, e import/export masivo — ver "Known limitations" en "Catalog",
-"Customers / Suppliers" y "Taxes / Warehouses / Pricing" de
-`docs/SECURITY.md`.
+con Sales/Purchasing/POS ya cerró por completo: los tres son ahora
+llamadores reales desde las sesiones 27, 29 y 30). Alcance fuera de Fase 2
+y aún diferido de sesiones previas, sin cambios: precios de lista por
+variante, asociación Warehouse↔Branch/Location, e import/export masivo —
+ver "Known limitations" en "Catalog", "Customers / Suppliers" y
+"Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 30 (POS — Fase 6, completa de una vez)
+
+Fase 6 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("Continua con la fase 6 y dejala terminada de una vez"),
+inmediatamente después de cerrar la Fase 5 (ver "Hecho — sesión 29"
+abajo): Registers, Shifts, Cash Movements, Sales (ring-up de una venta
+real vía el contrato público de Sales/Payments, idempotente por
+`idempotencyKey`) y Returns (con reembolso opcional del pago original) —
+los cuatro entregables de `docs/ROADMAP.md` §10, con la garantía de sus
+exit criteria ("Cierres y cash movements son auditables y Decimal-safe",
+"Reintentos de terminal no duplican ventas/pagos") verificada contra
+Postgres real, incluyendo un límite de esa segunda garantía documentado
+explícitamente en vez de ocultado.
+
+- **`apps/api/src/modules/pos/`** (módulo nuevo, quinto bloque de negocio
+  del código base, mismo layout domain/application/infrastructure/
+  presentation/test-support que Sales/Purchasing): `PosRegister` (una
+  caja/terminal atada a una `Warehouse`, sin la cual `RingUpSaleUseCase`
+  no sabría de qué bodega descontar), `PosShift` (`OPEN → CLOSED`, a lo
+  sumo un turno `OPEN` por caja a la vez — invariante de aplicación
+  verificada con `PosShiftRepository.findOpenByRegister`, no un índice
+  parcial), `PosCashMovement` (ledger append-only de ingresos/egresos de
+  efectivo, con `reason` obligatorio), `PosSale`/`PosReturn` (registros
+  propios, creados únicamente después de que el flujo real de Sales/
+  Payments termina con éxito — nada se persiste para un intento que falla
+  a medio camino). Tres dependencias directas y sin ciclos: Warehouses,
+  Sales, Payments.
+- **El primer módulo de negocio cuyo flujo de escritura principal no
+  posee su propio dominio transaccional, sino que orquesta otros dos
+  módulos de negocio enteramente a través de sus contratos públicos**:
+  `RingUpSaleUseCase` llama a `CreateSalesOrderUseCase`/
+  `AddSalesOrderLineUseCase`/`ConfirmSalesOrderUseCase`/
+  `CapturePaymentUseCase`/`FulfillSalesOrderUseCase` — un `PosSale` es,
+  desde el punto de vista de Sales/Payments, indistinguible de cualquier
+  otro pedido `channel: "POS"` creado a través de sus propios
+  controladores. Ambos módulos ganaron exports nuevos en esta sesión:
+  Sales exportó `CreateSalesOrderUseCase`, `AddSalesOrderLineUseCase`,
+  `CancelSalesOrderUseCase`, `FulfillSalesOrderUseCase`,
+  `CreateSalesReturnUseCase` (además, `ConfirmSalesOrderUseCase` —
+  exportado desde `index.ts` desde la sesión 27 pero nunca agregado al
+  arreglo `exports` del propio `SalesModule` de Nest, el mismo hueco real
+  que Payments tenía). Payments exportó `CapturePaymentUseCase`/
+  `RefundPaymentUseCase` en su arreglo `exports` (idéntico hueco real:
+  ambos ya vivían en `payments/index.ts` desde la sesión 27, pero
+  `PaymentsModule` nunca los había agregado a su propio `exports`, así que
+  ningún módulo externo podía inyectarlos hasta ahora).
+- **Compensación real ante cualquier falla después de crear la orden**:
+  `RingUpSaleUseCase` reutiliza `CancelSalesOrderUseCase` (que ya maneja
+  tanto una orden `DRAFT` como una `CONFIRMED`) para deshacer inventario
+  reservado ante inventario insuficiente, un `BANK_TRANSFER` rechazado por
+  falta de referencia, o un `amountTendered` insuficiente — verificado con
+  fixtures reales confirmando que la orden termina `CANCELLED` y ningún
+  stock queda reservado en cada uno de los tres casos.
+- **Límite de concurrencia documentado explícitamente, no oculto**: el
+  pre-chequeo de idempotencia de `RingUpSaleUseCase` corre una sola vez,
+  al inicio — cubre completamente el caso real que un terminal produce en
+  la práctica (una reintentona *secuencial* tras perder la respuesta por
+  timeout), pero bajo una carrera genuinamente *simultánea* cada llamador
+  puede pasar el pre-chequeo antes de que cualquiera confirme, creando su
+  propia `SalesOrder`/`Payment` real de forma independiente. La garantía
+  que sí se sostiene y se verificó contra Postgres real con 5 llamadas
+  concurrentes reales es que exactamente una fila `PosSale` sobrevive y
+  todos los llamadores convergen en ella — no que solo se creó un
+  `SalesOrder`. Resolverlo con un mecanismo de claim-antes-del-efecto
+  (espejando el patrón del inbox, ADR-008) se dejó deliberadamente fuera
+  de alcance de esta fase; ver el docstring completo de
+  `RingUpSaleUseCase` y "Known limitations" en `docs/SECURITY.md` "POS".
+- 10 permisos nuevos: `pos.registers.read/.manage`,
+  `pos.shifts.read/.manage`, `pos.cash-movements.read/.manage`,
+  `pos.sales.read/.manage`, `pos.returns.read/.manage`. Auditoría real en
+  las 6 acciones de escritura (`pos.register.created/.status_changed`,
+  `pos.shift.opened/.closed`, `pos.cash_movement.recorded`,
+  `pos.sale.rung_up`, `pos.return.created`).
+- Tablas nuevas (migración `20260901194057_pos`, **generada y aplicada
+  directamente contra Postgres real** vía el mismo workaround
+  no-interactivo ya establecido de `prisma migrate diff --script`,
+  combinando cinco tablas nuevas, dos enums nuevos, y
+  `@@unique([tenantId, id])` nuevo en `payments` —su primer consumidor de
+  FK, mismo patrón ya usado por `customers`/`taxes`/`suppliers`— aplicada
+  limpiamente al primer intento). Detalle completo en `docs/DATABASE.md`
+  "POS tables".
+- Contrato HTTP nuevo: `GET/POST /api/v1/pos/registers`,
+  `PUT .../:id/status`; `GET/POST /api/v1/pos/shifts`, `GET .../:id`,
+  `POST .../:id/close`, `GET/POST .../:id/cash-movements`;
+  `GET/POST /api/v1/pos/sales`, `GET .../:id`;
+  `GET/POST /api/v1/pos/returns`.
+- **`@erp/api-client`**: ~16 tipos y 14 métodos nuevos generados desde el
+  spec OpenAPI real (mismo flujo de la sesión 21), sin bugs de fidelidad
+  de decoradores — todos los DTOs llevaron `type:`/`nullable:` explícitos
+  desde el inicio.
+- **UI** (`apps/erp-web/src/features/pos/`, ruta nueva `/pos`, botón
+  "Punto de venta" en el workspace): pestañas Vender/Cajas/Ventas. **Bug
+  real de diseño encontrado y corregido antes de escribir ningún test**:
+  a diferencia de Purchasing/Sales, donde cada panel carga sus propios
+  datos solo cuando su pestaña está activa, las cajas (`PosRegister[]`)
+  se cargan una sola vez a nivel de página — la pestaña "Vender", activa
+  por defecto al entrar, necesita la lista de cajas antes de que el
+  usuario visite jamás la pestaña "Cajas"; el patrón perezoso-por-pestaña
+  ya establecido en el resto de esta UI habría dejado el selector de caja
+  vacío en el primer render. El carrito de venta reutiliza el mismo
+  componente de selección de producto+variante+impuesto que Sales/
+  Purchasing, sin selector de bodega — `RingUpSaleUseCase` la resuelve del
+  lado del servidor a partir de la caja del turno, nunca desde la entrada
+  del usuario. El ticket se imprime con `window.print()` del navegador —
+  soporte real, no una simulación de una impresora térmica específica.
+- **Tres colisiones potenciales de `getByText`/`getByLabel` anticipadas
+  durante el propio diseño del E2E** (mismo patrón ya documentado en
+  sesiones anteriores de este proyecto): se usó `{ exact: true }` de forma
+  proactiva en los selectores de "Producto"/"Cantidad" del carrito desde
+  el primer borrador, evitando el ciclo de prueba-y-error que otras
+  sesiones necesitaron — el E2E pasó a la primera sin ninguna corrección
+  posterior.
+- Tests: 72 tests unitarios nuevos en `apps/api` (29 de dominio incluyendo
+  la aritmética decimal propia del módulo, 40 de aplicación incluyendo el
+  escenario de compensación por pago rechazado y la reacción real a un
+  conflicto de idempotencia simulado, 3 de wiring del módulo) — 790 tests
+  unitarios totales en `apps/api` (antes 718). Suite de integración con 2
+  escenarios reales nuevos contra Postgres (`pos.integration-spec.ts`):
+  ciclo de vida completo Register→Shift→RingUpSale→CashMovement→Return→
+  Close con llamadas cross-module reales, y 5 solicitudes de `ringUpSale`
+  genuinamente concurrentes con la misma `idempotencyKey` — 36/36 en total
+  (antes 34). 1 test nuevo en `@erp/api-client` — 18/18 en total (antes
+  17). 3 tests nuevos en `apps/erp-web` (`pos-page.spec.tsx`) — 45/45 en
+  total (antes 42). **E2E real nuevo** (`apps/e2e/tests/pos.spec.ts`,
+  Chromium vía Testcontainers): ciclo de vida completo por navegador
+  real — cliente y producto reales, recepción de stock real, caja real,
+  turno abierto con fondo real, venta real en efectivo con vuelto
+  calculado, saldo de inventario real verificado, devolución real con
+  reembolso completo, saldo restaurado verificado, cierre de turno real
+  con efectivo esperado/diferencia calculados — 14/14 Playwright en total
+  (antes 13).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm test` (790 api + 27 events + 33 notifications + 6
+  worker + 18 api-client + 45 erp-web, verificado limpio en corridas
+  aisladas por paquete — la corrida concurrente completa mostró fallos
+  aislados por timeout bajo contención de recursos de esta sesión larga,
+  mismo patrón ya documentado en sesiones anteriores, descartado con
+  corridas aisladas limpias y una corrida con `--no-file-parallelism` en
+  `apps/erp-web` confirmando 45/45), `pnpm --filter @erp/api
+  test:integration` (36/36 contra Postgres real), `pnpm --filter @erp/e2e
+  run test:e2e` (14/14 Playwright) — todo verde.
 
 ### Hecho — sesión 29 (Purchasing — Fase 5, completa de una vez)
 
@@ -2743,8 +2895,14 @@ mínimo — implementado y ratificado en sesión 22: catálogo code-owned
 `FOUNDATION_APPS` vacío en producción, `AppDefinition`/`TenantApp`/
 `AppConfiguration`, lifecycle `ENABLED`/`DISABLED` colapsado, chequeo real
 de dependencias/dependents, verificado con fixtures contra Postgres real y
-E2E de navegador real). Pendientes de numerar formalmente cuando
-corresponda: ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma),
-ADR-003 (Multi-Tenancy — el patrón de `docs/MULTITENANCY.md` §8 ya está
-verificado tres veces contra Postgres real: manual, integration test, y
-ahora E2E de navegador).
+E2E de navegador real); ADR-009 (Payment Gateway Adapters V1 —
+implementado y ratificado en sesión 27, alcance deliberadamente limitado
+a `CASH`/`BANK_TRANSFER`, sin ningún adapter credenciado); ADR-010 (POS
+Terminal Idempotency Scope V1 — implementado y ratificado en sesión 30,
+documenta explícitamente el límite de la garantía de idempotencia de
+`RingUpSaleUseCase` bajo una carrera genuinamente simultánea, cubierta
+solo para el caso real de una reintentona secuencial). Pendientes de
+numerar formalmente cuando corresponda: ADR-001 (Modular Monolith),
+ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
+`docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
+real: manual, integration test, y ahora E2E de navegador).

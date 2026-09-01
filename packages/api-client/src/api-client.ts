@@ -15,11 +15,14 @@ import type {
   BrandResponse,
   CapturePaymentInput,
   CategoryResponse,
+  CloseShiftInput,
   CompanyResponse,
   ConvertQuoteInput,
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
+  CreatePosRegisterInput,
+  CreatePosReturnInput,
   CreatePriceListInput,
   CreateProductInput,
   CreatePurchaseOrderInput,
@@ -48,6 +51,10 @@ import type {
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
   ListPaymentsFilter,
+  ListPosRegistersFilter,
+  ListPosReturnsFilter,
+  ListPosSalesFilter,
+  ListPosShiftsFilter,
   ListPurchaseOrdersFilter,
   ListPurchaseReceiptsFilter,
   ListPurchaseReturnsFilter,
@@ -58,12 +65,18 @@ import type {
   LoginInput,
   MembershipResponse,
   MembershipWithUserResponse,
+  OpenShiftInput,
   PaymentResponse,
   PendingInvitationResponse,
   PermissionResponse,
   PlatformSettingResponse,
   PlatformSettingValueResponse,
   PlatformUserResponse,
+  PosCashMovementResponse,
+  PosRegisterResponse,
+  PosReturnResponse,
+  PosSaleResponse,
+  PosShiftResponse,
   PriceListItemResponse,
   PriceListResponse,
   ProductResponse,
@@ -78,9 +91,11 @@ import type {
   PurchaseReturnResponse,
   QuoteLineResponse,
   QuoteResponse,
+  RecordCashMovementInput,
   RecordIssueInput,
   RecordReceiptInput,
   RegisterInput,
+  RingUpSaleInput,
   RoleAssignmentResponse,
   RoleResponse,
   SalesOrderLineResponse,
@@ -92,6 +107,7 @@ import type {
   SetMasterDataStatusInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
+  SetPosRegisterStatusInput,
   SetPriceListStatusInput,
   SetProductStatusInput,
   SetProductVariantStatusInput,
@@ -1862,6 +1878,209 @@ export class ApiClient {
       accessToken,
       tenantSlug,
       companyId,
+    });
+  }
+
+  async listPosRegisters(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPosRegistersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PosRegisterResponse[]> {
+    return this.request<PosRegisterResponse[]>(`/pos/registers${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createPosRegister(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePosRegisterInput,
+  ): Promise<PosRegisterResponse> {
+    return this.request<PosRegisterResponse>("/pos/registers", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setPosRegisterStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    registerId: string,
+    input: SetPosRegisterStatusInput,
+  ): Promise<PosRegisterResponse> {
+    return this.request<PosRegisterResponse>(`/pos/registers/${encodeURIComponent(registerId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPosShifts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPosShiftsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PosShiftResponse[]> {
+    return this.request<PosShiftResponse[]>(`/pos/shifts${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async getPosShift(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    shiftId: string,
+    signal?: AbortSignal,
+  ): Promise<PosShiftResponse> {
+    return this.request<PosShiftResponse>(`/pos/shifts/${encodeURIComponent(shiftId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async openShift(accessToken: string, tenantSlug: string, companyId: string, input: OpenShiftInput): Promise<PosShiftResponse> {
+    return this.request<PosShiftResponse>("/pos/shifts", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async closeShift(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    shiftId: string,
+    input: CloseShiftInput,
+  ): Promise<PosShiftResponse> {
+    return this.request<PosShiftResponse>(`/pos/shifts/${encodeURIComponent(shiftId)}/close`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listCashMovements(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    shiftId: string,
+    signal?: AbortSignal,
+  ): Promise<PosCashMovementResponse[]> {
+    return this.request<PosCashMovementResponse[]>(`/pos/shifts/${encodeURIComponent(shiftId)}/cash-movements`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async recordCashMovement(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    shiftId: string,
+    input: RecordCashMovementInput,
+  ): Promise<PosCashMovementResponse> {
+    return this.request<PosCashMovementResponse>(`/pos/shifts/${encodeURIComponent(shiftId)}/cash-movements`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPosSales(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPosSalesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PosSaleResponse[]> {
+    return this.request<PosSaleResponse[]>(`/pos/sales${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async getPosSale(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    posSaleId: string,
+    signal?: AbortSignal,
+  ): Promise<PosSaleResponse> {
+    return this.request<PosSaleResponse>(`/pos/sales/${encodeURIComponent(posSaleId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async ringUpSale(accessToken: string, tenantSlug: string, companyId: string, input: RingUpSaleInput): Promise<PosSaleResponse> {
+    return this.request<PosSaleResponse>("/pos/sales", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPosReturns(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListPosReturnsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<PosReturnResponse[]> {
+    return this.request<PosReturnResponse[]>(`/pos/returns${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createPosReturn(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreatePosReturnInput,
+  ): Promise<PosReturnResponse> {
+    return this.request<PosReturnResponse>("/pos/returns", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
     });
   }
 

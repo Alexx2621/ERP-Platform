@@ -38,6 +38,6 @@ import { PaymentsController } from "./presentation/payments.controller";
     RefundPaymentUseCase,
     ListPaymentsUseCase,
   ],
-  exports: [ListPaymentsUseCase],
+  exports: [ListPaymentsUseCase, CapturePaymentUseCase, RefundPaymentUseCase],
 })
 export class PaymentsModule {}

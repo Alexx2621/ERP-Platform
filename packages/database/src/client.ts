@@ -54,6 +54,11 @@ export type {
   PurchaseReturn,
   PurchaseReturnLine,
   SupplierInvoice,
+  PosRegister,
+  PosShift,
+  PosCashMovement,
+  PosSale,
+  PosReturn,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -81,6 +86,8 @@ export {
   PaymentStatus,
   PurchaseOrderStatus,
   SupplierInvoiceStatus,
+  PosShiftStatus,
+  PosCashMovementType,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 
