@@ -13,7 +13,9 @@ was implemented — see below. ADR-010 (POS Terminal Idempotency Scope V1)
 was ratified once the POS module (Phase 6) was implemented — see below.
 ADR-011 (Commerce Checkout Payment/Fulfillment and Idempotency Model V1)
 was ratified once the Commerce module (Phase 7A) was implemented — see
-below.
+below. ADR-012 (Accounting Integration Scope V1 — Manual Engine and
+Idempotent Posting Port, No Automatic Cross-Module Postings) was ratified
+once the Accounting module (Phase 8) was implemented — see below.
 
 ---
 
@@ -1090,3 +1092,128 @@ Commerce's checkout have a genuinely different shape worth exploiting?
   as unnecessary complexity — Commerce's own `Cart` already provides a
   cleaner, structurally guaranteed one-to-one key that requires no
   cooperation from the client at all, unlike POS's terminal-generated key.
+
+---
+
+## ADR-012 — Accounting Integration Scope V1 (Manual Engine and Idempotent Posting Port, No Automatic Cross-Module Postings)
+
+**Status:** Accepted (scope: the full, real, tested manual double-entry
+engine — Chart of Accounts, Fiscal Periods, `CreateJournalEntryUseCase`/
+`ReverseJournalEntryUseCase`, Trial Balance/Account Ledger reports, and the
+idempotent source-linked posting mechanism itself; explicitly **not** any
+automatic journal-entry posting triggered by Sales, Payments, Purchasing or
+Inventory events)
+
+**Context**
+
+`docs/ROADMAP.md` §12 lists Accounting's deliverables as the Chart of
+Accounts, Fiscal Periods, Journal Entries/Lines and Ledger, double-entry
+invariants, posting/reversal, reconciliation and first financial
+statements, **and** "Mapeos de integración desde Sales, Payments,
+Purchasing e Inventory" — with an exit criterion that "reprocesar eventos
+de origen no duplica postings". Unlike every prior module built this
+session (Commerce's checkout, POS's ring-up), where the cross-module
+orchestration itself *was* the deliverable, wiring Sales/Payments/
+Purchasing/Inventory events to real journal entries requires real,
+jurisdiction-specific accounting policy this codebase has no basis to
+invent: which Chart of Accounts account a given product category's
+revenue posts to, whether recognition happens on order confirmation or on
+fulfillment, cash vs. accrual basis, how partial payments/returns/
+reversals net against already-posted entries. Every other "don't simulate"
+decision in this codebase (ADR-009's payment gateways, ADR-011's
+fulfillment model) drew the line at fabricating behavior with no real
+credentials or policy behind it; automatic accounting postings are that
+same problem at higher stakes, since a wrong posting corrupts real
+financial statements and potential tax filings, not just a UI screen.
+
+**Decision**
+
+1. **The full manual double-entry engine is built completely, exactly as
+   `docs/ROADMAP.md` §12 specifies, with nothing simulated.** `Account`
+   (Chart of Accounts, `type` deriving `normalBalance`), `FiscalPeriod`
+   (`OPEN -> CLOSED`, terminal — see the entity's own docstring for why
+   reopening is deliberately not built), `JournalEntry`/`JournalEntryLine`
+   (append-only, `CreateJournalEntryUseCase` enforcing the line-level
+   "exactly one of debit/credit positive" invariant in the domain and the
+   entry-level "sum(debit) === sum(credit)" invariant in the application
+   layer), `ReverseJournalEntryUseCase` (posts a brand-new balanced entry
+   with every line swapped, never edits the original), and
+   `GetTrialBalanceUseCase`/`GetAccountLedgerUseCase` (both summed fresh
+   from the raw ledger on every call, never a stored running balance). A
+   real staff member can open a period, build a real Chart of Accounts,
+   and post/reverse real manual entries today — this is a genuinely usable
+   accounting module, not a stub waiting for integration.
+2. **The idempotent source-linked posting *mechanism* is built and
+   verified, ahead of any real caller** — `CreateJournalEntryUseCase`
+   accepts an optional `(sourceType, sourceId)` pair, pre-checks it for the
+   common sequential-retry case, and a real
+   `@@unique([tenantId, companyId, sourceType, sourceId])` constraint (with
+   Postgres's own NULL-is-distinct semantics letting unlimited manual
+   entries coexist with `sourceType`/`sourceId` both null) backs it for a
+   genuine concurrent race — verified against real Postgres with 5
+   simultaneous posting requests sharing one simulated source key,
+   converging on exactly one entry. This directly and honestly satisfies
+   the exit criterion "reprocesar eventos de origen no duplica postings"
+   for the mechanism itself, the same "build and verify the mechanism
+   before any real consumer exists" precedent ADR-008's inbox already
+   established for exactly this reason.
+3. **No automatic posting is wired from Sales, Payments, Purchasing or
+   Inventory in this phase.** None of those modules call
+   `CreateJournalEntryUseCase`; `AccountingModule` has zero cross-module
+   imports of any kind — the only business module built so far with none.
+   Wiring a real integration mapping (e.g. "a captured `Payment` posts a
+   debit to Cash and a credit to Accounts Receivable") requires a real
+   chart-of-accounts convention and revenue-recognition policy that varies
+   by business and jurisdiction; inventing one and shipping it as if it
+   were correct accounting practice would be a materially worse
+   "simulation" than any other gap already accepted in this codebase,
+   because it would silently corrupt a real set of books rather than
+   simply doing nothing.
+4. **Reconciliation and "first financial statements" (also named in
+   `docs/ROADMAP.md` §12) are limited to what the Trial Balance already
+   provides** — a summed, balance-confirmed view of every account's
+   activity. A formal Balance Sheet/Income Statement (grouping accounts by
+   type into a presented statement, handling retained-earnings roll-forward
+   across periods) is not built; the Trial Balance's `accountType` field on
+   every row is enough for a caller to derive one, but this slice does not
+   do that derivation itself.
+
+**Consequences**
+
+- A real business cannot yet get automatic books from using Sales/
+  Payments/Purchasing/POS/Commerce — every posting today is a manual
+  action by whoever operates Accounting. This is a real, visible gap,
+  not a hidden one: `docs/SECURITY.md` "Accounting" and
+  `docs/PROJECT_STATE.md` name it explicitly.
+- Wiring a real integration later is additive and low-risk to what
+  already exists: a future module-specific mapping calls
+  `CreateJournalEntryUseCase` with a real `sourceType`/`sourceId` (e.g.
+  `"SALES_ORDER"`/order id) exactly the way the verification test already
+  simulates — no change to the engine itself, only a new caller.
+- Financial statements beyond the Trial Balance are deferred; nothing in
+  the schema (`Account.type`, `JournalEntryLine.debit`/`credit`) blocks
+  building them later purely as new read-side queries over the same
+  append-only ledger.
+
+**Alternatives considered**
+
+- **Inventing a plausible-looking Chart of Accounts mapping and wiring it
+  automatically** (e.g. every `SalesOrder` confirmation posts a fixed
+  Revenue/Receivable pair): rejected outright — this is exactly the kind
+  of simulated business behavior MASTER_SPEC §90 prohibits, and here the
+  consequence of getting it wrong is a corrupted set of real books, a
+  materially higher-stakes failure than any other simulation already
+  avoided in this codebase (ADR-009's payment gateways, ADR-011's
+  fulfillment model).
+- **Deferring the entire Accounting module until a real integration
+  policy exists**: rejected — the manual engine itself (Chart of Accounts,
+  Fiscal Periods, balanced posting/reversal, Trial Balance) is real,
+  independently valuable functionality `docs/ROADMAP.md` §12 asks for
+  regardless of automatic integration, the same reasoning ADR-009 used to
+  ship `CASH`/`BANK_TRANSFER` now rather than wait for a credentialed
+  gateway.
+- **Building the idempotent posting port but leaving it unverified until a
+  real caller exists**: rejected — verifying it now, under simulated
+  concurrency, is strictly safer than discovering a race condition only
+  once real money-relevant postings depend on it; mirrors ADR-008's own
+  precedent exactly.

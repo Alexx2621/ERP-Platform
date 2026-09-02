@@ -29,6 +29,7 @@ import { PaymentsModule } from "./modules/payments";
 import { PurchasingModule } from "./modules/purchasing";
 import { PosModule } from "./modules/pos";
 import { CommerceModule } from "./modules/commerce";
+import { AccountingModule } from "./modules/accounting";
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { CommerceModule } from "./modules/commerce";
     PurchasingModule,
     PosModule,
     CommerceModule,
+    AccountingModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -1557,3 +1557,93 @@ new tables, three new enums (`StorefrontStatus`, `StorefrontProductStatus`,
 `CartStatus`), and `@@unique([tenantId, paymentId])` added to
 `commerce_orders` itself (required by Prisma for the one-to-one optional
 relation from `payments`, its first genuinely optional FK consumer).
+
+## Accounting tables (Phase 8, 2026-09-02)
+
+Scope: `docs/ROADMAP.md` §12 — Chart of Accounts, Fiscal Periods, Journal
+Entries/Lines. `apps/api/src/modules/accounting`. The only business
+module's tables in this codebase with **no FK to any other business
+module** — every reference here is either to Foundation (`tenants`,
+`companies`, `users`) or within Accounting's own tables.
+
+### `accounts`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `parent_account_id` | `uuid?` | Self-referencing FK (`@relation("AccountParent")`), the same shape already used by `categories.parent_id` — purely organizational (a display/grouping tree); no automatic balance rollup from children to parents in this slice. |
+| `code` | `varchar(50)` | `@@unique([tenantId, companyId, code])`. |
+| `name` | `varchar(150)` | The only field `UpdateAccountUseCase` can change — see docs/SECURITY.md "Accounting" Assets for why `type`/`code` are immutable after creation. |
+| `type` | `AccountType` | `ASSET` / `LIABILITY` / `EQUITY` / `REVENUE` / `EXPENSE`. Determines the domain entity's derived `normalBalance` — never a stored column, so it can never drift out of sync with `type`. |
+| `status` | `MasterDataStatus` | Reused shared enum (`ACTIVE`/`INACTIVE`), same as `taxes`/`warehouses`. Only an `ACTIVE` account can receive a new posting (`AccountNotActiveError`). |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `fiscal_periods`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `code` | `varchar(50)` | `@@unique([tenantId, companyId, code])`. |
+| `name` | `varchar(150)` | |
+| `start_date` / `end_date` | `date` | Civil dates, not instants — same `@db.Date` convention already used by `price_lists.valid_from`/`valid_until` and `supplier_invoices.issue_date`/`due_date`. `CreateFiscalPeriodUseCase` rejects any range overlapping an existing period for the company, so at most one `OPEN` period ever covers a given date. |
+| `status` | `FiscalPeriodStatus` | `OPEN` → `CLOSED`, terminal — no `ReopenFiscalPeriodUseCase` exists (see the domain entity's own docstring and docs/SECURITY.md "Accounting" Known limitations). |
+| `closed_at` | `timestamptz(6)?` | |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `journal_entries`
+
+Append-only (MASTER_SPEC §32) — the domain entity's own docstring carries
+the full "never edit, only reverse" philosophy. `reversal_of_entry_id`/
+`reversed_by_entry_id` are the two ends of the reversal pointer: a
+reversing entry's `reversal_of_entry_id` points backward to what it
+reverses; the original's `reversed_by_entry_id`/`reversed_at` are appended
+once, after the fact, purely as a lifecycle pointer — the same "append
+metadata about what happened to a fact, never rewrite the fact itself"
+precedent `payments.refunded_at`/`file_objects.deleted_at` already
+established.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `fiscal_period_id` | `uuid` | → `fiscal_periods(tenantId, id)`, `ON DELETE RESTRICT`. Resolved fresh from `entry_date` at posting time, never trusted from the caller. |
+| `entry_date` | `date` | Civil date — the value `GetOpenFiscalPeriodForDateUseCase` resolves a covering `OPEN` period against. |
+| `description` | `varchar(500)` | |
+| `source_type` / `source_id` | `varchar(100)?` / `varchar(100)?` | Both null together (a manual entry) or both set together (an idempotent source-linked posting, docs/DECISIONS.md ADR-012). `@@unique([tenantId, companyId, sourceType, sourceId])` — Postgres treats every `NULL` as distinct for uniqueness, so unlimited manual entries coexist freely while a genuine pair can never double-post. |
+| `reversal_of_entry_id` / `reversed_by_entry_id` | `uuid?` / `uuid?` | The two reversal pointers described above. Not FK-constrained to `journal_entries` itself (a self-reference would require a nullable, deferred, or separate-migration FK for no real integrity gain here — the ids are only ever set by `ReverseJournalEntryUseCase` itself, never accepted from a caller). |
+| `reversed_at` | `timestamptz(6)?` | |
+| `created_by_user_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT` — same pattern as `inventory_movements.created_by_user_id`/`pos_shifts.opened_by_user_id`: a real actor, not a tenant-scoped FK, since `User` is a global Foundation entity. |
+| `correlation_id` | `varchar(100)` | Same `varchar(100)` (not `uuid`) convention already used by `audit_entries`/`outbox_messages`/`inventory_movements` — a client-supplied `X-Correlation-Id` header is never guaranteed to be a well-formed UUID. |
+| `created_at` | `timestamptz(6)` | |
+
+### `journal_entry_lines`
+
+One side of a double-entry posting — read-only from the application's
+perspective; every row is created exclusively by
+`JournalEntryRepository.saveWithLines`, atomically with its parent entry
+inside one transaction (a partially-saved unbalanced entry would be a real
+integrity violation, not just a display glitch).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `journal_entry_id` / `account_id` | `uuid` | `journal_entry_id` → `journal_entries(tenantId, id)`; `account_id` → `accounts(tenantId, id)`, both `ON DELETE RESTRICT`. |
+| `line_number` | `int` | `@@unique([tenantId, journalEntryId, lineNumber])` — a stable, deterministic order for a given entry's lines. |
+| `debit` / `credit` | `numeric(14,4)` | Exactly one positive, the other zero — enforced in the domain (`JournalEntryLine.create()`), never both zero (a no-op line) or both positive (an ambiguous line). |
+| `description` | `varchar(300)?` | |
+| `created_at` | `timestamptz(6)` | |
+
+### Migration
+
+`packages/database/prisma/migrations/20260902142615_accounting/` — same
+non-interactive `prisma migrate diff --script` workaround already
+established, applied cleanly to real Postgres on the first attempt: four
+new tables and two new enums (`AccountType`, `FiscalPeriodStatus`). No
+extension to any existing table was needed — the first business-module
+migration in this codebase to be purely additive with zero touches to
+tables owned by another module, a direct consequence of Accounting having
+no cross-module FK at all (docs/DECISIONS.md ADR-012).

@@ -378,7 +378,13 @@ export type CartStatus = components["schemas"]["CartResponseDto"]["status"];
 export type CartResponse = components["schemas"]["CartResponseDto"];
 export type AddCartLineInput = components["schemas"]["AddCartLineDto"];
 export type UpdateCartLineQuantityInput = components["schemas"]["UpdateCartLineQuantityDto"];
-export type CheckoutInput = components["schemas"]["CheckoutRequestDto"];
+// `cartId` is real on the wire (CheckoutRequestDto extends CheckoutDto and
+// adds it), but the SDK's own `checkout(storefrontCode, cartId, input)`
+// already takes it as an explicit parameter and merges it into the body —
+// omitted here so a caller can't redundantly (and, per a real regenerated
+// TS2783 diagnostic, incorrectly) supply it twice. Same override pattern
+// already used for `CreateProductInput`.
+export type CheckoutInput = Omit<components["schemas"]["CheckoutRequestDto"], "cartId">;
 
 export interface ListStorefrontsFilter {
   status?: StorefrontStatus;
@@ -391,6 +397,39 @@ export interface ListStorefrontProductsFilter {
 
 export interface ListCommerceOrdersFilter {
   storefrontId?: string;
+  limit?: number;
+}
+
+export type AccountType = components["schemas"]["AccountResponseDto"]["type"];
+export type NormalBalance = components["schemas"]["AccountResponseDto"]["normalBalance"];
+export type AccountStatus = components["schemas"]["AccountResponseDto"]["status"];
+export type AccountResponse = components["schemas"]["AccountResponseDto"];
+export type CreateAccountInput = components["schemas"]["CreateAccountDto"];
+export type UpdateAccountInput = components["schemas"]["UpdateAccountDto"];
+export type SetAccountStatusInput = components["schemas"]["SetAccountStatusDto"];
+
+export type FiscalPeriodStatus = components["schemas"]["FiscalPeriodResponseDto"]["status"];
+export type FiscalPeriodResponse = components["schemas"]["FiscalPeriodResponseDto"];
+export type CreateFiscalPeriodInput = components["schemas"]["CreateFiscalPeriodDto"];
+
+export type JournalEntryResponse = components["schemas"]["JournalEntryResponseDto"];
+export type JournalEntryLineResponse = components["schemas"]["JournalEntryLineResponseDto"];
+export type CreateJournalEntryLineInput = components["schemas"]["CreateJournalEntryLineDto"];
+export type CreateJournalEntryInput = components["schemas"]["CreateJournalEntryDto"];
+export type ReverseJournalEntryInput = components["schemas"]["ReverseJournalEntryDto"];
+
+export type TrialBalanceRowResponse = components["schemas"]["TrialBalanceRowResponseDto"];
+export type TrialBalanceResponse = components["schemas"]["TrialBalanceResponseDto"];
+export type AccountLedgerRowResponse = components["schemas"]["AccountLedgerRowResponseDto"];
+export type AccountLedgerResponse = components["schemas"]["AccountLedgerResponseDto"];
+
+export interface ListAccountsFilter {
+  type?: AccountType;
+  status?: AccountStatus;
+}
+
+export interface ListJournalEntriesFilter {
+  fiscalPeriodId?: string;
   limit?: number;
 }
 

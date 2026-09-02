@@ -122,4 +122,11 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     description: "Create storefronts, change their status, and publish/unpublish products to them.",
   },
   { key: "commerce.orders.read", description: "View the company's completed online checkouts." },
+  { key: "accounting.accounts.read", description: "View the company's Chart of Accounts." },
+  { key: "accounting.accounts.manage", description: "Create, rename and activate/deactivate accounts." },
+  { key: "accounting.periods.read", description: "View the company's fiscal periods." },
+  { key: "accounting.periods.manage", description: "Open and close fiscal periods." },
+  { key: "accounting.entries.read", description: "View the company's journal entries and their lines." },
+  { key: "accounting.entries.manage", description: "Post and reverse journal entries." },
+  { key: "accounting.reports.read", description: "View the company's Trial Balance and account ledgers." },
 ];

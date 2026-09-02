@@ -46,6 +46,7 @@ model User {
   posShiftsOpened          PosShift[]          @relation("PosShiftsOpened")
   posShiftsClosed          PosShift[]          @relation("PosShiftsClosed")
   posCashMovementsRecorded PosCashMovement[]   @relation("PosCashMovementsRecorded")
+  journalEntries           JournalEntry[]
 
   @@map("users")
 }
@@ -160,6 +161,10 @@ model Tenant {
   carts                 Cart[]
   cartLines             CartLine[]
   commerceOrders        CommerceOrder[]
+  accounts              Account[]
+  fiscalPeriods         FiscalPeriod[]
+  journalEntries        JournalEntry[]
+  journalEntryLines     JournalEntryLine[]
 
   @@map("tenants")
 }
@@ -271,6 +276,9 @@ model Company {
   storefronts           Storefront[]
   commerceOrders        CommerceOrder[]
   carts                 Cart[]
+  accounts              Account[]
+  fiscalPeriods         FiscalPeriod[]
+  journalEntries        JournalEntry[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -2210,4 +2218,146 @@ model CommerceOrder {
   @@unique([tenantId, paymentId])
   @@index([tenantId, companyId, storefrontId])
   @@map("commerce_orders")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Accounting (docs/ROADMAP.md §12, docs/DECISIONS.md ADR-012)
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum FiscalPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+/// A node in the company's Chart of Accounts (MASTER_SPEC §32). `type`
+/// alone determines the domain entity's derived `normalBalance` — never a
+/// stored column here, so it can never drift out of sync with `type`.
+/// `parentAccountId` is purely organizational, the same self-referencing
+/// shape already used by `Category.parentId` — a display/grouping tree,
+/// with no automatic balance rollup from children to parents in this slice.
+model Account {
+  id              String           @id @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  companyId       String           @map("company_id") @db.Uuid
+  parentAccountId String?          @map("parent_account_id") @db.Uuid
+  code            String           @db.VarChar(50)
+  name            String           @db.VarChar(150)
+  type            AccountType
+  status          MasterDataStatus @default(ACTIVE)
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company           Company            @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  parentAccount     Account?           @relation("AccountParent", fields: [tenantId, parentAccountId], references: [tenantId, id], onDelete: Restrict)
+  childAccounts     Account[]          @relation("AccountParent")
+  journalEntryLines JournalEntryLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@index([tenantId, parentAccountId])
+  @@map("accounts")
+}
+
+/// An accounting period a `JournalEntry.entryDate` must fall within to be
+/// postable (docs/ROADMAP.md §12: "los períodos cerrados están
+/// protegidos"). `CreateFiscalPeriodUseCase` rejects any date range that
+/// overlaps an existing period for the company, so at most one OPEN period
+/// ever covers a given date. `OPEN -> CLOSED` is terminal in this slice —
+/// see the domain entity's own docstring for why reopening is deliberately
+/// not built yet.
+model FiscalPeriod {
+  id        String             @id @db.Uuid
+  tenantId  String             @map("tenant_id") @db.Uuid
+  companyId String             @map("company_id") @db.Uuid
+  code      String             @db.VarChar(50)
+  name      String             @db.VarChar(150)
+  startDate DateTime           @map("start_date") @db.Date
+  endDate   DateTime           @map("end_date") @db.Date
+  status    FiscalPeriodStatus @default(OPEN)
+  closedAt  DateTime?          @map("closed_at") @db.Timestamptz(6)
+  version   Int                @default(1)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company        @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  journalEntries JournalEntry[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("fiscal_periods")
+}
+
+/// Append-only double-entry posting (MASTER_SPEC §32) — see the domain
+/// entity's own docstring for the full "never edit, only reverse"
+/// philosophy. `sourceType`/`sourceId` are both null together for a manual
+/// entry, or both set together for an idempotent source-linked posting
+/// (docs/DECISIONS.md ADR-012) — Postgres treats every NULL as distinct for
+/// uniqueness purposes, so any number of manual entries coexist freely
+/// while a genuine `(sourceType, sourceId)` pair can never double-post.
+model JournalEntry {
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  fiscalPeriodId    String    @map("fiscal_period_id") @db.Uuid
+  entryDate         DateTime  @map("entry_date") @db.Date
+  description       String    @db.VarChar(500)
+  sourceType        String?   @map("source_type") @db.VarChar(100)
+  sourceId          String?   @map("source_id") @db.VarChar(100)
+  reversalOfEntryId String?   @map("reversal_of_entry_id") @db.Uuid
+  reversedByEntryId String?   @map("reversed_by_entry_id") @db.Uuid
+  reversedAt        DateTime? @map("reversed_at") @db.Timestamptz(6)
+  createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  correlationId     String    @map("correlation_id") @db.VarChar(100)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company      Company            @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  fiscalPeriod FiscalPeriod       @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id], onDelete: Restrict)
+  createdBy    User               @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  lines        JournalEntryLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, sourceType, sourceId])
+  @@index([tenantId, companyId, entryDate])
+  @@index([tenantId, fiscalPeriodId])
+  @@map("journal_entries")
+}
+
+/// One side of a double-entry posting — see the domain entity's own
+/// docstring for the line-level "exactly one of debit/credit positive"
+/// invariant. Read-only from the application's perspective: every row is
+/// created exclusively by `JournalEntryRepository.saveWithLines`, atomically
+/// with its parent entry.
+model JournalEntryLine {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  journalEntryId String   @map("journal_entry_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  lineNumber     Int      @map("line_number")
+  debit          Decimal  @db.Decimal(14, 4)
+  credit         Decimal  @db.Decimal(14, 4)
+  description    String?  @db.VarChar(300)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Restrict)
+  account      Account      @relation(fields: [tenantId, accountId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, journalEntryId, lineNumber])
+  @@index([tenantId, journalEntryId])
+  @@index([tenantId, accountId])
+  @@map("journal_entry_lines")
 }

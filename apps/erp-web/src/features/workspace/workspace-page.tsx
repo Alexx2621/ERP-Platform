@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Buildings,
+  Calculator,
   CheckCircle,
   Coins,
   Factory,
@@ -91,6 +92,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/commerce")}>
             <Globe size={17} weight="bold" aria-hidden="true" />
             Comercio
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/accounting")}>
+            <Calculator size={17} weight="bold" aria-hidden="true" />
+            Contabilidad
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

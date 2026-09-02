@@ -2233,6 +2233,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's Chart of Accounts. */
+        get: operations["AccountsController_list"];
+        put?: never;
+        /** Add an account to the active company's Chart of Accounts. */
+        post: operations["AccountsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename an account. */
+        put: operations["AccountsController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/accounts/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate an account. */
+        put: operations["AccountsController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/fiscal-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's fiscal periods. */
+        get: operations["FiscalPeriodsController_list"];
+        put?: never;
+        /** Open a new fiscal period for the active company. */
+        post: operations["FiscalPeriodsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/fiscal-periods/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a fiscal period — permanently blocks new postings against it. */
+        post: operations["FiscalPeriodsController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/journal-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's journal entries, most recent first. */
+        get: operations["JournalEntriesController_list"];
+        put?: never;
+        /** Post a manual, balanced double-entry journal entry. */
+        post: operations["JournalEntriesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/journal-entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one journal entry. */
+        get: operations["JournalEntriesController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/journal-entries/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a journal entry's lines. */
+        get: operations["JournalEntriesController_listLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/journal-entries/{id}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse a journal entry — posts a brand-new balanced entry with every line's debit/credit swapped; never edits the original. */
+        post: operations["JournalEntriesController_reverse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/reports/trial-balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every account with activity up to a date, with totals and a balance confirmation, freshly summed from the ledger. */
+        get: operations["AccountingReportsController_trialBalance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/reports/account-ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every posting that ever touched one account, in chronological order, with a running balance. */
+        get: operations["AccountingReportsController_accountLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3740,7 +3930,10 @@ export interface components {
             basePrice: string | null;
             variants: components["schemas"]["PublicProductVariantResponseDto"][];
         };
-        CreateCartDto: Record<string, never>;
+        CreateCartDto: {
+            /** @description A returning shopper's existing cart token, if any. */
+            cartId?: string;
+        };
         CartLineResponseDto: {
             id: string;
             productId: string;
@@ -3774,6 +3967,166 @@ export interface components {
             guestEmail: string;
             /** @description Bank transfer confirmation reference. If provided, payment is captured immediately (BANK_TRANSFER). If omitted, the order is placed unpaid and a staff member captures payment later from the order's own screen — see docs/DECISIONS.md ADR-011. */
             paymentReference?: string;
+            cartId: string;
+        };
+        AccountResponseDto: {
+            id: string;
+            parentAccountId: string | null;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+            /** @enum {string} */
+            normalBalance: "DEBIT" | "CREDIT";
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateAccountDto: {
+            /** @example 1000 */
+            code: string;
+            /** @example Cash */
+            name: string;
+            /** @enum {string} */
+            type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+            parentAccountId?: string | null;
+        };
+        UpdateAccountDto: {
+            name: string;
+        };
+        SetAccountStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        FiscalPeriodResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            /** Format: date-time */
+            startDate: string;
+            /** Format: date-time */
+            endDate: string;
+            /** @enum {string} */
+            status: "OPEN" | "CLOSED";
+            /** Format: date-time */
+            closedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateFiscalPeriodDto: {
+            /** @example 2026-01 */
+            code: string;
+            /** @example January 2026 */
+            name: string;
+            /** @example 2026-01-01 */
+            startDate: string;
+            /** @example 2026-01-31 */
+            endDate: string;
+        };
+        JournalEntryResponseDto: {
+            id: string;
+            fiscalPeriodId: string;
+            /** Format: date-time */
+            entryDate: string;
+            description: string;
+            sourceType: string | null;
+            sourceId: string | null;
+            reversalOfEntryId: string | null;
+            reversedByEntryId: string | null;
+            /** Format: date-time */
+            reversedAt: string | null;
+            createdByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        JournalEntryLineResponseDto: {
+            id: string;
+            journalEntryId: string;
+            accountId: string;
+            lineNumber: number;
+            /** @example 100.0000 */
+            debit: string;
+            /** @example 0.0000 */
+            credit: string;
+            description: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateJournalEntryLineDto: {
+            accountId: string;
+            /**
+             * @description Exactly one of debit/credit must be positive; the other must be omitted or zero.
+             * @example 100.0000
+             */
+            debit?: string;
+            /** @example 100.0000 */
+            credit?: string;
+            description?: string;
+        };
+        CreateJournalEntryDto: {
+            /** @example 2026-01-15 */
+            entryDate: string;
+            description: string;
+            lines: components["schemas"]["CreateJournalEntryLineDto"][];
+        };
+        ReverseJournalEntryDto: {
+            /**
+             * @description Defaults to today — deliberately independent of the original entry's own fiscal period.
+             * @example 2026-02-01
+             */
+            entryDate?: string;
+            description?: string;
+        };
+        TrialBalanceRowResponseDto: {
+            accountId: string;
+            accountCode: string;
+            accountName: string;
+            /** @enum {string} */
+            accountType: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+            /** @example 100.0000 */
+            totalDebit: string;
+            /** @example 0.0000 */
+            totalCredit: string;
+            /** @example 100.0000 */
+            netAmount: string;
+        };
+        TrialBalanceResponseDto: {
+            /** Format: date-time */
+            asOfDate: string;
+            rows: components["schemas"]["TrialBalanceRowResponseDto"][];
+            /** @example 1000.0000 */
+            totalDebit: string;
+            /** @example 1000.0000 */
+            totalCredit: string;
+            isBalanced: boolean;
+        };
+        AccountLedgerRowResponseDto: {
+            journalEntryId: string;
+            /** Format: date-time */
+            entryDate: string;
+            entryDescription: string;
+            lineDescription: string | null;
+            /** @example 100.0000 */
+            debit: string;
+            /** @example 0.0000 */
+            credit: string;
+            /** @example 100.0000 */
+            runningBalance: string;
+        };
+        AccountLedgerResponseDto: {
+            accountId: string;
+            accountCode: string;
+            accountName: string;
+            /** Format: date-time */
+            asOfDate: string;
+            rows: components["schemas"]["AccountLedgerRowResponseDto"][];
+            /** @example 100.0000 */
+            endingBalance: string;
         };
     };
     responses: never;
@@ -8430,6 +8783,391 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommerceOrderResponseDto"];
+                };
+            };
+        };
+    };
+    AccountsController_list: {
+        parameters: {
+            query?: {
+                type?: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+                status?: "ACTIVE" | "INACTIVE";
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponseDto"][];
+                };
+            };
+        };
+    };
+    AccountsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccountDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponseDto"];
+                };
+            };
+        };
+    };
+    AccountsController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAccountDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponseDto"];
+                };
+            };
+        };
+    };
+    AccountsController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAccountStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponseDto"];
+                };
+            };
+        };
+    };
+    FiscalPeriodsController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiscalPeriodResponseDto"][];
+                };
+            };
+        };
+    };
+    FiscalPeriodsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFiscalPeriodDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiscalPeriodResponseDto"];
+                };
+            };
+        };
+    };
+    FiscalPeriodsController_close: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiscalPeriodResponseDto"];
+                };
+            };
+        };
+    };
+    JournalEntriesController_list: {
+        parameters: {
+            query?: {
+                fiscalPeriodId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalEntryResponseDto"][];
+                };
+            };
+        };
+    };
+    JournalEntriesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateJournalEntryDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalEntryResponseDto"];
+                };
+            };
+        };
+    };
+    JournalEntriesController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalEntryResponseDto"];
+                };
+            };
+        };
+    };
+    JournalEntriesController_listLines: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalEntryLineResponseDto"][];
+                };
+            };
+        };
+    };
+    JournalEntriesController_reverse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReverseJournalEntryDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JournalEntryResponseDto"];
+                };
+            };
+        };
+    };
+    AccountingReportsController_trialBalance: {
+        parameters: {
+            query: {
+                /** @description Defaults to today. */
+                asOfDate: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrialBalanceResponseDto"];
+                };
+            };
+        };
+    };
+    AccountingReportsController_accountLedger: {
+        parameters: {
+            query: {
+                /** @description Defaults to today. */
+                asOfDate: string;
+                accountId: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountLedgerResponseDto"];
                 };
             };
         };

@@ -1355,6 +1355,120 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Accounting endpoints", async () => {
+    const account = {
+      id: "account-1",
+      parentAccountId: null,
+      code: "1000",
+      name: "Cash",
+      type: "ASSET",
+      normalBalance: "DEBIT",
+      status: "ACTIVE",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    };
+    const period = {
+      id: "period-1",
+      code: "2026-01",
+      name: "January 2026",
+      startDate: "2026-01-01T00:00:00.000Z",
+      endDate: "2026-01-31T00:00:00.000Z",
+      status: "OPEN",
+      closedAt: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    };
+    const entry = {
+      id: "entry-1",
+      fiscalPeriodId: "period-1",
+      entryDate: "2026-01-15T00:00:00.000Z",
+      description: "Cash sale",
+      sourceType: null,
+      sourceId: null,
+      reversalOfEntryId: null,
+      reversedByEntryId: null,
+      reversedAt: null,
+      createdByUserId: "user-1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+    };
+    const line = {
+      id: "line-1",
+      journalEntryId: "entry-1",
+      accountId: "account-1",
+      lineNumber: 1,
+      debit: "100.0000",
+      credit: "0.0000",
+      description: null,
+      createdAt: "2026-09-01T00:00:00.000Z",
+    };
+    const trialBalance = { asOfDate: "2026-01-31T00:00:00.000Z", rows: [], totalDebit: "0.0000", totalCredit: "0.0000", isBalanced: true };
+    const ledger = { accountId: "account-1", accountCode: "1000", accountName: "Cash", asOfDate: "2026-01-31T00:00:00.000Z", rows: [], endingBalance: "0.0000" };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([account]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(account), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(account), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...account, status: "INACTIVE" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([period]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(period), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...period, status: "CLOSED" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([entry]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(entry), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([line]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(entry), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...entry, id: "entry-2", reversalOfEntryId: "entry-1" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(trialBalance), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(ledger), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listAccounts("access-token", "grupo-aurora", "company-1", { type: "ASSET" });
+    await client.createAccount("access-token", "grupo-aurora", "company-1", { code: "1000", name: "Cash", type: "ASSET" });
+    await client.updateAccount("access-token", "grupo-aurora", "company-1", "account-1", { name: "Cash" });
+    await client.setAccountStatus("access-token", "grupo-aurora", "company-1", "account-1", { status: "INACTIVE" });
+    await client.listFiscalPeriods("access-token", "grupo-aurora", "company-1");
+    await client.createFiscalPeriod("access-token", "grupo-aurora", "company-1", { code: "2026-01", name: "January 2026", startDate: "2026-01-01", endDate: "2026-01-31" });
+    await client.closeFiscalPeriod("access-token", "grupo-aurora", "company-1", "period-1");
+    await client.listJournalEntries("access-token", "grupo-aurora", "company-1", { fiscalPeriodId: "period-1" });
+    await client.getJournalEntry("access-token", "grupo-aurora", "company-1", "entry-1");
+    await client.listJournalEntryLines("access-token", "grupo-aurora", "company-1", "entry-1");
+    await client.createJournalEntry("access-token", "grupo-aurora", "company-1", {
+      entryDate: "2026-01-15",
+      description: "Cash sale",
+      lines: [
+        { accountId: "account-1", debit: "100.0000" },
+        { accountId: "account-2", credit: "100.0000" },
+      ],
+    });
+    await client.reverseJournalEntry("access-token", "grupo-aurora", "company-1", "entry-1");
+    await client.getTrialBalance("access-token", "grupo-aurora", "company-1", "2026-01-31");
+    await client.getAccountLedger("access-token", "grupo-aurora", "company-1", "account-1", "2026-01-31");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/accounting/accounts?type=ASSET", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/accounting/accounts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/accounting/accounts/account-1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/accounting/accounts/account-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/accounting/fiscal-periods", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/accounting/fiscal-periods", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/accounting/fiscal-periods/period-1/close", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/accounting/journal-entries?fiscalPeriodId=period-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/accounting/journal-entries/entry-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/accounting/journal-entries/entry-1/lines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/accounting/journal-entries", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/accounting/journal-entries/entry-1/reverse", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/accounting/reports/trial-balance?asOfDate=2026-01-31", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      14,
+      "/api/v1/accounting/reports/account-ledger?accountId=account-1&asOfDate=2026-01-31",
+      expect.objectContaining({ method: "GET" }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

@@ -64,6 +64,10 @@ export type {
   Cart,
   CartLine,
   CommerceOrder,
+  Account,
+  FiscalPeriod,
+  JournalEntry,
+  JournalEntryLine,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -96,6 +100,8 @@ export {
   StorefrontStatus,
   StorefrontProductStatus,
   CartStatus,
+  AccountType,
+  FiscalPeriodStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

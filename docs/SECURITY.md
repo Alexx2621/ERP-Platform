@@ -1539,3 +1539,93 @@ storefront's own globally-unique `code` by a new guard,
   building an abandonment state with no real code path behind it yet
   would be exactly the premature machinery MASTER_SPEC §59/§93 warns
   against.
+
+## Accounting (Phase 8, 2026-09-02)
+
+Scope: `apps/api/src/modules/accounting` — Account (Chart of Accounts),
+FiscalPeriod, JournalEntry/JournalEntryLine, and the Trial Balance/Account
+Ledger reports. **The only business module in this codebase with zero
+cross-module dependencies** — `AccountingModule` imports nothing from
+Catalog/Sales/Payments/Purchasing/Inventory/Commerce/POS, and none of
+those modules call into it either (docs/DECISIONS.md ADR-012). Every other
+module built this session either orchestrates other modules
+(`CheckoutUseCase`, `RingUpSaleUseCase`) or is called by one
+(`GetTaxUseCase`, `RecordReceiptUseCase`); Accounting is neither, by
+deliberate design — a complete, independently postable double-entry engine
+with no real caller yet.
+
+### Assets
+
+- `accounting.accounts.read`/`.manage`, `accounting.periods.read`/
+  `.manage`, `accounting.entries.read`/`.manage`, `accounting.reports.read`
+  — 7 new permissions, all company-scoped like every other Master
+  Data/business module (`requireCompanyId`).
+- `Account.type`/`code` — immutable after creation
+  (`UpdateAccountUseCase` only allows renaming) since every already-posted
+  `JournalEntryLine` depends on them remaining what they were at posting
+  time; the same "a snapshotted/structural fact is never silently
+  rewritten" reasoning already applied throughout this codebase
+  (`SalesOrderLine.unitPrice`, `PosSale.amount`).
+- `FiscalPeriod.status` — `OPEN -> CLOSED` is a one-way door; closing a
+  period permanently blocks new postings against it, enforced by
+  `CreateJournalEntryUseCase`/`ReverseJournalEntryUseCase` re-resolving the
+  covering `OPEN` period fresh on every call, never trusting a
+  client-supplied period id.
+- `JournalEntry`/`JournalEntryLine` — append-only; no
+  `UpdateJournalEntryUseCase`/`DeleteJournalEntryUseCase` exists at all.
+  The only two writers are `CreateJournalEntryUseCase` (via
+  `JournalEntryRepository.saveWithLines`, atomic entry+lines) and
+  `ReverseJournalEntryUseCase` (which only ever appends
+  `reversedByEntryId`/`reversedAt` to the *original*, via a separate
+  update-only `save()` that never touches lines).
+- `JournalEntry.sourceType`/`sourceId` — the idempotent posting port no
+  real caller uses yet (ADR-012); a real
+  `@@unique([tenantId, companyId, sourceType, sourceId])` constraint
+  backs it regardless.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A journal entry line references an account or fiscal period from another company, letting one company's postings corrupt another's books | Every line's `accountId` is re-validated as real, company-owned, and `ACTIVE` (`AccountNotFoundError`/`AccountNotActiveError`) inside `CreateJournalEntryUseCase` itself — the same defense-in-depth pattern every other module applies (never trusting that an id merely "looks valid"), verified against real Postgres with a genuine cross-company account rejected via its real FK-backed lookup. |
+| An unbalanced entry is posted, silently breaking the fundamental double-entry invariant | Enforced at two levels: `JournalEntryLine.create()` rejects a line where debit/credit are both zero or both positive (domain-level, per line); `CreateJournalEntryUseCase` sums every line and rejects the whole entry with `JournalEntryNotBalancedError` unless `sum(debit) === sum(credit)` exactly, using the module's own dependency-free BigInt decimal arithmetic — never JavaScript floats. |
+| A posting lands in a period that has already been closed, retroactively altering a company's already-reported financial position | `CreateJournalEntryUseCase`/`ReverseJournalEntryUseCase` both resolve the entry's fiscal period fresh via `GetOpenFiscalPeriodForDateUseCase`, which only ever returns a period whose `status === "OPEN"` — a closed period structurally cannot receive a new posting, verified against real Postgres by closing a period mid-test and confirming the very next posting attempt is rejected. |
+| A posting mistake is "corrected" by editing or deleting the original entry, destroying the audit trail | There is no code path that can mutate a `JournalEntryLine` or delete a `JournalEntry` — `ReverseJournalEntryUseCase` is the only correction mechanism, and it always creates a brand-new, fully balanced entry with every line's debit/credit swapped; the original's own lines are verified (unit and integration) to be byte-for-byte unchanged after a reversal. |
+| An entry is reversed twice, double-cancelling its economic effect | `JournalEntry.markReversed()` throws if `reversedByEntryId` is already set; `ReverseJournalEntryUseCase` checks `original.isReversed` before doing any work. **Known, accepted gap**: this is a sequential check, not a database constraint — a genuinely concurrent double-reversal of the same entry (two racing requests, both reading `isReversed === false` before either commits) is not prevented by a unique constraint in this slice, an authenticated, staff-only action where the realistic failure mode is a double-click, not adversarial concurrency (see the docstring on `ReverseJournalEntryUseCase` itself). |
+| A source-linked posting is duplicated when its triggering event is reprocessed (webhook retry, outbox redelivery) | `CreateJournalEntryUseCase` pre-checks `findBySource(sourceType, sourceId)` for the common sequential-retry case, and a real `@@unique([tenantId, companyId, sourceType, sourceId])` constraint (translated to `JournalEntryIdempotencyConflictError`, never a raw Prisma error, across the module boundary) backs it for a genuine concurrent race — verified against real Postgres with 5 simultaneous posting requests sharing one simulated source key, converging on exactly one entry, exactly one row surviving. No real caller supplies a source yet (see Known limitations), so this is verified with a simulated key, the same precedent ADR-008's inbox already established. |
+| The Trial Balance or an Account Ledger silently drifts from the real ledger over time (a stored running balance falling out of sync) | Both reports are recomputed fresh from `JournalEntryLine` on every single call — there is no stored balance column anywhere in this module to drift; the same "ledger read, never a drifting counter" philosophy `InventoryBalance`/`PosShift.closingCashExpected` already established. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No automatic postings from Sales, Payments, Purchasing or Inventory.**
+  This is the central, deliberate scope decision of this phase — see
+  docs/DECISIONS.md ADR-012 for the full reasoning (real accounting policy
+  this codebase has no basis to invent, and a materially higher-stakes
+  domain than any other simulation already avoided). The idempotent
+  posting mechanism a real integration would use is built and verified;
+  no module calls it yet.
+- **No Balance Sheet or Income Statement.** The Trial Balance provides a
+  summed, balance-confirmed view with each row's `accountType`, but no
+  code groups accounts into a presented financial statement or handles
+  retained-earnings roll-forward across periods (ADR-012 point 4).
+- **No period reopening.** `FiscalPeriod.close()` is terminal by design —
+  see the entity's own docstring. Correcting a mistake in a closed period
+  means posting a reversal (or a new entry) into whatever period is
+  currently `OPEN`, not undoing the close.
+- **The genuinely-concurrent-double-reversal gap documented above** — a
+  real, narrow, low-probability gap for an authenticated, staff-only
+  action, not hidden.
+- **No reconciliation/bank-statement-matching feature.** `docs/ROADMAP.md`
+  §12 names "reconciliación" as a deliverable; this slice provides the
+  ledger and reports reconciliation would read from, not a dedicated
+  matching workflow.
+- **No multi-currency accounting.** `JournalEntryLine.debit`/`credit` are
+  plain decimal amounts with no currency field — every posting is
+  implicitly in the company's single reporting currency, the same scope
+  boundary already accepted for Purchasing/Sales' own `currency` fields
+  never being converted or aggregated across different currencies.
+- **No approval workflow for posting a journal entry** — unlike
+  Purchasing's real segregation of duties (`purchasing.orders.manage` vs.
+  `.approve`), Accounting has a single `accounting.entries.manage`
+  permission for both creating and posting; a maker-checker workflow for
+  manual entries is real future scope, not built here.

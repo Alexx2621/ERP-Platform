@@ -1,6 +1,27 @@
 # Project State
 
-Última actualización: 2026-09-02 (sesión 31), tras implementar el motor de
+Última actualización: 2026-09-02 (sesión 32), tras implementar el módulo
+de Contabilidad (Fase 8) completo — Chart of Accounts, Fiscal Periods,
+Journal Entries/Lines de partida doble, reversión, y los reportes Balance
+de Comprobación/Ledger de cuenta — a pedido explícito del usuario
+("Continua con la fase 8 y terminala de una vez"). Ver "PHASE 8 —
+Accounting" en `## Current Phase` y "Hecho — sesión 32" en
+`docs/WORK_QUEUE.md` para el detalle completo, incluyendo la decisión de
+alcance deliberada y documentada en `docs/DECISIONS.md` ADR-012: el motor
+manual completo se construyó y se verificó de extremo a extremo contra
+Postgres real (incluyendo una carrera de idempotencia genuinamente
+concurrente sobre `(sourceType, sourceId)`), pero **ninguna
+contabilización automática se conectó desde Sales, Payments, Purchasing
+ni Inventory** — hacerlo exige una política contable real y específica de
+jurisdicción (qué cuenta, en qué momento, base de caja o devengado) que
+este código base no tiene base para inventar, y un asiento automático
+incorrecto sería un daño real a los libros de una empresa, un riesgo
+categóricamente mayor que cualquier otra simulación ya evitada en este
+proyecto. Séptimo módulo de negocio del código base y el único sin
+ninguna dependencia cruzada con otro módulo de negocio — una decisión de
+diseño explícita, no una omisión.
+
+Actualización previa: 2026-09-02 (sesión 31), tras implementar el motor de
 Commerce (Fase 7A) completo — Storefront (multi-tienda, handle público
 globalmente único), catalog publication (StorefrontProduct), Cart/CartLine
 anónimos, y Checkout (idempotente por `cartId`, sin gateway credenciado —
@@ -123,6 +144,56 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
+PHASE 8 — Accounting, **iniciada y formalmente cerrada el 2026-09-02
+(sesión 32, en un solo bloque de trabajo)**, a pedido explícito del
+usuario ("Continua con la fase 8 y terminala de una vez"): Account
+(Chart of Accounts, `type` derivando `normalBalance` en el dominio, nunca
+una columna almacenada), FiscalPeriod (`OPEN → CLOSED`, terminal —
+reabrir queda deliberadamente fuera de alcance, ver docstring de la
+propia entidad), JournalEntry/JournalEntryLine (append-only,
+`CreateJournalEntryUseCase` valida la invariante de partida doble en dos
+niveles — cada línea exactamente un lado positivo, en el dominio; la suma
+de débitos igual a la suma de créditos de todo el asiento, en la
+aplicación), `ReverseJournalEntryUseCase` (crea un asiento nuevo
+balanceado con cada línea invertida, nunca edita el original), y los
+reportes `GetTrialBalanceUseCase`/`GetAccountLedgerUseCase` (recalculados
+en cada llamada directamente desde el ledger real, nunca un saldo
+almacenado) — `apps/api/src/modules/accounting`. **El único módulo de
+negocio del código base sin ninguna dependencia cruzada**: no importa
+Catalog/Sales/Payments/Purchasing/Inventory/Commerce/POS, y ninguno de
+esos módulos lo llama a él tampoco — una decisión de alcance explícita y
+deliberada (ver `docs/DECISIONS.md` ADR-012), no una omisión. El exit
+criteria de `docs/ROADMAP.md` §12 ("Todo asiento balancea y los períodos
+cerrados están protegidos") se verificó contra Postgres real: un asiento
+desbalanceado rechazado, una cuenta inactiva rechazada, un intento de
+contabilizar contra un período ya cerrado rechazado con
+`NoOpenFiscalPeriodForDateError` real tras cerrarlo en el mismo test. El
+otro exit criteria ("Reprocesar source events no duplica postings") se
+satisface mediante el mismo mecanismo de idempotencia por
+`(sourceType, sourceId)` ya usado por Payments/POS/Commerce —
+`@@unique([tenantId, companyId, sourceType, sourceId])` real, con las
+semánticas de Postgres de que cada `NULL` es distinto para unicidad,
+permitiendo asientos manuales ilimitados sin `sourceType`/`sourceId` —
+verificado con 5 solicitudes de contabilización genuinamente concurrentes
+compartiendo una clave de origen simulada, convergiendo las 5 en el mismo
+asiento y sobreviviendo exactamente una fila. Ningún módulo real llama
+todavía a este mecanismo (ver ADR-012 para el razonamiento completo de
+por qué no se automatizó ninguna contabilización desde Sales/Payments/
+Purchasing/Inventory en esta fase) — se verificó con una clave de origen
+simulada, el mismo precedente ya sentado por el inbox de ADR-008 antes de
+tener su primer consumidor real. 7 permisos nuevos
+(`accounting.accounts.read/.manage`, `accounting.periods.read/.manage`,
+`accounting.entries.read/.manage`, `accounting.reports.read`). Alcance
+deliberadamente fuera de Fase 8, sin aprobación explícita: contabilización
+automática desde cualquier otro módulo de negocio (ADR-012, la decisión
+central de esta fase), Balance General/Estado de Resultados formales más
+allá del Balance de Comprobación, reapertura de períodos, workflow de
+aprobación tipo maker-checker para asientos manuales, contabilidad
+multi-moneda, y una funcionalidad dedicada de reconciliación bancaria —
+ver "Known limitations" en `docs/SECURITY.md` "Accounting". Próxima fase
+no bloqueada: PHASE 9 — CRM (`docs/ROADMAP.md` §13), salvo indicación
+distinta del usuario.
+
 PHASE 7 — Commerce (7A, Commerce Engine), **iniciada y formalmente
 cerrada el 2026-09-02 (sesión 31, en un solo bloque de trabajo)**:
 Storefront (multi-tienda por `docs/ROADMAP.md` §11, `code` público
@@ -196,10 +267,14 @@ público, ruteo real por dominio/hostname (`Storefront.domain` es
 metadata puramente informativa), autenticación/cuenta de cliente con
 historial de pedidos, búsqueda más allá del listado plano de productos
 publicados (MASTER_SPEC §85), y job de abandono de carrito — ver "Known
-limitations" en `docs/SECURITY.md` "Commerce". Próxima fase no bloqueada:
-PHASE 8 — Accounting (`docs/ROADMAP.md` §12), salvo indicación distinta
-del usuario — aunque la Fase 7B (Storefront Next.js) sigue en curso vía
-el subagente delegado y su integración/revisión final está pendiente.
+limitations" en `docs/SECURITY.md` "Commerce". La Fase 7B (Storefront
+Next.js, `apps/storefront`) se completó en la misma sesión: construida por
+un subagente en background contra el contrato público ya estable,
+revisada de forma independiente ("Trust but verify" — lectura directa de
+la lógica de negocio clave, grep de términos prohibidos, re-ejecución
+independiente de las 5 validaciones) e integrada sin cambios de código.
+Ambos bloques (7A y 7B) quedaron commiteados, mergeados a `develop` y
+empujados en un solo commit (`c671412`).
 
 PHASE 6 — POS, **iniciada y formalmente cerrada el 2026-09-01 (sesión 30,
 en un solo bloque de trabajo)**: PosRegister (una caja/terminal atada a
@@ -1644,6 +1719,101 @@ bloqueen.
   en background con este mismo contrato público, ya estable y verificado,
   como especificación completa; su resultado se revisa e integra por
   separado, sin bloquear el cierre de Fase 7A.
+- **Accounting — Fase 8, motor completo** (`apps/api/src/modules/
+  accounting`, Claude, sesión 32, en un solo bloque de trabajo, ADR-012):
+  Account (Chart of Accounts, `type` derivando `normalBalance` en el
+  dominio — nunca una columna almacenada, mismo self-relation que
+  `Category.parentId`), FiscalPeriod (`OPEN → CLOSED` terminal,
+  `CreateFiscalPeriodUseCase` rechaza cualquier rango que solape un
+  período existente), JournalEntry/JournalEntryLine (append-only —
+  `JournalEntryLine.create()` exige exactamente un lado positivo por
+  línea en el dominio, `CreateJournalEntryUseCase` exige
+  `sum(debit) === sum(credit)` de todo el asiento en la aplicación, la
+  misma división "regla de línea en la entidad, regla multi-línea en el
+  caso de uso" ya usada por `SalesOrder`/`ConfirmSalesOrderUseCase`),
+  `ReverseJournalEntryUseCase` (asiento nuevo balanceado con cada línea
+  invertida, nunca edita el original — `reversalOfEntryId`/
+  `reversedByEntryId` como los dos punteros de la reversión, el segundo
+  añadido una sola vez después del hecho, mismo patrón `Payment.refundedAt`/
+  `FileObject.markDeleted` ya establecido), y `GetTrialBalanceUseCase`/
+  `GetAccountLedgerUseCase` (recalculados en cada llamada directamente del
+  ledger real, nunca un saldo almacenado, mismo criterio que
+  `InventoryBalance`). **El único módulo de negocio de este código base
+  sin ninguna dependencia cruzada**: `AccountingModule` no importa
+  ningún otro módulo de negocio, y ninguno lo importa a él — decisión
+  explícita de ADR-012, no un descuido. Copia propia y acotada de
+  aritmética decimal BigInt sin dependencias
+  (`apps/api/src/modules/accounting/domain/decimal.ts`), con
+  `isEqualDecimal` como su única operación nueva frente a las copias ya
+  usadas por Sales/Inventory/POS/Commerce — la comprobación central de la
+  partida doble. **Bug real de diseño encontrado y corregido antes del
+  primer commit**: `reversalOfEntryId` existía en la entidad/schema desde
+  el diseño inicial específicamente para que una reversión apunte hacia
+  atrás a lo que revierte, pero ningún caso de uso lo llenaba jamás —
+  corregido agregando el campo a `CreateJournalEntryInput` y pasándolo
+  desde `ReverseJournalEntryUseCase`, cerrando el hueco antes de que
+  quedara como código muerto permanente. 7 permisos nuevos
+  (`accounting.accounts.read/.manage`, `accounting.periods.read/.manage`,
+  `accounting.entries.read/.manage`, `accounting.reports.read`).
+  Tablas nuevas (migración `20260902142615_accounting`, **generada y
+  aplicada directamente contra Postgres real** vía el mismo workaround
+  no-interactivo de `prisma migrate diff --script` ya establecido,
+  aplicada limpiamente al primer intento, la primera migración de un
+  módulo de negocio en no tocar ninguna tabla de otro módulo). Contrato
+  HTTP nuevo, cuatro controladores
+  (`/api/v1/accounting/accounts`, `.../fiscal-periods`,
+  `.../journal-entries`, `.../reports/trial-balance`|`/account-ledger`).
+  **`@erp/api-client`**: ~20 tipos y 14 métodos nuevos generados desde el
+  spec OpenAPI real. **Segundo bug real encontrado durante la propia
+  regeneración**, no de Accounting sino descubierto por el mismo proceso:
+  `CheckoutInput` (Commerce, Fase 7) incluía `cartId` como campo propio
+  del tipo generado pese a que el SDK ya lo recibe como parámetro
+  posicional explícito — un `TS2783` real ("specified more than once")
+  que solo se manifestó al regenerar tipos por primera vez desde que ese
+  campo se agregó al DTO real del controlador — corregido con
+  `Omit<CheckoutRequestDto, "cartId">`, mismo patrón de excepción ya
+  documentado para `CreateProductInput`. **UI**
+  (`apps/erp-web/src/features/accounting/`, ruta nueva `/accounting`,
+  botón "Contabilidad" en el workspace): pestañas Cuentas/Períodos/
+  Asientos/Balance de comprobación. A diferencia de Purchasing/Sales, el
+  catálogo de cuentas y los períodos fiscales se cargan una sola vez a
+  nivel de página (no por pestaña activa), porque la pestaña Asientos
+  necesita el mismo catálogo de cuentas para sus selectores de línea
+  independientemente de cuál pestaña esté activa por defecto — el mismo
+  patrón, aplicado proactivamente esta vez, que la propia UI de POS tuvo
+  que corregir reactivamente en la sesión 30. **Bug real de locator
+  encontrado y corregido durante la propia escritura del E2E**: un
+  `getByRole("row", { name: /Venta en efectivo E2E/ })` capturado antes de
+  la reversión volvía a resolverse de forma ambigua después, porque la
+  fila de la reversión ("Reversal of: Venta en efectivo E2E") también
+  contiene la descripción original como substring — corregido con
+  `.filter({ hasText }).filter({ hasNotText: "Reversal of:" })` en vez de
+  una sola expresión regular, sin tocar ningún componente de producción.
+  Tests: 65 tests unitarios nuevos en `apps/api` (28 de dominio incluyendo
+  la aritmética decimal propia del módulo, 36 de aplicación incluyendo el
+  escenario de idempotencia por `(sourceType, sourceId)` y el de rechazo
+  por período cerrado, 1 de wiring del módulo) — 904 tests unitarios
+  totales en `apps/api` (antes 839). Suite de integración con 3 escenarios
+  reales nuevos contra Postgres (`accounting.integration-spec.ts`): ciclo
+  de vida completo Account→FiscalPeriod→Post→TrialBalance→Close→
+  reject→Reverse con verificación de precisión decimal real, rechazo real
+  de una cuenta de otra compañía, y 5 solicitudes de `createJournalEntry`
+  genuinamente concurrentes compartiendo la misma clave de origen
+  simulada, confirmando exactamente un asiento final — 41/41 en total
+  (antes 38). 21/21 tests en `@erp/api-client` (antes 20). 51/51 tests en
+  `apps/erp-web` (antes 48, verificado limpio con una corrida serial
+  `--no-file-parallelism` tras que la corrida concurrente completa
+  mostrara un fallo aislado por timeout en `pos-page.spec.tsx` —
+  contención de recursos de esta sesión larga, mismo patrón ya
+  documentado en sesiones anteriores, descartado con la corrida aislada
+  limpia). **E2E real nuevo** (`apps/e2e/tests/accounting.spec.ts`,
+  Chromium vía Testcontainers): ciclo de vida completo por navegador
+  real — dos cuentas reales, un período fiscal real cubriendo la fecha
+  real de ejecución, un asiento balanceado real contabilizado, el Balance
+  de Comprobación real confirmando la suma exacta y "Balanceado", una
+  reversión real confirmada tanto en la lista de asientos como en el
+  Balance de Comprobación recalculado (neto exactamente `0.0000`) — 16/16
+  Playwright en total (antes 15).
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -1700,16 +1870,12 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Fase 7B (Storefront Next.js) — delegada a un subagente en background en
-la sesión 31, con el contrato público de Commerce (7A, ya cerrado y
-verificado) como especificación completa. Su resultado se revisa e
-integra en una sesión de seguimiento inmediata; no bloquea el cierre de
-7A ni el trabajo del resto del backend. Fuera de eso, ninguno activo —
-**Fase 7A (Commerce Engine) quedó formalmente cerrada en la sesión 31**,
-en un solo bloque de trabajo (ver Completed arriba y "Hecho — sesión 31"
-en `docs/WORK_QUEUE.md`). El siguiente bloque de backend no bloqueado es
-Fase 8 (Accounting) según `docs/ROADMAP.md` §12, salvo indicación
-distinta del usuario.
+Ninguno activo — **Fase 7 (Commerce, 7A y 7B) quedó formalmente cerrada en
+la sesión 31** y **Fase 8 (Accounting) quedó formalmente cerrada en la
+sesión 32**, ambas en un solo bloque de trabajo cada una (ver Completed
+arriba y "Hecho — sesión 31"/"Hecho — sesión 32" en `docs/WORK_QUEUE.md`).
+El siguiente bloque no bloqueado es Fase 9 (CRM) según `docs/ROADMAP.md`
+§13, salvo indicación distinta del usuario.
 
 ## Pending
 
@@ -1717,19 +1883,20 @@ Ningún ítem de la cola original de Foundation queda pendiente
 (`docs/WORK_QUEUE.md`), ningún ítem del alcance de Fase 2 descrito en
 `docs/ARCHITECTURE.md` §5.2 queda pendiente, y ningún ítem del alcance de
 Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
-(`docs/ROADMAP.md` §9), Fase 6 (`docs/ROADMAP.md` §10) ni el 7A de Fase 7
-(`docs/ROADMAP.md` §11) queda pendiente — el 7B (Storefront Next.js) está
-en curso, ver "In Progress". También pendiente, sin bloquear Fase 8:
-ratificar ADR-001, ADR-002 y
-ADR-003 formalmente (ADR-004 a ADR-009 ya están ratificados) — sus
-decisiones ya están implementadas y verificadas, solo falta el documento
-formal. La UI de RBAC (incluida la invitación de miembros), el E2E de
-sesión, la UI de Configuración, la UI de Platform Administration (sesión
-18), la UI de Apps (sesión 22), la UI de Catálogo (sesión 23), la UI de
-Contactos/Customers/Suppliers (sesión 24), la UI de Comercial/Taxes/
-Warehouses/Pricing (sesión 25), la UI de Inventario (sesión 26), la UI de
-Ventas/Pagos (sesión 27), la UI de Compras (sesión 29) y la UI de POS
-(sesión 30) ya están hechas e integradas (ver Completed); la UI de Files
+(`docs/ROADMAP.md` §9), Fase 6 (`docs/ROADMAP.md` §10), Fase 7
+(`docs/ROADMAP.md` §11, 7A y 7B completos) ni Fase 8
+(`docs/ROADMAP.md` §12) queda pendiente. También pendiente, sin bloquear
+Fase 9: ratificar ADR-001, ADR-002 y ADR-003 formalmente (ADR-004 a
+ADR-012 ya están ratificados) — sus decisiones ya están implementadas y
+verificadas, solo falta el documento formal. La UI de RBAC (incluida la
+invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
+de Platform Administration (sesión 18), la UI de Apps (sesión 22), la UI
+de Catálogo (sesión 23), la UI de Contactos/Customers/Suppliers (sesión
+24), la UI de Comercial/Taxes/Warehouses/Pricing (sesión 25), la UI de
+Inventario (sesión 26), la UI de Ventas/Pagos (sesión 27), la UI de
+Compras (sesión 29), la UI de POS (sesión 30), la UI de Comercio (sesión
+31) y la UI de Contabilidad (sesión 32) ya están hechas e integradas (ver
+Completed); la UI de Files
 (subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
 todavía no se han construido — quedan como mejoras de UX sin dependencia
 de arquitectura, a retomar si el usuario las pide o cuando un módulo de
@@ -1776,7 +1943,15 @@ real por dominio/hostname (`Storefront.domain` es metadata puramente
 informativa), autenticación/cuenta de cliente con historial de pedidos,
 búsqueda más allá del listado plano de productos publicados, job de
 abandono de carrito, y el mismo límite de concurrencia genuinamente
-simultánea ya aceptado para POS (ADR-010), heredado por ADR-011.
+simultánea ya aceptado para POS (ADR-010), heredado por ADR-011. Alcance
+deliberadamente diferido dentro de Accounting (no bloquea el cierre de
+Fase 8, ver `docs/DECISIONS.md` ADR-012 y "Known limitations" en
+`docs/SECURITY.md` "Accounting"): contabilización automática desde
+Sales/Payments/Purchasing/Inventory — la decisión central de esta fase,
+no un descuido —, Balance General/Estado de Resultados formales,
+reapertura de un período fiscal cerrado, workflow de aprobación tipo
+maker-checker para asientos manuales, contabilidad multi-moneda, y
+funcionalidad dedicada de reconciliación bancaria.
 
 ## Production Status
 
@@ -2363,3 +2538,41 @@ devolviendo `productCode`/`productName` vacíos tras publicar/despublicar.
 Los datos de prueba de esta sesión permanecen en la base, por el mismo
 motivo `onDelete: Restrict` de `audit_entries.user_id` ya documentado en
 sesiones anteriores.
+
+**Sesión 32 (2026-09-02, Accounting — Fase 8, motor completo)**: migración
+`20260902142615_accounting` (`accounts`, `fiscal_periods`,
+`journal_entries`, `journal_entry_lines`, más los enums nuevos
+`AccountType`/`FiscalPeriodStatus`) generada vía el mismo workaround
+no-interactivo `prisma migrate diff --from-config-datasource --to-schema
+prisma/schema.prisma --script` ya establecido, aplicada vía `prisma
+migrate deploy` — `prisma migrate status` confirma las 22 migraciones
+aplicadas sin drift, la primera migración de un módulo de negocio en no
+tocar ninguna tabla de otro módulo (consecuencia directa de que
+Accounting no tenga ninguna FK cruzada, ADR-012). Verificado con el
+servidor real reconstruido y la suite de integración real
+(`apps/api/test/integration/accounting.integration-spec.ts`, 3 escenarios
+contra Postgres real): ciclo de vida completo real (dos cuentas y un
+período fiscal reales → asiento real balanceado con precisión decimal
+real confirmada, `"150.5000"` sin recorte de ceros → Balance de
+Comprobación real confirmando `isBalanced: true` → cierre real del
+período → intento real de contabilizar contra el período ya cerrado
+rechazado con `NoOpenFiscalPeriodForDateError` real → reversión real
+posteada en un período nuevo distinto, independiente del período —ya
+cerrado— del original → Balance de Comprobación recalculado confirmando
+el neto exacto `"0.0000"` para la cuenta de Caja) → el escenario de
+rechazo real de una cuenta de otra compañía (FK-scoped, no solo un filtro
+de aplicación) → y el escenario de concurrencia genuina (5 llamadas
+reales concurrentes a `createJournalEntry` compartiendo la misma clave de
+origen simulada `(sourceType, sourceId)` contra Postgres real,
+confirmando que las 5 resuelven con éxito, las 5 convergen en el mismo
+`JournalEntry.id`, y existe exactamente una fila `journal_entries` al
+final — el exit criteria de `docs/ROADMAP.md` §12 ("Reprocesar source
+events no duplica postings") verificado directamente para el mecanismo
+en sí, aunque ningún módulo real lo invoque todavía, ver
+docs/DECISIONS.md ADR-012). Un bug real de diseño encontrado y corregido
+antes del primer commit (detallado en "Completed" arriba):
+`reversalOfEntryId` existía desde el diseño inicial pero ningún caso de
+uso lo llenaba jamás, dejándolo como código muerto permanente — corregido
+antes de compartir la migración. Los datos de prueba de esta sesión
+permanecen en la base, por el mismo motivo `onDelete: Restrict` de
+`audit_entries.user_id` ya documentado en sesiones anteriores.

@@ -6,11 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-02 (sesión 31,
-Fase 7A — Commerce Engine completo en un solo bloque de trabajo, a pedido
-explícito del usuario; Fase 7B — Storefront Next.js delegada a un
-subagente en background con el contrato público ya cerrado como
-especificación). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-02 (sesión 32,
+Fase 8 — Accounting completo en un solo bloque de trabajo, a pedido
+explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -23,15 +21,19 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 7A (Commerce Engine) está completa** — ver "Hecho — sesión 31"
-abajo, en un solo bloque de trabajo a pedido explícito del usuario. La
-Fase 7B (Storefront Next.js, `apps/storefront`) fue delegada a un
-subagente en background con el contrato público de 7A —ya cerrado,
-probado (unit/integración/E2E) y estable— como especificación completa;
-su resultado se revisa e integra en una sesión de seguimiento inmediata.
-El siguiente trabajo de backend no bloqueado es Fase 8 (Accounting) según
-`docs/ROADMAP.md` §12, salvo que el usuario indique otra prioridad.
-Alcance deliberadamente fuera de Fase 7A y diferido (no simulado, ver
+**Fase 8 (Accounting) está completa** — ver "Hecho — sesión 32" abajo, en
+un solo bloque de trabajo a pedido explícito del usuario. El siguiente
+trabajo no bloqueado es Fase 9 (CRM) según `docs/ROADMAP.md` §13, salvo
+que el usuario indique otra prioridad. Alcance deliberadamente fuera de
+Fase 8 y diferido (no simulado — decisión central de la fase, ver
+`docs/DECISIONS.md` ADR-012 y "Known limitations" en "Accounting" de
+`docs/SECURITY.md`): contabilización automática desde Sales/Payments/
+Purchasing/Inventory, Balance General/Estado de Resultados formales más
+allá del Balance de Comprobación, reapertura de un período fiscal
+cerrado, workflow de aprobación tipo maker-checker para asientos
+manuales, contabilidad multi-moneda, y funcionalidad dedicada de
+reconciliación bancaria. Alcance deliberadamente fuera de Fase 7 (7A y 7B,
+ambas completas) y diferido (no simulado, ver
 "Known limitations" en "Commerce" de `docs/SECURITY.md`): gateway de pago
 credenciado (heredado de ADR-009), cumplimiento/despacho automático
 (siempre una acción posterior manual vía Sales), motor de promociones/
@@ -75,6 +77,195 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 32 (Accounting — Fase 8, completa de una vez)
+
+Fase 8 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("Continua con la fase 8 y terminala de una vez"), inmediatamente
+después de cerrar la Fase 7 (ver "Hecho — sesión 31" abajo): Chart of
+Accounts, Fiscal Periods, Journal Entries/Lines de partida doble con
+reversión, y los reportes Balance de Comprobación/Ledger de cuenta — los
+entregables de `docs/ROADMAP.md` §12, con una decisión de alcance
+deliberada y documentada en `docs/DECISIONS.md` ADR-012 (nuevo): el motor
+manual se construyó completo y se verificó de extremo a extremo contra
+Postgres real, pero ninguna contabilización automática se conectó desde
+Sales, Payments, Purchasing ni Inventory — ver el detalle completo del
+razonamiento en "Completed" de `docs/PROJECT_STATE.md` y en el propio
+ADR-012.
+
+- **`apps/api/src/modules/accounting/`** (módulo nuevo, séptimo bloque de
+  negocio del código base y el único sin ninguna dependencia cruzada con
+  otro módulo de negocio — decisión explícita, no un descuido):
+  `Account`/`FiscalPeriod`/`JournalEntry`/`JournalEntryLine`, mismo layout
+  domain/application/infrastructure/presentation/test-support que el
+  resto de módulos de negocio. Ver el detalle completo de cada entidad,
+  invariante y caso de uso en la entrada "Accounting — Fase 8, motor
+  completo" de "Completed" en `docs/PROJECT_STATE.md` — no se repite aquí
+  para no duplicar.
+- **Bug real de diseño encontrado y corregido antes del primer commit**:
+  `reversalOfEntryId` existía en la entidad y en el schema desde el
+  diseño inicial específicamente para que una reversión apunte hacia
+  atrás a lo que revierte, pero `CreateJournalEntryInput` nunca lo
+  exponía y `ReverseJournalEntryUseCase` nunca lo pasaba — quedando como
+  código muerto permanente si no se corregía. Corregido agregando el
+  campo al input y pasándolo desde la reversión antes de generar la
+  migración.
+- 7 permisos nuevos (`accounting.accounts.read/.manage`,
+  `accounting.periods.read/.manage`, `accounting.entries.read/.manage`,
+  `accounting.reports.read`). Sin auditoría nueva en esta sesión más allá
+  de las 6 acciones ya cubiertas por los controladores
+  (`accounting.account.created/.updated/.status_changed`,
+  `accounting.fiscal_period.created/.closed`,
+  `accounting.journal_entry.posted/.reversed`).
+- Tabla nueva (migración `20260902142615_accounting`, **generada y
+  aplicada directamente contra Postgres real** vía el mismo workaround
+  no-interactivo ya establecido, aplicada limpiamente al primer intento —
+  la primera migración de un módulo de negocio en no tocar ninguna tabla
+  de otro módulo).
+- Contrato HTTP nuevo, cuatro controladores
+  (`/api/v1/accounting/accounts`, `.../fiscal-periods`,
+  `.../journal-entries`, `.../reports/trial-balance`|`/account-ledger`).
+- **`@erp/api-client`**: ~20 tipos y 14 métodos nuevos generados desde el
+  spec OpenAPI real. **Segundo bug real encontrado durante la propia
+  regeneración de tipos, ajeno a Accounting**: `CheckoutInput` (Commerce,
+  Fase 7) incluía `cartId` como campo propio pese a que el SDK ya lo
+  recibe como parámetro posicional explícito en `checkout()` — un
+  `TS2783` real ("specified more than once") que solo se manifestó al
+  regenerar tipos por primera vez desde que ese campo se agregó al DTO
+  real del controlador en la sesión 31 — corregido con
+  `Omit<CheckoutRequestDto, "cartId">` en `contracts.ts`, mismo patrón de
+  excepción ya documentado para `CreateProductInput`.
+- **UI** (`apps/erp-web/src/features/accounting/`, ruta nueva
+  `/accounting`, botón "Contabilidad" en el workspace): pestañas Cuentas/
+  Períodos/Asientos/Balance de comprobación. El catálogo de cuentas y los
+  períodos fiscales se cargan una sola vez a nivel de página, no por
+  pestaña activa, aplicando proactivamente la misma lección que la propia
+  UI de POS tuvo que corregir reactivamente en la sesión 30 (la pestaña
+  Asientos necesita el catálogo de cuentas para sus selectores de línea
+  independientemente de cuál pestaña esté activa por defecto).
+- **Bug real de locator encontrado y corregido durante la propia
+  escritura del E2E, no simulado**: un
+  `getByRole("row", { name: /Venta en efectivo E2E/ })` capturado antes
+  de reversar un asiento volvía a resolverse de forma ambigua después de
+  reversarlo, porque la fila de la reversión ("Reversal of: Venta en
+  efectivo E2E") también contiene la descripción original como substring
+  — corregido con `.filter({ hasText }).filter({ hasNotText: "Reversal
+  of:" })` en vez de una sola expresión regular, sin tocar ningún
+  componente de producción.
+- Tests: 65 tests unitarios nuevos en `apps/api` (28 de dominio, 36 de
+  aplicación, 1 de wiring del módulo) — 904 tests unitarios totales en
+  `apps/api` (antes 839). 3 escenarios de integración nuevos contra
+  Postgres reales (`accounting.integration-spec.ts`): ciclo de vida
+  completo Account→FiscalPeriod→Post→TrialBalance→Close→reject→Reverse,
+  rechazo real de una cuenta de otra compañía, y el escenario de
+  concurrencia genuina de 5 posteos simultáneos compartiendo una clave de
+  origen simulada — 41/41 en total (antes 38). 21/21 tests en
+  `@erp/api-client` (antes 20). 51/51 tests en `apps/erp-web` (antes 48,
+  verificado limpio con una corrida serial tras que la corrida
+  concurrente completa mostrara un fallo aislado por timeout en
+  `pos-page.spec.tsx` — contención de recursos de esta sesión larga,
+  mismo patrón ya documentado en sesiones anteriores). **E2E real nuevo**
+  (`apps/e2e/tests/accounting.spec.ts`, Chromium vía Testcontainers):
+  ciclo de vida completo por navegador real — dos cuentas reales, un
+  período fiscal real cubriendo la fecha real de ejecución, un asiento
+  balanceado real contabilizado, el Balance de Comprobación real
+  confirmando la suma exacta y "Balanceado", una reversión real
+  confirmada tanto en la lista de asientos como en el Balance de
+  Comprobación recalculado (neto exactamente `0.0000`) — 16/16 Playwright
+  en total (antes 15).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 8
+  paquetes/apps, `pnpm --filter @erp/api test` (904/904), `pnpm --filter
+  @erp/api-client test` (21/21), `pnpm --filter @erp/erp-web test`
+  (51/51), `pnpm --filter @erp/api test:integration` (41/41 contra
+  Postgres real), `pnpm --filter @erp/e2e test:e2e` (16/16 Playwright,
+  corrida contra infraestructura efímera tras detener los servidores
+  persistentes de los puertos 3000/5173 — mismo protocolo operativo ya
+  documentado en sesiones anteriores para evitar que un proceso
+  persistente intercepte el tráfico del propio arnés E2E — y reiniciados
+  con el build nuevo al terminar) — todo verde.
+
+### Hecho — sesión 31 (Commerce — Fase 7, completa: 7A Engine + 7B Storefront)
+
+Fase 7 completa en un solo bloque de trabajo (ambos sub-alcances, 7A y
+7B), a pedido explícito del usuario ("Ok, continua con la fase 7 y
+terminala de una vez"), inmediatamente después de cerrar la Fase 6 (ver
+"Hecho — sesión 30" abajo): Storefront, catalog publication, Cart/
+CartLine anónimos, y Checkout (idempotente por `cartId`, sin gateway
+credenciado — ADR-011 nuevo) — los entregables de `docs/ROADMAP.md` §11
+— más un storefront Next.js real (`apps/storefront`) construido contra
+ese mismo contrato público. Ver el detalle completo de cada entidad,
+invariante, caso de uso, los dos bugs reales encontrados durante la
+verificación E2E, y las cifras exactas de tests en la entrada "Commerce —
+Fase 7A, motor completo" de "Completed" en `docs/PROJECT_STATE.md` y en
+"Sesión 31" de "Database Status" — no se repiten aquí para no duplicar.
+Este archivo no llevaba todavía una entrada "Hecho — sesión 31" propia
+(un hueco real de esta misma cola, encontrado y cerrado en la sesión 32
+al escribir esta entrada) pese a que `docs/PROJECT_STATE.md` ya
+referenciaba "Hecho — sesión 31" explícitamente desde el cierre de la
+Fase 7 — corregido aquí.
+
+- **`apps/api/src/modules/commerce/`** (módulo nuevo, sexto bloque de
+  negocio del código base, la mayor superficie de cualquier módulo hasta
+  ahora — seis dependencias directas y sin ciclos: Catalog, Warehouses,
+  Customers, Sales, Payments, Users): `Storefront` (multi-tienda, `code`
+  público globalmente único, mismo precedente que `Tenant.slug`),
+  `StorefrontProduct` (join de publicación de catálogo, idempotente),
+  `Cart`/`CartLine` (anónimos por diseño, sin sesión ni autenticación),
+  `CommerceOrder` (creado únicamente después de que un `SalesOrder` real,
+  canal `ECOMMERCE`, se confirma vía el contrato público de Sales).
+  **Primera API pública y sin autenticación de todo el código base**
+  (`/api/v1/storefront/:storefrontCode/*`, `PublicStorefrontContextGuard`
+  nuevo), con rate limiting propio (`COMMERCE_RATE_LIMIT_MAX`/
+  `_WINDOW_SECONDS`, Redis, ventana separada de la de login).
+- **ADR-011** nuevo (Commerce Checkout Payment/Fulfillment and
+  Idempotency Model V1): idempotencia por `cartId` (más limpia que una
+  clave generada por el llamador, ya que un carrito solo puede
+  convertirse una vez); sin gateway credenciado (heredado de ADR-009);
+  despacho siempre manual vía Sales, nunca automático al checkout.
+- **Dos bugs reales encontrados y corregidos durante la propia
+  verificación E2E, no simulados**: (1) los DTOs `CreateCartDto`/
+  `CheckoutRequestDto` del controlador público se declararon sin ningún
+  decorador de `class-validator`, rechazados por el `ValidationPipe`
+  global (`forbidNonWhitelisted: true`) pese a un cuerpo real válido —
+  corregido agregando los decoradores explícitos; (2)
+  `StorefrontsController.publish()`/`.unpublish()` devolvían
+  `productCode`/`productName` como cadenas vacías en vez de resolver el
+  producto real — corregido inyectando `GetProductUseCase`.
+- De paso, `Customers` ganó `FindCustomerByEmailUseCase` (con `email`
+  ahora normalizado a minúsculas en escritura — un bug real de datos
+  corregido en la misma sesión).
+- Tabla nueva (migración `20260902095223_commerce`, **generada y
+  aplicada directamente contra Postgres real**).
+- Contrato HTTP nuevo: admin (`/api/v1/commerce/storefronts`, `.../orders`)
+  y público (`/api/v1/storefront/:storefrontCode/*`).
+- **`@erp/api-client`**: ~18 tipos y ~19 métodos nuevos, incluyendo los 9
+  métodos públicos verificados para nunca llevar
+  `Authorization`/`X-Tenant-Slug`/`X-Company-Id`.
+- **UI admin** (`apps/erp-web/src/features/commerce/`, ruta nueva
+  `/commerce`, botón "Comercio" en el workspace): pestañas Tiendas/
+  Pedidos.
+- **`apps/storefront`** (Next.js, Fase 7B): construido por un subagente en
+  background contra el contrato público ya estable de 7A como
+  especificación completa, sin exploración adicional del backend
+  necesaria; revisado de forma independiente ("Trust but verify" —
+  lectura directa de los archivos de lógica de negocio clave, grep de
+  términos prohibidos, re-ejecución independiente de las 5 validaciones)
+  e integrado sin cambios de código. Páginas: catálogo, detalle de
+  producto, carrito, checkout, confirmación de pedido.
+- Tests: 839 tests unitarios totales en `apps/api` (antes 790). 38/38
+  tests de integración contra Postgres real (antes 36), incluyendo el
+  escenario de concurrencia genuina de 5 checkouts simultáneos
+  compartiendo el mismo `cartId`. 20/20 tests en `@erp/api-client` (antes
+  18). 48/48 tests en `apps/erp-web` (antes 45). **E2E real nuevo**
+  (`apps/e2e/tests/commerce.spec.ts`): un producto y bodega reales, una
+  tienda real, el producto publicado, y un comprador anónimo real vía el
+  fixture `request` de Playwright (sin ningún header de sesión/tenant)
+  que lista el catálogo público, crea un carrito real, agrega una línea
+  real, hace checkout sin pagar, reintenta el mismo checkout
+  (idempotencia real), y confirma en el admin el pedido "Pendiente" con
+  inventario reservado — 15/15 Playwright en total (antes 14).
+- Ambos bloques (7A y 7B) quedaron commiteados, mergeados a `develop` y
+  empujados en un solo commit (`c671412`).
 
 ### Hecho — sesión 30 (POS — Fase 6, completa de una vez)
 
@@ -2918,8 +3109,18 @@ a `CASH`/`BANK_TRANSFER`, sin ningún adapter credenciado); ADR-010 (POS
 Terminal Idempotency Scope V1 — implementado y ratificado en sesión 30,
 documenta explícitamente el límite de la garantía de idempotencia de
 `RingUpSaleUseCase` bajo una carrera genuinamente simultánea, cubierta
-solo para el caso real de una reintentona secuencial). Pendientes de
-numerar formalmente cuando corresponda: ADR-001 (Modular Monolith),
-ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el patrón de
-`docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
-real: manual, integration test, y ahora E2E de navegador).
+solo para el caso real de una reintentona secuencial); ADR-011 (Commerce
+Checkout Payment/Fulfillment and Idempotency Model V1 — implementado y
+ratificado en sesión 31, idempotencia por `cartId` en vez de una clave
+generada por el llamador, sin gateway credenciado heredado de ADR-009,
+despacho siempre manual vía Sales); ADR-012 (Accounting Integration Scope
+V1 — implementado y ratificado en sesión 32, motor manual completo y
+mecanismo de posteo idempotente por `(sourceType, sourceId)` construidos
+y verificados contra Postgres real, deliberadamente sin ninguna
+contabilización automática conectada desde Sales/Payments/Purchasing/
+Inventory — la decisión de mayor riesgo evitada explícitamente, no una
+omisión). Pendientes de numerar formalmente cuando corresponda: ADR-001
+(Modular Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy —
+el patrón de `docs/MULTITENANCY.md` §8 ya está verificado tres veces
+contra Postgres real: manual, integration test, y ahora E2E de
+navegador).

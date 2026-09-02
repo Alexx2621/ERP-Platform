@@ -1,5 +1,7 @@
 import type {
   AcceptMembershipInvitationInput,
+  AccountLedgerResponse,
+  AccountResponse,
   AddCartLineInput,
   AddPriceListItemInput,
   AddProductVariantInput,
@@ -22,9 +24,12 @@ import type {
   CommerceOrderResponse,
   CompanyResponse,
   ConvertQuoteInput,
+  CreateAccountInput,
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
+  CreateFiscalPeriodInput,
+  CreateJournalEntryInput,
   CreatePosRegisterInput,
   CreatePosReturnInput,
   CreatePriceListInput,
@@ -46,16 +51,21 @@ import type {
   CreateWarehouseInput,
   CustomerResponse,
   EffectiveSettingResponse,
+  FiscalPeriodResponse,
   InventoryBalanceResponse,
   InventoryMovementResponse,
   InventoryReservationResponse,
   InventoryTransferResponse,
   InviteMembershipInput,
+  JournalEntryLineResponse,
+  JournalEntryResponse,
+  ListAccountsFilter,
   ListInventoryBalancesFilter,
   ListInventoryMovementsFilter,
   ListCommerceOrdersFilter,
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
+  ListJournalEntriesFilter,
   ListPaymentsFilter,
   ListPosRegistersFilter,
   ListPosReturnsFilter,
@@ -106,6 +116,7 @@ import type {
   RecordIssueInput,
   RecordReceiptInput,
   RegisterInput,
+  ReverseJournalEntryInput,
   RingUpSaleInput,
   RoleAssignmentResponse,
   RoleResponse,
@@ -113,6 +124,7 @@ import type {
   SalesOrderResponse,
   SalesReturnLineResponse,
   SalesReturnResponse,
+  SetAccountStatusInput,
   SetAppConfigurationInput,
   SetCustomerStatusInput,
   SetMasterDataStatusInput,
@@ -138,7 +150,9 @@ import type {
   TenantAppResponse,
   TenantExecutionContext,
   TenantSummary,
+  TrialBalanceResponse,
   UnitOfMeasureResponse,
+  UpdateAccountInput,
   UpdateBrandInput,
   UpdateCategoryInput,
   UpdateCustomerInput,
@@ -2272,6 +2286,194 @@ export class ApiClient {
       `/storefront/${encodeURIComponent(storefrontCode)}/orders/${encodeURIComponent(orderId)}`,
       { signal },
     );
+  }
+
+  // --- Accounting ---
+
+  async listAccounts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListAccountsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<AccountResponse[]> {
+    return this.request<AccountResponse[]>(`/accounting/accounts${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createAccount(accessToken: string, tenantSlug: string, companyId: string, input: CreateAccountInput): Promise<AccountResponse> {
+    return this.request<AccountResponse>("/accounting/accounts", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async updateAccount(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    accountId: string,
+    input: UpdateAccountInput,
+  ): Promise<AccountResponse> {
+    return this.request<AccountResponse>(`/accounting/accounts/${encodeURIComponent(accountId)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setAccountStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    accountId: string,
+    input: SetAccountStatusInput,
+  ): Promise<AccountResponse> {
+    return this.request<AccountResponse>(`/accounting/accounts/${encodeURIComponent(accountId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listFiscalPeriods(accessToken: string, tenantSlug: string, companyId: string, signal?: AbortSignal): Promise<FiscalPeriodResponse[]> {
+    return this.request<FiscalPeriodResponse[]>("/accounting/fiscal-periods", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createFiscalPeriod(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateFiscalPeriodInput,
+  ): Promise<FiscalPeriodResponse> {
+    return this.request<FiscalPeriodResponse>("/accounting/fiscal-periods", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async closeFiscalPeriod(accessToken: string, tenantSlug: string, companyId: string, periodId: string): Promise<FiscalPeriodResponse> {
+    return this.request<FiscalPeriodResponse>(`/accounting/fiscal-periods/${encodeURIComponent(periodId)}/close`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listJournalEntries(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListJournalEntriesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<JournalEntryResponse[]> {
+    return this.request<JournalEntryResponse[]>(`/accounting/journal-entries${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async getJournalEntry(accessToken: string, tenantSlug: string, companyId: string, entryId: string, signal?: AbortSignal): Promise<JournalEntryResponse> {
+    return this.request<JournalEntryResponse>(`/accounting/journal-entries/${encodeURIComponent(entryId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listJournalEntryLines(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    entryId: string,
+    signal?: AbortSignal,
+  ): Promise<JournalEntryLineResponse[]> {
+    return this.request<JournalEntryLineResponse[]>(`/accounting/journal-entries/${encodeURIComponent(entryId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createJournalEntry(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateJournalEntryInput,
+  ): Promise<JournalEntryResponse> {
+    return this.request<JournalEntryResponse>("/accounting/journal-entries", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async reverseJournalEntry(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    entryId: string,
+    input: ReverseJournalEntryInput = {},
+  ): Promise<JournalEntryResponse> {
+    return this.request<JournalEntryResponse>(`/accounting/journal-entries/${encodeURIComponent(entryId)}/reverse`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async getTrialBalance(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    asOfDate?: string,
+    signal?: AbortSignal,
+  ): Promise<TrialBalanceResponse> {
+    return this.request<TrialBalanceResponse>(`/accounting/reports/trial-balance${this.buildQuery({ asOfDate })}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async getAccountLedger(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    accountId: string,
+    asOfDate?: string,
+    signal?: AbortSignal,
+  ): Promise<AccountLedgerResponse> {
+    return this.request<AccountLedgerResponse>(`/accounting/reports/account-ledger${this.buildQuery({ accountId, asOfDate })}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
   }
 
   /** Builds a `?key=value&...` query string from a flat filter object, skipping undefined/empty values. */
