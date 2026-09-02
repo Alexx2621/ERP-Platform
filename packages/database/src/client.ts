@@ -59,6 +59,11 @@ export type {
   PosCashMovement,
   PosSale,
   PosReturn,
+  Storefront,
+  StorefrontProduct,
+  Cart,
+  CartLine,
+  CommerceOrder,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -88,6 +93,9 @@ export {
   SupplierInvoiceStatus,
   PosShiftStatus,
   PosCashMovementType,
+  StorefrontStatus,
+  StorefrontProductStatus,
+  CartStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

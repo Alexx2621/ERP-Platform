@@ -2009,6 +2009,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/commerce/storefronts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the company's storefronts. */
+        get: operations["StorefrontsController_list"];
+        put?: never;
+        /** Create a storefront. `code` is globally unique — it is the public handle shoppers/the Next.js storefront use. */
+        post: operations["StorefrontsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commerce/storefronts/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a storefront. */
+        put: operations["StorefrontsController_setStatusRoute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commerce/storefronts/{id}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a storefront's catalog publications, enriched with the product's own code/name. */
+        get: operations["StorefrontsController_listProducts"];
+        put?: never;
+        /** Publish a product to a storefront (idempotent). */
+        post: operations["StorefrontsController_publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commerce/storefronts/{id}/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unpublish a product from a storefront. */
+        delete: operations["StorefrontsController_unpublish"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/commerce/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List completed checkouts for the company. The linked SalesOrder/Payment are managed from Sales/Payments' own screens. */
+        get: operations["StorefrontsController_listOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List this storefront's published products. */
+        get: operations["StorefrontPublicController_listProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a published product's detail, including its variants. */
+        get: operations["StorefrontPublicController_getProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/carts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get-or-create a cart. Pass `cartId` in the body to reuse a returning shopper's cart; omit it for a brand-new one. */
+        post: operations["StorefrontPublicController_createCart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/carts/{cartId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a cart and its lines. */
+        get: operations["StorefrontPublicController_getCartRoute"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/carts/{cartId}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a product (or increase its quantity) to the cart. Price is always resolved server-side. */
+        post: operations["StorefrontPublicController_addLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/carts/{cartId}/lines/{lineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a cart line's quantity. */
+        put: operations["StorefrontPublicController_updateLine"];
+        post?: never;
+        /** Remove a cart line. */
+        delete: operations["StorefrontPublicController_removeLine"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert a cart into a real order — see docs/DECISIONS.md ADR-011 for the payment/fulfillment model. */
+        post: operations["StorefrontPublicController_checkoutRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/{storefrontCode}/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Order confirmation lookup. */
+        get: operations["StorefrontPublicController_getOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3430,6 +3654,126 @@ export interface components {
             /** @description Idempotency key for this terminal attempt — a retry with the same key returns the original return. */
             idempotencyKey: string;
             lines: components["schemas"]["CreatePosReturnLineDto"][];
+        };
+        StorefrontResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            domain: string | null;
+            currency: string;
+            defaultWarehouseId: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateStorefrontDto: {
+            /**
+             * @description Globally unique, 2-63 lowercase letters/digits/hyphens.
+             * @example main-store
+             */
+            code: string;
+            /** @example Tienda principal */
+            name: string;
+            /** @example USD */
+            currency: string;
+            /**
+             * @description Informational only — no real DNS/hosting is wired to this.
+             * @example shop.example.com
+             */
+            domain?: string;
+            defaultWarehouseId?: string;
+        };
+        SetStorefrontStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        StorefrontProductResponseDto: {
+            id: string;
+            productId: string;
+            productCode: string;
+            productName: string;
+            /** @enum {string} */
+            status: "PUBLISHED" | "UNPUBLISHED";
+            /** Format: date-time */
+            publishedAt: string;
+        };
+        PublishProductDto: {
+            productId: string;
+        };
+        CommerceOrderResponseDto: {
+            id: string;
+            storefrontId: string;
+            cartId: string;
+            salesOrderId: string;
+            paymentId: string | null;
+            customerId: string;
+            guestEmail: string;
+            total: string;
+            currency: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PublicProductSummaryResponseDto: {
+            productId: string;
+            code: string;
+            name: string;
+            description: string | null;
+            hasVariants: boolean;
+            basePrice: string | null;
+        };
+        PublicProductVariantResponseDto: {
+            id: string;
+            sku: string;
+            price: string;
+            attributes: Record<string, never>;
+        };
+        PublicProductDetailResponseDto: {
+            productId: string;
+            code: string;
+            name: string;
+            description: string | null;
+            hasVariants: boolean;
+            basePrice: string | null;
+            variants: components["schemas"]["PublicProductVariantResponseDto"][];
+        };
+        CreateCartDto: Record<string, never>;
+        CartLineResponseDto: {
+            id: string;
+            productId: string;
+            productVariantId: string | null;
+            quantity: string;
+            unitPrice: string;
+            subtotal: string;
+        };
+        CartResponseDto: {
+            /** @description This is the cart token a client must keep (e.g. in localStorage) and resend on every subsequent cart/checkout call. */
+            id: string;
+            currency: string;
+            /** @enum {string} */
+            status: "OPEN" | "CONVERTED";
+            lines: components["schemas"]["CartLineResponseDto"][];
+            /** @description Informational preview only — the authoritative total is computed at checkout. */
+            subtotal: string;
+        };
+        AddCartLineDto: {
+            productId: string;
+            productVariantId?: string;
+            /** @example 1.0000 */
+            quantity: string;
+        };
+        UpdateCartLineQuantityDto: {
+            /** @example 2.0000 */
+            quantity: string;
+        };
+        CheckoutRequestDto: {
+            guestName: string;
+            guestEmail: string;
+            /** @description Bank transfer confirmation reference. If provided, payment is captured immediately (BANK_TRANSFER). If omitted, the order is placed unpaid and a staff member captures payment later from the order's own screen — see docs/DECISIONS.md ADR-011. */
+            paymentReference?: string;
         };
     };
     responses: never;
@@ -7686,6 +8030,406 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PosReturnResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontsController_list: {
+        parameters: {
+            query?: {
+                status?: "ACTIVE" | "INACTIVE";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontResponseDto"][];
+                };
+            };
+        };
+    };
+    StorefrontsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStorefrontDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontsController_setStatusRoute: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStorefrontStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontsController_listProducts: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontProductResponseDto"][];
+                };
+            };
+        };
+    };
+    StorefrontsController_publish: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishProductDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontProductResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontsController_unpublish: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorefrontProductResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontsController_listOrders: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommerceOrderResponseDto"][];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_listProducts: {
+        parameters: {
+            query: {
+                limit: string;
+            };
+            header?: never;
+            path: {
+                storefrontCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProductSummaryResponseDto"][];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_getProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                storefrontCode: string;
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProductDetailResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_createCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCartDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_getCartRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cartId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_addLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cartId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCartLineDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_updateLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cartId: string;
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCartLineQuantityDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_removeLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cartId: string;
+                lineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_checkoutRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutRequestDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommerceOrderResponseDto"];
+                };
+            };
+        };
+    };
+    StorefrontPublicController_getOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommerceOrderResponseDto"];
                 };
             };
         };

@@ -10,6 +10,7 @@ import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.u
 import { ListCustomersUseCase } from "./application/use-cases/list-customers.use-case";
 import { SetCustomerStatusUseCase } from "./application/use-cases/set-customer-status.use-case";
 import { GetCustomerUseCase } from "./application/use-cases/get-customer.use-case";
+import { FindCustomerByEmailUseCase } from "./application/use-cases/find-customer-by-email.use-case";
 import { CustomersController } from "./presentation/customers.controller";
 
 /**
@@ -28,7 +29,8 @@ import { CustomersController } from "./presentation/customers.controller";
     ListCustomersUseCase,
     SetCustomerStatusUseCase,
     GetCustomerUseCase,
+    FindCustomerByEmailUseCase,
   ],
-  exports: [CreateCustomerUseCase, ListCustomersUseCase, GetCustomerUseCase],
+  exports: [CreateCustomerUseCase, ListCustomersUseCase, GetCustomerUseCase, FindCustomerByEmailUseCase],
 })
 export class CustomersModule {}

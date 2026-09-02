@@ -155,6 +155,11 @@ model Tenant {
   posCashMovements      PosCashMovement[]
   posSales              PosSale[]
   posReturns            PosReturn[]
+  storefronts           Storefront[]
+  storefrontProducts    StorefrontProduct[]
+  carts                 Cart[]
+  cartLines             CartLine[]
+  commerceOrders        CommerceOrder[]
 
   @@map("tenants")
 }
@@ -263,6 +268,9 @@ model Company {
   posCashMovements      PosCashMovement[]
   posSales              PosSale[]
   posReturns            PosReturn[]
+  storefronts           Storefront[]
+  commerceOrders        CommerceOrder[]
+  carts                 Cart[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -868,6 +876,8 @@ model Product {
   salesOrderLines       SalesOrderLine[]
   quoteLines            QuoteLine[]
   purchaseOrderLines    PurchaseOrderLine[]
+  storefrontProducts    StorefrontProduct[]
+  cartLines             CartLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -907,6 +917,7 @@ model ProductVariant {
   salesOrderLines       SalesOrderLine[]
   quoteLines            QuoteLine[]
   purchaseOrderLines    PurchaseOrderLine[]
+  cartLines             CartLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, sku])
@@ -951,8 +962,9 @@ model Customer {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
-  salesOrders SalesOrder[]
-  quotes      Quote[]
+  salesOrders    SalesOrder[]
+  quotes         Quote[]
+  commerceOrders CommerceOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1054,6 +1066,7 @@ model Warehouse {
   salesOrderLines        SalesOrderLine[]
   purchaseOrderLines     PurchaseOrderLine[]
   posRegisters           PosRegister[]
+  storefronts            Storefront[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1432,14 +1445,15 @@ model SalesOrder {
   fulfilledAt DateTime?        @map("fulfilled_at") @db.Timestamptz(6)
   cancelledAt DateTime?        @map("cancelled_at") @db.Timestamptz(6)
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company  Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  customer Customer         @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
-  quote    Quote?           @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Restrict)
-  lines    SalesOrderLine[]
-  returns  SalesReturn[]
-  payments Payment[]
-  posSale  PosSale?
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  customer      Customer         @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  quote         Quote?           @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Restrict)
+  lines         SalesOrderLine[]
+  returns       SalesReturn[]
+  payments      Payment[]
+  posSale       PosSale?
+  commerceOrder CommerceOrder?
 
   @@unique([tenantId, id])
   @@index([tenantId, companyId, status])
@@ -1577,10 +1591,11 @@ model Payment {
   capturedAt       DateTime?     @map("captured_at") @db.Timestamptz(6)
   refundedAt       DateTime?     @map("refunded_at") @db.Timestamptz(6)
 
-  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  salesOrder SalesOrder @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
-  posSale    PosSale?
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company        @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  salesOrder    SalesOrder     @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+  posSale       PosSale?
+  commerceOrder CommerceOrder?
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, idempotencyKey])
@@ -2011,4 +2026,188 @@ model PosReturn {
   @@index([tenantId, companyId, shiftId])
   @@index([tenantId, posSaleId])
   @@map("pos_returns")
+}
+
+// ---------------------------------------------------------------------------
+// Commerce (Phase 7A, docs/ROADMAP.md §11). A Storefront is the multi-store
+// unit MASTER_SPEC §23 asks for — its `code` is deliberately globally
+// unique, not tenant-scoped, the same precedent `Tenant.slug` already sets:
+// a public storefront handle has to be resolvable from an anonymous request
+// with no tenant context of its own (docs/ARCHITECTURE.md §7: "Los
+// endpoints públicos ... resuelven tenant mediante ... un mapping
+// previamente registrado"). StorefrontProduct is the publication join —
+// only a PUBLISHED product is ever visible through the public API, keeping
+// the full internal Catalog decoupled from what a given storefront chooses
+// to show. Cart/CartLine are anonymous by design: no session, no
+// authentication — `Cart.id` itself is the public "cart token" a shopper's
+// browser holds, the same "an unguessable UUID is public-identifier-safe"
+// precedent `FileObject.storageKey` already sets. CommerceOrder is the
+// checkout-side counterpart to POS's own PosSale: created only after a real
+// SalesOrder (channel ECOMMERCE) is confirmed through Sales' own public
+// contract — see CheckoutUseCase's docstring and docs/DECISIONS.md ADR-011
+// for why its idempotency is keyed by `cartId` itself rather than a
+// caller-supplied key, and why `paymentId` is nullable (no credentialed
+// gateway exists yet, ADR-009).
+// ---------------------------------------------------------------------------
+
+enum StorefrontStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StorefrontProductStatus {
+  PUBLISHED
+  UNPUBLISHED
+}
+
+enum CartStatus {
+  OPEN
+  CONVERTED
+}
+
+/// `defaultWarehouseId` is nullable — a storefront selling only
+/// `trackInventory: false` products never needs one; `CheckoutUseCase`
+/// only requires it once a cart line's product actually needs a warehouse
+/// (the same conditional-requirement style `SalesOrderLine.warehouseId`
+/// already uses). `domain` is purely informational metadata (MASTER_SPEC
+/// §23's "múltiples Storefronts") — this codebase has no real DNS/hosting
+/// wired behind it, the same "not simulated, just not built" honesty
+/// already applied to POS's hardware adapters (docs/DECISIONS.md ADR-010).
+model Storefront {
+  id                 String           @id @db.Uuid
+  tenantId           String           @map("tenant_id") @db.Uuid
+  companyId          String           @map("company_id") @db.Uuid
+  defaultWarehouseId String?          @map("default_warehouse_id") @db.Uuid
+  code               String           @unique @db.VarChar(63)
+  name               String           @db.VarChar(200)
+  domain             String?          @db.VarChar(255)
+  currency           String           @db.VarChar(3)
+  status             StorefrontStatus @default(ACTIVE)
+  version            Int              @default(1)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company          Company             @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  defaultWarehouse Warehouse?          @relation(fields: [tenantId, defaultWarehouseId], references: [tenantId, id], onDelete: Restrict)
+  publications     StorefrontProduct[]
+  carts            Cart[]
+  commerceOrders   CommerceOrder[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId])
+  @@map("storefronts")
+}
+
+/// The publication join — a `Product` is never visible through the public
+/// API unless it has a `PUBLISHED` row here for that specific storefront.
+model StorefrontProduct {
+  id           String                  @id @db.Uuid
+  tenantId     String                  @map("tenant_id") @db.Uuid
+  storefrontId String                  @map("storefront_id") @db.Uuid
+  productId    String                  @map("product_id") @db.Uuid
+  status       StorefrontProductStatus @default(PUBLISHED)
+  publishedAt  DateTime                @default(now()) @map("published_at") @db.Timestamptz(6)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  storefront Storefront @relation(fields: [tenantId, storefrontId], references: [tenantId, id], onDelete: Restrict)
+  product    Product    @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, storefrontId, productId])
+  @@index([tenantId, storefrontId, status])
+  @@map("storefront_products")
+}
+
+/// Anonymous by design — see the section docstring above. `status` moves
+/// `OPEN -> CONVERTED` exactly once, on a successful checkout; there is no
+/// abandonment job in this slice (MASTER_SPEC §59: no state with no real
+/// code path behind it), so an inactive cart simply stays `OPEN` forever.
+model Cart {
+  id           String     @id @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  companyId    String     @map("company_id") @db.Uuid
+  storefrontId String     @map("storefront_id") @db.Uuid
+  currency     String     @db.VarChar(3)
+  status       CartStatus @default(OPEN)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company        @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  storefront    Storefront     @relation(fields: [tenantId, storefrontId], references: [tenantId, id], onDelete: Restrict)
+  lines         CartLine[]
+  commerceOrder CommerceOrder?
+
+  @@unique([tenantId, id])
+  @@index([tenantId, storefrontId, status])
+  @@map("carts")
+}
+
+/// One line per (cart, product, variant) — `AddCartLineUseCase` increases
+/// `quantity` on an existing line instead of creating a second one for the
+/// same target, an application-level rule (no partial-unique index for it —
+/// a cart is not money-critical data on its own, unlike `PosShift`'s "at
+/// most one OPEN shift per register"). `unitPrice` is snapshotted from the
+/// Catalog at add-time, the same "don't silently recompute a snapshotted
+/// fact" reasoning `SalesOrderLine.unitPrice` already established.
+model CartLine {
+  id               String   @id @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  cartId           String   @map("cart_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  productVariantId String?  @map("product_variant_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(14, 4)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(14, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  cart           Cart            @relation(fields: [tenantId, cartId], references: [tenantId, id], onDelete: Cascade)
+  product        Product         @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  productVariant ProductVariant? @relation(fields: [tenantId, productVariantId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, cartId])
+  @@map("cart_lines")
+}
+
+/// The Commerce-owned record of a completed checkout — mirrors POS's own
+/// `PosSale` closely (see that model's docstring), created only after a
+/// real `SalesOrder` (channel ECOMMERCE) is confirmed through Sales' own
+/// public contract. Two deliberate differences from `PosSale`, both
+/// documented in `CheckoutUseCase`'s own docstring and ADR-011: (1)
+/// idempotency is keyed by `cartId` itself, not a caller-supplied string —
+/// a Cart converts at most once, so it already is the natural dedup key;
+/// (2) `paymentId` is nullable and the order is never auto-fulfilled here —
+/// unlike an in-person POS sale, an online order routinely gets paid
+/// (BANK_TRANSFER, self-declared reference) and fulfilled (warehouse
+/// pick/pack) at a *later* time, through the very same Sales/Payments
+/// screens already built for every other channel.
+model CommerceOrder {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  storefrontId String   @map("storefront_id") @db.Uuid
+  cartId       String   @map("cart_id") @db.Uuid
+  salesOrderId String   @map("sales_order_id") @db.Uuid
+  paymentId    String?  @map("payment_id") @db.Uuid
+  customerId   String   @map("customer_id") @db.Uuid
+  guestEmail   String   @map("guest_email") @db.VarChar(200)
+  total        Decimal  @db.Decimal(14, 4)
+  currency     String   @db.VarChar(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  storefront Storefront @relation(fields: [tenantId, storefrontId], references: [tenantId, id], onDelete: Restrict)
+  cart       Cart       @relation(fields: [tenantId, cartId], references: [tenantId, id], onDelete: Restrict)
+  salesOrder SalesOrder @relation(fields: [tenantId, salesOrderId], references: [tenantId, id], onDelete: Restrict)
+  payment    Payment?   @relation(fields: [tenantId, paymentId], references: [tenantId, id], onDelete: Restrict)
+  customer   Customer   @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, cartId])
+  @@unique([tenantId, salesOrderId])
+  @@unique([tenantId, paymentId])
+  @@index([tenantId, companyId, storefrontId])
+  @@map("commerce_orders")
 }

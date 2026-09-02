@@ -1230,6 +1230,131 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Commerce admin endpoints", async () => {
+    const storefront = {
+      id: "storefront-1",
+      code: "main-store",
+      name: "Tienda principal",
+      domain: null,
+      currency: "USD",
+      defaultWarehouseId: "wh-1",
+      status: "ACTIVE",
+      version: 1,
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    };
+    const publication = {
+      id: "sp-1",
+      productId: "product-1",
+      productCode: "SKU-1",
+      productName: "Producto Uno",
+      status: "PUBLISHED",
+      publishedAt: "2026-09-02T00:00:00.000Z",
+    };
+    const order = {
+      id: "order-1",
+      storefrontId: "storefront-1",
+      cartId: "cart-1",
+      salesOrderId: "sales-order-1",
+      paymentId: "payment-1",
+      customerId: "customer-1",
+      guestEmail: "ada@example.com",
+      total: "75.0000",
+      currency: "USD",
+      createdAt: "2026-09-02T00:00:00.000Z",
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([storefront]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(storefront), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...storefront, status: "INACTIVE" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([publication]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(publication), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...publication, status: "UNPUBLISHED" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([order]), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listStorefronts("access-token", "grupo-aurora", "company-1", { status: "ACTIVE" });
+    await client.createStorefront("access-token", "grupo-aurora", "company-1", { code: "main-store", name: "Tienda principal", currency: "USD" });
+    await client.setStorefrontStatus("access-token", "grupo-aurora", "company-1", "storefront-1", { status: "INACTIVE" });
+    await client.listStorefrontProducts("access-token", "grupo-aurora", "company-1", "storefront-1");
+    await client.publishProduct("access-token", "grupo-aurora", "company-1", "storefront-1", { productId: "product-1" });
+    await client.unpublishProduct("access-token", "grupo-aurora", "company-1", "storefront-1", "product-1");
+    await client.listCommerceOrders("access-token", "grupo-aurora", "company-1", { storefrontId: "storefront-1" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/commerce/storefronts?status=ACTIVE", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/commerce/storefronts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/commerce/storefronts/storefront-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/commerce/storefronts/storefront-1/products", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/commerce/storefronts/storefront-1/products", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/commerce/storefronts/storefront-1/products/product-1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/commerce/orders?storefrontId=storefront-1", expect.objectContaining({ method: "GET" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
+  it("uses the documented public storefront endpoints with no accessToken/tenant headers at all", async () => {
+    const summary = { productId: "product-1", code: "SKU-1", name: "Producto Uno", description: null, hasVariants: false, basePrice: "25.0000" };
+    const detail = { ...summary, variants: [] };
+    const cart = { id: "cart-1", currency: "USD", status: "OPEN", lines: [], subtotal: "0.0000" };
+    const cartWithLine = { ...cart, lines: [{ id: "line-1", productId: "product-1", productVariantId: null, quantity: "2.0000", unitPrice: "25.0000", subtotal: "50.0000" }], subtotal: "50.0000" };
+    const order = {
+      id: "order-1",
+      storefrontId: "storefront-1",
+      cartId: "cart-1",
+      salesOrderId: "sales-order-1",
+      paymentId: null,
+      customerId: "customer-1",
+      guestEmail: "ada@example.com",
+      total: "50.0000",
+      currency: "USD",
+      createdAt: "2026-09-02T00:00:00.000Z",
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([summary]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(detail), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cart), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cart), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cartWithLine), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cartWithLine), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cart), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listPublicProducts("main-store");
+    await client.getPublicProduct("main-store", "product-1");
+    await client.createCart("main-store");
+    await client.getCart("main-store", "cart-1");
+    await client.addCartLine("main-store", "cart-1", { productId: "product-1", quantity: "2.0000" });
+    await client.updateCartLineQuantity("main-store", "cart-1", "line-1", { quantity: "2.0000" });
+    await client.removeCartLine("main-store", "cart-1", "line-1");
+    await client.checkout("main-store", "cart-1", { guestName: "Ada", guestEmail: "ada@example.com" });
+    await client.getPublicOrder("main-store", "order-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/storefront/main-store/products", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/storefront/main-store/products/product-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/storefront/main-store/carts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/storefront/main-store/carts/cart-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/storefront/main-store/carts/cart-1/lines", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/storefront/main-store/carts/cart-1/lines/line-1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/storefront/main-store/carts/cart-1/lines/line-1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/storefront/main-store/checkout", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/storefront/main-store/orders/order-1", expect.objectContaining({ method: "GET" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.has("Authorization")).toBe(false);
+      expect(headers.has("X-Tenant-Slug")).toBe(false);
+      expect(headers.has("X-Company-Id")).toBe(false);
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

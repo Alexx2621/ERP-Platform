@@ -1,6 +1,29 @@
 # Project State
 
-Última actualización: 2026-09-01 (sesión 30), tras implementar POS
+Última actualización: 2026-09-02 (sesión 31), tras implementar el motor de
+Commerce (Fase 7A) completo — Storefront (multi-tienda, handle público
+globalmente único), catalog publication (StorefrontProduct), Cart/CartLine
+anónimos, y Checkout (idempotente por `cartId`, sin gateway credenciado —
+ADR-011) — **la primera API genuinamente pública y sin autenticación de
+todo el código base** (`/api/v1/storefront/:storefrontCode/*`), a pedido
+explícito del usuario ("Ok, continua con la fase 7 y terminala de una
+vez"). Ver "Hecho — sesión 31" en `docs/WORK_QUEUE.md` para el detalle
+completo, incluyendo la verificación directa contra Postgres real de la
+concurrencia genuina del checkout (5 solicitudes simultáneas, un solo
+`CommerceOrder` sobreviviente) y dos bugs reales encontrados y corregidos
+durante la propia verificación E2E (DTOs del carrito/checkout sin
+decoradores de `class-validator`, rechazados por el `ValidationPipe`
+global aunque el cuerpo real fuera válido; y el controlador admin
+devolviendo `productCode`/`productName` vacíos tras publicar/despublicar
+un producto). Sexto módulo de negocio del código base, con seis
+dependencias directas y sin ciclos — la mayor superficie de cualquier
+módulo hasta ahora — y el segundo (tras POS) cuyo flujo de escritura
+principal orquesta otros módulos de negocio en vez de poseer su propio
+dominio transaccional. La construcción del storefront Next.js (Fase 7B) se
+delegó a un subagente en background con el contrato público ya estable y
+verificado; su resultado se revisa e integra por separado.
+
+Actualización previa: 2026-09-01 (sesión 30), tras implementar POS
 completo — Registers, Shifts, Cash Movements, Sales (ring-up de un pedido
 real vía el contrato público de Sales/Payments, idempotente por
 `idempotencyKey`) y Returns (con reembolso opcional del pago original) —
@@ -100,6 +123,84 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
+PHASE 7 — Commerce (7A, Commerce Engine), **iniciada y formalmente
+cerrada el 2026-09-02 (sesión 31, en un solo bloque de trabajo)**:
+Storefront (multi-tienda por `docs/ROADMAP.md` §11, `code` público
+globalmente único — mismo precedente ya sentado por `Tenant.slug` —
+`defaultWarehouseId` opcional), StorefrontProduct (join de publicación de
+catálogo, idempotente al publicar), Cart/CartLine (anónimos por diseño,
+sin sesión ni autenticación — `Cart.id` es en sí mismo el token público
+de carrito), y CommerceOrder (creado únicamente después de que un
+`SalesOrder` real, canal `ECOMMERCE`, se confirma vía el contrato público
+de Sales — `CheckoutUseCase` orquesta la resolución/creación del cliente
+invitado, la orden, las líneas, la confirmación y, opcionalmente, la
+captura de pago, enteramente a través de los contratos públicos de
+Catalog/Customers/Sales/Payments, nunca una ruta de escritura paralela) —
+`apps/api/src/modules/commerce`, ver "Hecho — sesión 31" en
+`docs/WORK_QUEUE.md` para el detalle completo. **Primera API pública y
+sin autenticación de todo el código base**
+(`/api/v1/storefront/:storefrontCode/*`, `PublicStorefrontContextGuard`
+resuelve tenant/company/storefront únicamente desde el handle público,
+nunca desde headers de sesión), con rate limiting propio
+(`COMMERCE_RATE_LIMIT_MAX`/`_WINDOW_SECONDS`, Redis, ventana separada de
+la de login). El exit criteria de `docs/ROADMAP.md` §11 ("Checkout
+repetido/webhook duplicado conserva exactamente un efecto") se verificó
+con 5 solicitudes de checkout genuinamente concurrentes contra Postgres
+real compartiendo el mismo `cartId`: las 5 resuelven con éxito, las 5
+convergen en el mismo `CommerceOrder.id`, y existe exactamente una fila al
+final — idempotencia basada en el propio `Cart.id` (nunca una clave
+generada por el llamador, a diferencia de POS), ya que un carrito solo
+puede convertirse una vez — ver `docs/DECISIONS.md` ADR-011 para el
+razonamiento completo y el mismo límite bajo carrera genuinamente
+simultánea ya documentado y aceptado para POS (ADR-010), heredado aquí sin
+volver a discutirlo. El otro exit criteria ("Storefront no contiene
+reglas autoritativas de Commerce") se satisface por diseño: el storefront
+Next.js (Fase 7B, delegado a un subagente en background con este mismo
+contrato público ya estable) solo puede llamar la API pública, sin lógica
+de negocio propia. Modelo de pago/cumplimiento deliberadamente honesto
+(ADR-011): sin gateway credenciado (heredado de ADR-009), un checkout sin
+`paymentReference` deja el pedido `CONFIRMED` y sin pagar
+(`CommerceOrder.paymentId: null`, un estado normal y esperado, no un
+error) para que el personal capture el pago después desde la propia
+pantalla de Pagos ya existente; nunca se despacha automáticamente — el
+despacho sigue siendo una acción posterior y manual vía Sales. Sexto
+módulo de negocio del código base, con seis dependencias directas y sin
+ciclos (Catalog, Warehouses, Customers, Sales, Payments, Users — esta
+última para el actor no interactivo "Storefront System" que satisface la
+columna `NOT NULL` `InventoryMovement.createdByUserId` en un checkout
+anónimo) — la mayor superficie de cualquier módulo hasta ahora, y el
+segundo (tras POS) cuyo flujo de escritura principal orquesta otros
+módulos de negocio en vez de poseer su propio dominio transaccional. De
+paso, `Customers` ganó `FindCustomerByEmailUseCase` (resolución de
+cliente invitado repetido por email, con `email` ahora normalizado a
+minúsculas en escritura — un bug real de datos corregido durante esta
+sesión, ya que antes se guardaba tal cual lo tipeara el llamador,
+rompiendo silenciosamente el emparejamiento case-insensitive) y
+`ListProductVariantsUseCase`/`getProduct`/`getProductVariant` se sumaron
+al contexto de pruebas compartido de Sales (`buildSalesTestContext`).
+**Dos bugs reales encontrados y corregidos durante la propia verificación
+E2E, no simulados**: (1) los DTOs `CreateCartDto`/`CheckoutRequestDto`
+del controlador público se declararon sin ningún decorador de
+`class-validator`, lo que bajo el `ValidationPipe` global
+(`forbidNonWhitelisted: true`) los NestJS/`class-validator` rechazaba
+como "property ... should not exist" incluso para un cuerpo realmente
+válido — corregido agregando `@IsOptional()`/`@IsString()`/`@IsNotEmpty()`
+explícitos; (2) `StorefrontsController.publish()`/`.unpublish()`
+devolvían `productCode`/`productName` como cadenas vacías en vez de
+resolver el producto real, lo que la UI de administración mostraba
+literalmente como `"()"` — corregido inyectando `GetProductUseCase` en el
+controlador. Alcance deliberadamente fuera de Fase 7A, sin aprobación
+explícita: motor de promociones/descuentos/cupones (no existe en ningún
+módulo de este código base todavía), motor de impuestos real en el lado
+público, ruteo real por dominio/hostname (`Storefront.domain` es
+metadata puramente informativa), autenticación/cuenta de cliente con
+historial de pedidos, búsqueda más allá del listado plano de productos
+publicados (MASTER_SPEC §85), y job de abandono de carrito — ver "Known
+limitations" en `docs/SECURITY.md` "Commerce". Próxima fase no bloqueada:
+PHASE 8 — Accounting (`docs/ROADMAP.md` §12), salvo indicación distinta
+del usuario — aunque la Fase 7B (Storefront Next.js) sigue en curso vía
+el subagente delegado y su integración/revisión final está pendiente.
+
 PHASE 6 — POS, **iniciada y formalmente cerrada el 2026-09-01 (sesión 30,
 en un solo bloque de trabajo)**: PosRegister (una caja/terminal atada a
 una `Warehouse`), PosShift (`OPEN → CLOSED`, a lo sumo un turno `OPEN` por
@@ -147,8 +248,7 @@ validar), operación offline (explícitamente excluida por la misma
 local, resolución de conflictos, correlativos, reservas y
 reconciliación), reembolso parcial (heredado de ADR-009), y número de
 venta/ticket legible — ver "Known limitations" en `docs/SECURITY.md`
-"POS". Próxima fase no bloqueada: PHASE 7 — Commerce (`docs/ROADMAP.md`
-§11), salvo indicación distinta del usuario.
+"POS".
 
 PHASE 5 — Purchasing, **iniciada y formalmente cerrada el 2026-09-01
 (sesión 29, en un solo bloque de trabajo)**: PurchaseOrder/PurchaseOrderLine
@@ -1437,6 +1537,113 @@ bloqueen.
   reembolso completo, saldo restaurado verificado, y cierre de turno real
   con efectivo esperado/diferencia calculados y verificados contra
   Postgres real — 14/14 Playwright en total (antes 13).
+- **Commerce — Fase 7A, motor completo** (`apps/api/src/modules/commerce`,
+  Claude, sesión 31, en un solo bloque de trabajo): `Storefront`
+  (multi-tienda, `code` público globalmente único — mismo precedente ya
+  sentado por `Tenant.slug`, `defaultWarehouseId` opcional),
+  `StorefrontProduct` (join de publicación de catálogo, idempotente),
+  `Cart`/`CartLine` (anónimos, sin sesión — `Cart.id` es el propio token
+  público de carrito), y `CommerceOrder` (creado únicamente después de un
+  `SalesOrder` real, canal `ECOMMERCE`, confirmado vía el contrato público
+  de Sales — `CheckoutUseCase` orquesta resolución/creación de cliente
+  invitado, orden, líneas, confirmación y captura opcional de pago
+  enteramente a través de los contratos públicos de Catalog/Customers/
+  Sales/Payments). **Primera API pública y sin autenticación de todo el
+  código base** (`/api/v1/storefront/:storefrontCode/*`,
+  `PublicStorefrontContextGuard` resuelve tenant/company/storefront solo
+  desde el handle público, con `ThrottlerGuard` propio y ventana de rate
+  limit separada de la de login). Sexto módulo de negocio del código
+  base, con seis dependencias directas y sin ciclos (Catalog, Warehouses,
+  Customers, Sales, Payments, Users — esta última para
+  `StorefrontSystemUserSeeder`, un `User` no interactivo, nunca con
+  credencial, que satisface la columna `NOT NULL`
+  `InventoryMovement.createdByUserId` en un checkout anónimo) — la mayor
+  superficie de cualquier módulo hasta ahora, y el segundo (tras POS)
+  cuyo flujo de escritura principal orquesta otros módulos de negocio en
+  vez de poseer su propio dominio transaccional.
+  **Idempotencia del checkout basada en el propio `Cart.id`, no en una
+  clave generada por el llamador** (a diferencia de POS) — un carrito
+  solo se convierte una vez, así que ya es la clave de deduplicación
+  natural; constraint real `@@unique([tenantId, cartId])` en
+  `commerce_orders`, verificado con 5 solicitudes de checkout
+  genuinamente concurrentes contra Postgres real compartiendo el mismo
+  `cartId`: las 5 resuelven con éxito, las 5 convergen en el mismo
+  `CommerceOrder.id`, y existe exactamente una fila al final
+  (`apps/api/test/integration/commerce.integration-spec.ts`) — mismo
+  límite bajo carrera genuinamente simultánea ya documentado y aceptado
+  para POS (ADR-010), heredado sin volver a discutirlo (**ADR-011**
+  nuevo, que también fija el modelo de pago/cumplimiento: sin gateway
+  credenciado —heredado de ADR-009—, un checkout sin `paymentReference`
+  deja el pedido `CONFIRMED` y sin pagar, `paymentId: null`, un estado
+  normal y esperado, capturable después desde la propia pantalla de Pagos
+  ya existente; nunca se despacha automáticamente). De paso, `Customers`
+  ganó `FindCustomerByEmailUseCase` (con `email` ahora normalizado a
+  minúsculas en escritura — un bug real de datos corregido en esta
+  sesión: antes se guardaba tal cual lo tipeara el llamador, rompiendo
+  silenciosamente el emparejamiento case-insensitive de un cliente
+  invitado repetido) y `buildSalesTestContext()` ganó `getProduct`/
+  `getProductVariant`/`listProductVariants`/`customers`/`createCustomer`
+  en su objeto devuelto (mismo patrón aditivo ya usado para POS).
+  **Dos bugs reales encontrados y corregidos durante la propia
+  verificación E2E, no simulados**: (1) los DTOs `CreateCartDto`/
+  `CheckoutRequestDto` del controlador público se declararon sin ningún
+  decorador de `class-validator` — bajo el `ValidationPipe` global
+  (`forbidNonWhitelisted: true`) esto los hacía rechazar con "property ...
+  should not exist" incluso para un cuerpo realmente válido, ya que
+  `class-validator` solo reconoce como "whitelisted" una propiedad con al
+  menos un decorador — corregido agregando
+  `@IsOptional()`/`@IsString()`/`@IsNotEmpty()` explícitos; (2)
+  `StorefrontsController.publish()`/`.unpublish()` devolvían
+  `productCode`/`productName` como cadenas vacías (`"()"` visible en la
+  UI de administración) en vez de resolver el producto real — corregido
+  inyectando `GetProductUseCase` en el controlador. Migración
+  `20260902095223_commerce` (5 tablas nuevas, 3 enums nuevos,
+  `@@unique([tenantId, paymentId])` agregado a `commerce_orders`),
+  **generada y aplicada directamente contra Postgres real** vía el mismo
+  workaround no-interactivo ya establecido, limpiamente al primer
+  intento. 10 permisos nuevos (`commerce.storefronts.read`/`.manage`,
+  `commerce.orders.read`), auditoría real en las 4 acciones de escritura
+  admin (`commerce.storefront.created`/`.status_changed`,
+  `commerce.storefront_product.published`/`.unpublished`). Contrato HTTP
+  nuevo: `/api/v1/commerce/storefronts` (+ `/status`, `/products`,
+  `/products/:productId`), `/api/v1/commerce/orders` (admin,
+  autenticado); `/api/v1/storefront/:storefrontCode/products`
+  (+`/:productId`), `.../carts` (+`/:cartId`, `/:cartId/lines`,
+  `/:cartId/lines/:lineId`), `.../checkout`, `.../orders/:orderId`
+  (público). **`@erp/api-client`**: ~20 tipos y 16 métodos nuevos
+  (7 admin, 9 públicos — estos últimos sin `accessToken`/`tenantSlug`/
+  `companyId` en absoluto), regenerados desde el spec OpenAPI real, con
+  dos campos (`defaultWarehouseId`, `productVariantId`) corregidos
+  proactivamente con `type: String` explícito antes de la primera
+  generación (lección de la sesión 21 aplicada desde el inicio). **UI**
+  (`apps/erp-web/src/features/commerce/`, ruta nueva `/commerce`, botón
+  "Comercio" en el workspace): pestañas Tiendas/Pedidos; el detalle de
+  una tienda incluye un modal "Catálogo publicado" con publicar/
+  despublicar. Tests: 839 tests unitarios totales en `apps/api` (antes
+  790 — Commerce + los 3 nuevos de `FindCustomerByEmailUseCase`). 2
+  escenarios de integración nuevos contra Postgres
+  (`commerce.integration-spec.ts`): ciclo de vida completo Storefront→
+  publish→Cart→Checkout con llamadas cross-module reales, y el escenario
+  de concurrencia genuina de 5 checkouts simultáneos — 38/38 en total
+  (antes 36). 20/20 tests en `@erp/api-client` (antes 18, incluyendo un
+  bloque nuevo que confirma que las 9 llamadas públicas nunca llevan
+  `Authorization`/`X-Tenant-Slug`/`X-Company-Id`). 48/48 tests en
+  `apps/erp-web` (antes 45). **E2E real nuevo**
+  (`apps/e2e/tests/commerce.spec.ts`, Chromium vía Testcontainers): un
+  producto y una bodega reales, una tienda real creada desde el admin con
+  esa bodega como predeterminada, el producto publicado, y luego —vía el
+  fixture `request` de Playwright, sin ningún header de sesión/tenant en
+  absoluto— un comprador anónimo real que lista el catálogo público,
+  crea un carrito real, agrega una línea real (precio resuelto
+  server-side, verificado byte a byte contra Postgres), hace checkout sin
+  referencia de pago (pedido `CONFIRMED` y sin pagar), reintenta el mismo
+  checkout confirmando la misma orden (idempotencia real), y confirma en
+  el admin que el pedido aparece como "Pendiente" y que el inventario
+  quedó reservado (no emitido) — 15/15 Playwright en total (antes 14). La
+  construcción del storefront Next.js (Fase 7B) se delegó a un subagente
+  en background con este mismo contrato público, ya estable y verificado,
+  como especificación completa; su resultado se revisa e integra por
+  separado, sin bloquear el cierre de Fase 7A.
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -1493,11 +1700,16 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — **Fase 6 (POS) quedó formalmente cerrada en la sesión
-30**, en un solo bloque de trabajo (ver Completed arriba y "Hecho —
-sesión 30" en `docs/WORK_QUEUE.md`). El siguiente bloque no bloqueado es
-Fase 7 (Commerce) según `docs/ROADMAP.md` §11, salvo indicación distinta
-del usuario.
+Fase 7B (Storefront Next.js) — delegada a un subagente en background en
+la sesión 31, con el contrato público de Commerce (7A, ya cerrado y
+verificado) como especificación completa. Su resultado se revisa e
+integra en una sesión de seguimiento inmediata; no bloquea el cierre de
+7A ni el trabajo del resto del backend. Fuera de eso, ninguno activo —
+**Fase 7A (Commerce Engine) quedó formalmente cerrada en la sesión 31**,
+en un solo bloque de trabajo (ver Completed arriba y "Hecho — sesión 31"
+en `docs/WORK_QUEUE.md`). El siguiente bloque de backend no bloqueado es
+Fase 8 (Accounting) según `docs/ROADMAP.md` §12, salvo indicación
+distinta del usuario.
 
 ## Pending
 
@@ -1505,8 +1717,10 @@ Ningún ítem de la cola original de Foundation queda pendiente
 (`docs/WORK_QUEUE.md`), ningún ítem del alcance de Fase 2 descrito en
 `docs/ARCHITECTURE.md` §5.2 queda pendiente, y ningún ítem del alcance de
 Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
-(`docs/ROADMAP.md` §9) ni Fase 6 (`docs/ROADMAP.md` §10) queda pendiente.
-También pendiente, sin bloquear Fase 7: ratificar ADR-001, ADR-002 y
+(`docs/ROADMAP.md` §9), Fase 6 (`docs/ROADMAP.md` §10) ni el 7A de Fase 7
+(`docs/ROADMAP.md` §11) queda pendiente — el 7B (Storefront Next.js) está
+en curso, ver "In Progress". También pendiente, sin bloquear Fase 8:
+ratificar ADR-001, ADR-002 y
 ADR-003 formalmente (ADR-004 a ADR-009 ya están ratificados) — sus
 decisiones ya están implementadas y verificadas, solo falta el documento
 formal. La UI de RBAC (incluida la invitación de miembros), el E2E de
@@ -1553,7 +1767,16 @@ propio `docs/ROADMAP.md` §10 hasta que exista un ADR sobre device
 identity/ledger local/reconciliación), el límite de concurrencia
 documentado sobre `RingUpSaleUseCase` bajo una carrera genuinamente
 simultánea (no una reintentona secuencial, que sí está cubierta), y
-número de venta/ticket legible.
+número de venta/ticket legible. Alcance deliberadamente diferido dentro
+de Commerce (no bloquea el cierre de 7A, ver "Known limitations" en
+`docs/SECURITY.md` "Commerce"): gateway de pago credenciado (heredado de
+ADR-009), cumplimiento/despacho automático, motor de promociones/
+descuentos/cupones, motor de impuestos real en el lado público, ruteo
+real por dominio/hostname (`Storefront.domain` es metadata puramente
+informativa), autenticación/cuenta de cliente con historial de pedidos,
+búsqueda más allá del listado plano de productos publicados, job de
+abandono de carrito, y el mismo límite de concurrencia genuinamente
+simultánea ya aceptado para POS (ADR-010), heredado por ADR-011.
 
 ## Production Status
 
@@ -2101,3 +2324,42 @@ genuinamente simultánea documentado explícitamente en vez de ocultado, ver
 esta sesión permanecen en la base, por el mismo motivo `onDelete:
 Restrict` de `audit_entries.user_id` ya documentado en sesiones
 anteriores.
+
+**Sesión 31 (2026-09-02, Commerce — Fase 7A, motor completo)**: migración
+`20260902095223_commerce` (`storefronts`, `storefront_products`, `carts`,
+`cart_lines`, `commerce_orders`, más los enums nuevos `StorefrontStatus`/
+`StorefrontProductStatus`/`CartStatus` y `@@unique([tenantId, paymentId])`
+nuevo en `commerce_orders`, requerido por Prisma para la relación
+uno-a-uno opcional desde `payments`) generada vía el mismo workaround
+no-interactivo `prisma migrate diff --from-config-datasource --to-schema
+prisma/schema.prisma --script` ya establecido, aplicada vía `prisma
+migrate deploy` — `prisma migrate status` confirma las 21 migraciones
+aplicadas sin drift. Verificado con el servidor real reconstruido y la
+suite de integración real (`apps/api/test/integration/
+commerce.integration-spec.ts`, 2 escenarios contra Postgres real vía
+Testcontainers): ciclo de vida completo real (producto y bodega reales →
+tienda real creada con esa bodega como predeterminada → producto
+publicado real → listado público real confirmando el precio exacto →
+carrito real creado → línea real agregada, precio resuelto server-side →
+checkout real con referencia de transferencia, capturando un pago real
+(`total: "75.0000"`, 3 × 25.0000, redondeo de Postgres real sin recorte
+de ceros) → saldo de inventario real verificado — reservado, no emitido
+(`onHandQuantity: "20.0000"`, `reservedQuantity: "3.0000"`) → usuario
+"Storefront System" real confirmado sembrado → carrito real confirmado
+`CONVERTED`) y el escenario de concurrencia genuina (5 llamadas reales
+concurrentes a `checkout` compartiendo el mismo `cartId` contra Postgres
+real, confirmando que las 5 resuelven con éxito, las 5 convergen en el
+mismo `CommerceOrder.id`, y existe exactamente una fila `commerce_orders`
+al final — el exit criteria de `docs/ROADMAP.md` §11 ("Checkout
+repetido/webhook duplicado conserva exactamente un efecto") verificado
+directamente, con el límite de una carrera genuinamente simultánea
+heredado y documentado explícitamente vía ADR-011, no ocultado, ver
+"Known limitations" en `docs/SECURITY.md` "Commerce"). Dos bugs reales
+encontrados y corregidos durante la propia verificación E2E contra esta
+misma infraestructura real (detallados en "Completed" arriba): DTOs
+públicos sin decoradores de `class-validator` rechazados por el
+`ValidationPipe` global pese a un cuerpo válido, y el controlador admin
+devolviendo `productCode`/`productName` vacíos tras publicar/despublicar.
+Los datos de prueba de esta sesión permanecen en la base, por el mismo
+motivo `onDelete: Restrict` de `audit_entries.user_id` ya documentado en
+sesiones anteriores.

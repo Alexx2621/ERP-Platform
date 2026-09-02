@@ -24,6 +24,14 @@ export class InMemoryCustomerRepository implements CustomerRepository {
     );
   }
 
+  async findByEmail(tenantId: string, companyId: string, email: string): Promise<Customer | null> {
+    return (
+      [...this.byId.values()]
+        .filter((c) => c.tenantId === tenantId && c.companyId === companyId && c.email === email)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null
+    );
+  }
+
   async listByCompany(tenantId: string, companyId: string): Promise<Customer[]> {
     return [...this.byId.values()].filter((c) => c.tenantId === tenantId && c.companyId === companyId);
   }

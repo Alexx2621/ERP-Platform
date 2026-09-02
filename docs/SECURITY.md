@@ -1443,3 +1443,99 @@ than owning its own transactional domain data.
 - **No backfill of the 10 new permissions for tenants provisioned before
   this change** — `SyncOwnerRolePermissionsUseCase` (session 28) closes
   this automatically on every API boot for every tenant's Owner role.
+
+## Commerce (Phase 7A, 2026-09-02)
+
+Scope: `apps/api/src/modules/commerce` — Storefront, StorefrontProduct
+(catalog publication), Cart/CartLine, CommerceOrder. Six direct,
+cycle-free dependencies (docs/ARCHITECTURE.md §6) — the widest fan-out of
+any module in this codebase so far: Catalog, Warehouses, Customers, Sales,
+Payments, and Users (for the seeded "Storefront System" actor,
+`StorefrontSystemUserSeeder` — see docs/DECISIONS.md ADR-011 point 6).
+`CheckoutUseCase` is, like POS's `RingUpSaleUseCase`, an orchestrator with
+no transactional domain data of its own. Unique among every module built
+so far: **this is the first genuinely public, unauthenticated API surface
+in this codebase** (`StorefrontPublicController`, `/api/v1/storefront/
+:storefrontCode/*`) — no session, no `X-Tenant-Slug`/`X-Company-Id`
+headers, tenant/company/storefront scope resolved purely from the
+storefront's own globally-unique `code` by a new guard,
+`PublicStorefrontContextGuard`. `StorefrontsController` (admin,
+`/api/v1/commerce/*`) is authenticated exactly like every other module.
+
+### Assets
+
+- `commerce.storefronts.read`/`.manage`, `commerce.orders.read` — 3 new
+  permissions, admin-side only (the public side has no permission concept
+  at all — see Threats below for how it's protected instead).
+- `Storefront.code` — a globally unique (not tenant-scoped) public handle;
+  the one deliberate exception to this codebase's tenant-scoped-uniqueness
+  convention, with a direct precedent (`Tenant.slug` is globally unique
+  too, for the same "a public request needs a bare handle to resolve
+  scope from" reason, docs/ARCHITECTURE.md §7).
+- `Cart.id` — doubles as the public "cart token" a shopper's browser
+  holds; unguessable (UUIDv7) but carries no money and no PII beyond what
+  a guest later types at checkout — a materially lower-stakes identifier
+  than a `Session`'s own hashed token, the same precedent
+  `FileObject.storageKey` already sets for "an unguessable UUID is
+  public-identifier-safe".
+- `CommerceOrder`/its linked real `SalesOrder`/`Payment` — real money and
+  real inventory reservations, reachable from a fully anonymous caller.
+- The seeded "Storefront System" `User` row — never given a
+  `UserCredential`, so it can never authenticate; its only purpose is
+  satisfying `InventoryMovement.createdByUserId`'s real `NOT NULL`
+  constraint for an actor-less public checkout (ADR-011 point 6).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A public request forges a tenant/company by supplying its own header, the way every other module's endpoints would normally trust an authenticated `TenantContextGuard` to resolve | The public side never reads `X-Tenant-Slug`/`X-Company-Id`/`Authorization` at all — `PublicStorefrontContextGuard` resolves `{tenantId, companyId, storefrontId}` exclusively from `:storefrontCode`, looked up server-side against the real `Storefront` row. There is structurally no header a client could forge to change which tenant a request resolves to. |
+| A shopper enumerates or accesses a product the storefront hasn't chosen to sell (an internal-only SKU, a discontinued line, another company's catalog) | Every public catalog read (`ListPublishedProductsUseCase`/`GetPublishedProductUseCase`) requires a real `PUBLISHED` `StorefrontProduct` row for that exact storefront — the full internal `Catalog` is never reachable through the public surface regardless of a product's real id being known. |
+| A shopper's cart/checkout call passes a `cartId`/`storefrontCode` combination that doesn't actually belong together (a stolen or guessed cart token used against a different storefront) | Every cart/checkout use case re-verifies `cart.storefrontId === storefront.id` (resolved server-side from the URL's own `:storefrontCode`, never trusted from the body) before touching it — same IDOR-resistant "404, not 403" pattern every other module already uses (`CartNotFoundError`). |
+| A malicious or buggy client dictates its own price for a cart line | `AddCartLineUseCase` never accepts a caller-supplied `unitPrice` at all — the field doesn't exist on `AddCartLineInput`. Price is always resolved server-side from the real `Product.basePrice`/`ProductVariant.price` at add-time and snapshotted onto the `CartLine`, the same "the server is the only source of truth for price" rule `AddSalesOrderLineUseCase` already enforces for the authenticated ERP screens — just with no manual-override escape hatch here, since there is no legitimate staff member on the other end of a public request who could need one. |
+| The public surface is used for volumetric abuse — scraping, cart-spam, checkout brute-forcing | `StorefrontPublicController` carries its own `ThrottlerGuard`, backed by a separate `ThrottlerModule` registration (Redis-backed, same `ThrottlerStorageRedisService` pattern as `AuthModule`'s own login limiter) — deliberately a *different* window/limit (`COMMERCE_RATE_LIMIT_MAX`/`_WINDOW_SECONDS`, default 60/60s) than login's, since a shopper browsing/adding-to-cart is a materially different traffic shape than a login attempt and conflating the two would either throttle real shoppers or under-protect login. |
+| A checkout request is retried after a lost response (a network timeout on the shopper's side, not a crash) | `CheckoutUseCase` is idempotent by `Cart.id` itself, not a caller-supplied key — see docs/DECISIONS.md ADR-011 point 3 for why this is a structurally cleaner guarantee than POS's own caller-generated-key contract. Verified against **real Postgres** with 5 genuinely concurrent checkout calls sharing one `cartId`: all 5 resolve successfully, all 5 converge on the same `CommerceOrder.id`, and exactly one row exists at the end (`apps/api/test/integration/commerce.integration-spec.ts`). |
+| **Known, documented boundary of that guarantee** — the same class of gap already ratified for POS (ADR-010): a genuinely *simultaneous* race, not a sequential retry | Identical shape and identical reasoning to POS's own documented limitation — see ADR-011 point 4. The idempotency pre-check runs once, at the top, so a truly concurrent racer can pass it before any commits; only the final `CommerceOrder` row is guaranteed unique and convergent, not the number of underlying `SalesOrder`s momentarily created. |
+| Checkout fails partway (insufficient inventory, a cart-line/warehouse validation error) and leaves a real, reserved `SalesOrder` with nothing to show for it | `CheckoutUseCase` compensates on any failure after order creation by calling the existing `CancelSalesOrderUseCase` — the exact same best-effort compensating-cancel pattern POS's `RingUpSaleUseCase` already established, reused verbatim rather than reinvented. |
+| A guest's email is used to silently create a duplicate `Customer` record on every repeat purchase | `CheckoutUseCase` tries `FindCustomerByEmailUseCase` (new this phase, Customers module) before creating one — a repeat guest with the same email converges on the same `Customer`. This required lowercasing `Customer.email` at write time (a real, small fix made during this phase — email was previously stored verbatim, which would have silently defeated case-insensitive matching for e.g. `Ada@x.com` vs. `ada@x.com`). |
+| A payment is fabricated or implied for an order that was never actually paid | `CheckoutUseCase` only ever attempts a real `BANK_TRANSFER` capture (the same adapter ADR-009 already built) when the shopper actually provides a reference; otherwise `CommerceOrder.paymentId` stays `null` and the order is genuinely, visibly unpaid — see docs/DECISIONS.md ADR-011 points 1-2 for the full payment/fulfillment model and why no credentialed gateway or auto-fulfillment exists. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No credentialed payment gateway** (no Stripe/PayPal/etc.), inherited
+  directly from ADR-009 and extended by ADR-011 — the only self-service
+  payment path is a `BANK_TRANSFER` reference; anything else is a manual
+  staff action through the existing Payments screen.
+- **No automatic fulfillment.** Checkout only confirms (reserves) a real
+  `SalesOrder`; picking/packing/shipping remains a deliberate, later,
+  staff-driven action through Sales' existing screens — see ADR-011
+  point 2.
+- **The genuinely-simultaneous-race gap documented above** (as opposed to
+  the realistic sequential-retry case, which is fully covered) — the same
+  bounded, deliberate scope decision already ratified for POS (ADR-010),
+  extended here by ADR-011 rather than re-litigated.
+- **No promotions/discounts/coupons engine** — no such capability exists
+  anywhere in this codebase yet (Sales included); a cart line's price is
+  always the product/variant's own real price, with no discount field.
+- **No real tax engine on the public side** — Commerce checkout never
+  resolves or applies a `Tax`, matching the same "motor de reglas fiscales
+  real" deferral already accepted for Sales/Purchasing.
+- **No real multi-domain/hostname routing.** `Storefront.domain` is
+  purely informational metadata — nothing in this codebase resolves an
+  incoming request's hostname to a storefront; the public API is reached
+  by `:storefrontCode` in the URL path, not by domain. The same
+  "not simulated, just not built" honesty already applied to POS's
+  hardware adapters (ADR-010) and to `docs/ROADMAP.md`'s own explicit
+  non-goal for offline POS.
+- **No customer-facing authentication/account/order-history-with-login.**
+  Guest checkout only — this platform has no customer identity system
+  distinct from staff `User`/`Session` (ADR-006) yet. A future customer
+  portal is real future scope (MASTER_SPEC §23), not a gap being hidden.
+- **No search beyond the plain published-product listing** — consistent
+  with MASTER_SPEC §85's own "PostgreSQL primero, sin Elasticsearch hasta
+  necesitarlo".
+- **No cart abandonment job/notification** and **no `Cart` status beyond
+  `OPEN`/`CONVERTED`** — an inactive cart simply stays `OPEN` forever;
+  building an abandonment state with no real code path behind it yet
+  would be exactly the premature machinery MASTER_SPEC §59/§93 warns
+  against.

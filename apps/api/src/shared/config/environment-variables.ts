@@ -116,6 +116,22 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   EMAIL_FROM_ADDRESS?: string;
+
+  /**
+   * Rate limit for the public, unauthenticated storefront API (product
+   * listing, cart, checkout — docs/ROADMAP.md §11's "Rate limits,
+   * anti-abuse e idempotency"). Deliberately separate from
+   * `LOGIN_RATE_LIMIT_*`: a shopper browsing/adding-to-cart is a very
+   * different traffic shape than a login attempt, and conflating the two
+   * windows would either throttle real shoppers or under-protect login.
+   */
+  @IsInt()
+  @Min(1)
+  COMMERCE_RATE_LIMIT_MAX: number = 60;
+
+  @IsInt()
+  @Min(1)
+  COMMERCE_RATE_LIMIT_WINDOW_SECONDS: number = 60;
 }
 
 /**

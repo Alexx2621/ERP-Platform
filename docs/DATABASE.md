@@ -1458,3 +1458,102 @@ non-interactive `prisma migrate diff --script` workaround, applied cleanly
 to real Postgres on the first attempt: five new tables, two new enums
 (`PosShiftStatus`, `PosCashMovementType`), and `@@unique([tenantId, id])`
 added to `payments` (its first FK consumer).
+
+## Commerce tables (Phase 7A, 2026-09-02)
+
+Scope: `docs/ROADMAP.md` §11 — Storefront, catalog publication, Cart,
+Checkout. `apps/api/src/modules/commerce`. Like POS, `CheckoutUseCase`
+owns almost no domain data of its own beyond bookkeeping: a completed
+checkout *is* a real `SalesOrder` (channel `ECOMMERCE`) plus, optionally, a
+real `Payment`, created through Sales'/Payments' own public contracts;
+`commerce_orders` exists to give a storefront its own reporting surface
+and idempotency guarantee, not to duplicate those tables.
+
+### `storefronts`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `default_warehouse_id` | `uuid?` | → `warehouses(tenantId, id)`, `ON DELETE RESTRICT` — required only if a cart line's product actually tracks inventory (validated at checkout, the same conditional-requirement style `sales_order_lines.warehouse_id` already uses); a storefront selling only non-tracked products never needs one. |
+| `code` | `varchar(63)` | `@unique` **globally**, not tenant-scoped — the one deliberate exception to this codebase's tenant-scoped-uniqueness convention, with a direct precedent (`tenants.slug` is globally unique for the identical reason: a public request needs a bare handle to resolve tenant/company scope from, with no session or header to trust — docs/ARCHITECTURE.md §7). |
+| `name` | `varchar(200)` | |
+| `domain` | `varchar(255)?` | Purely informational metadata — no real DNS/hosting routing is wired to this column (see docs/SECURITY.md "Commerce" Known limitations). |
+| `currency` | `varchar(3)` | Every `Cart` created under this storefront inherits it. |
+| `status` | `StorefrontStatus` | `ACTIVE` / `INACTIVE` — the public API rejects every read/write for an `INACTIVE` storefront with `409 STOREFRONT_NOT_ACTIVE`. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `storefront_products`
+
+The publication join — a `Product` is never visible through the public API
+unless it has a `PUBLISHED` row here for that exact storefront, keeping
+the full internal Catalog decoupled from what a given storefront chooses
+to show.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `storefront_id` / `product_id` | `uuid` | `@@unique([tenantId, storefrontId, productId])`. |
+| `status` | `StorefrontProductStatus` | `PUBLISHED` / `UNPUBLISHED`. `PublishProductUseCase` is idempotent — publishing an already-published product just refreshes `published_at` rather than erroring or duplicating. |
+| `published_at` | `timestamptz(6)` | |
+
+### `carts`
+
+Anonymous by design — no session, no authentication. `id` itself is the
+public "cart token" a shopper's browser holds (see docs/SECURITY.md
+"Commerce" Assets for why this is an acceptable public identifier).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | Doubles as the public cart token. |
+| `tenant_id` / `company_id` / `storefront_id` | `uuid` | |
+| `currency` | `varchar(3)` | Inherited from the storefront at creation time. |
+| `status` | `CartStatus` | `OPEN` → `CONVERTED`, exactly once, on a successful checkout — never reversible. No `ABANDONED` state: there is no abandonment job in this slice (MASTER_SPEC §59 — no state with no real code path behind it), so an inactive cart simply stays `OPEN` forever. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `cart_lines`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `cart_id` / `product_id` / `product_variant_id` | `uuid` / `uuid?` | `product_variant_id` nullable, same conditional pattern as `sales_order_lines`. One line per (cart, product, variant) is an application-level rule (`AddCartLineUseCase` increases `quantity` on a match instead of inserting a second row) — deliberately **no** DB unique constraint for it, unlike `inventory_balances`'s partial unique indexes: a cart is not money-critical data on its own (the real invariant, order totals, is locked in at checkout time by the already-battle-tested `AddSalesOrderLineUseCase`), so an application-level rule is a proportionate, not a corner-cut, choice. |
+| `quantity` | `numeric(14,4)` | |
+| `unit_price` | `numeric(14,4)` | Snapshotted from the Catalog at add-time — the same "don't silently recompute a snapshotted fact" reasoning `sales_order_lines.unit_price` already established; a price change after adding to cart never silently changes what the shopper already sees. Never accepted from the caller (see docs/SECURITY.md "Commerce" Threats). |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `commerce_orders`
+
+The Commerce-owned record of a completed checkout — mirrors `pos_sales`
+closely, created only after a real `SalesOrder` (channel `ECOMMERCE`) is
+confirmed through Sales' own public contract. Two deliberate differences
+from `pos_sales`, both ratified in `docs/DECISIONS.md` ADR-011: (1)
+idempotency is keyed by `cart_id` itself (`@@unique([tenantId, cartId])`),
+not a caller-supplied string — a `Cart` converts at most once, so it
+already is the natural dedup key; (2) `payment_id` is nullable and the
+order is never auto-fulfilled here — an online order routinely gets paid
+(`BANK_TRANSFER`, a self-declared reference) and fulfilled (warehouse
+pick/pack) at a *later* time, through the very same Sales/Payments screens
+already built for every other channel.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` / `storefront_id` / `cart_id` | `uuid` | `@@unique([tenantId, cartId])` — the idempotency constraint. |
+| `sales_order_id` | `uuid` | → `sales_orders(tenantId, id)`, `ON DELETE RESTRICT`, `@@unique([tenantId, salesOrderId])`. |
+| `payment_id` | `uuid?` | → `payments(tenantId, id)`, `ON DELETE RESTRICT`, `@@unique([tenantId, paymentId])` — `null` means "awaiting payment", a normal, expected state, never an error condition (docs/DECISIONS.md ADR-011). |
+| `customer_id` | `uuid` | → `customers(tenantId, id)` — resolved by email via the new `FindCustomerByEmailUseCase` (Customers module), or created fresh for a genuinely new guest. |
+| `guest_email` | `varchar(200)` | Snapshotted at checkout time, independent of whatever the linked `Customer.email` might later become — same "snapshot a fact that must never silently drift" philosophy as `sales_order_lines.unit_price`. |
+| `total` | `numeric(14,4)` | The authoritative, final charge amount — computed server-side from the real `SalesOrder`'s own lines, never the cart's own informational `subtotal` preview. |
+| `currency` | `varchar(3)` | |
+| `created_at` | `timestamptz(6)` | |
+
+### Migration
+
+`packages/database/prisma/migrations/20260902095223_commerce/` — same
+non-interactive `prisma migrate diff --script` workaround already
+established, applied cleanly to real Postgres on the first attempt: five
+new tables, three new enums (`StorefrontStatus`, `StorefrontProductStatus`,
+`CartStatus`), and `@@unique([tenantId, paymentId])` added to
+`commerce_orders` itself (required by Prisma for the one-to-one optional
+relation from `payments`, its first genuinely optional FK consumer).

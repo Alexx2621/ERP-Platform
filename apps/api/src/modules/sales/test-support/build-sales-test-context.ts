@@ -8,6 +8,7 @@ import { CreateProductUseCase } from "../../catalog/application/use-cases/create
 import { AddProductVariantUseCase } from "../../catalog/application/use-cases/add-product-variant.use-case";
 import { GetProductUseCase } from "../../catalog/application/use-cases/get-product.use-case";
 import { GetProductVariantUseCase } from "../../catalog/application/use-cases/get-product-variant.use-case";
+import { ListProductVariantsUseCase } from "../../catalog/application/use-cases/list-product-variants.use-case";
 import { InMemoryWarehouseRepository } from "../../warehouses/test-support/in-memory-warehouse.repository";
 import { CreateWarehouseUseCase } from "../../warehouses/application/use-cases/create-warehouse.use-case";
 import { GetWarehouseUseCase } from "../../warehouses/application/use-cases/get-warehouse.use-case";
@@ -82,6 +83,7 @@ export async function buildSalesTestContext() {
   const addVariant = new AddProductVariantUseCase(variants, products);
   const getProduct = new GetProductUseCase(products);
   const getProductVariant = new GetProductVariantUseCase(variants);
+  const listProductVariants = new ListProductVariantsUseCase(variants, products);
 
   const unit = await new CreateUnitOfMeasureUseCase(units).execute({
     tenantId: TENANT_ID,
@@ -255,10 +257,15 @@ export async function buildSalesTestContext() {
     variantProduct,
     variant,
     otherCompanyProduct,
+    getProduct,
+    getProductVariant,
+    listProductVariants,
     warehouse,
     getWarehouse,
     tax,
+    customers,
     customer,
+    createCustomer,
     getCustomer,
     otherCompanyCustomer,
     priceList,

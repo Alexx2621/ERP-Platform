@@ -6,9 +6,11 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-01 (sesión 30,
-Fase 6 — POS completa en un solo bloque de trabajo, a pedido explícito del
-usuario). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-02 (sesión 31,
+Fase 7A — Commerce Engine completo en un solo bloque de trabajo, a pedido
+explícito del usuario; Fase 7B — Storefront Next.js delegada a un
+subagente en background con el contrato público ya cerrado como
+especificación). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,11 +23,26 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 6 (POS) está completa** — ver "Hecho — sesión 30" abajo, en un
-solo bloque de trabajo a pedido explícito del usuario. El siguiente
-trabajo no bloqueado es Fase 7 (Commerce) según `docs/ROADMAP.md` §11,
-salvo que el usuario indique otra prioridad. Alcance deliberadamente fuera
-de Fase 6 y diferido (no simulado, ver "Known limitations" en "POS" de
+**Fase 7A (Commerce Engine) está completa** — ver "Hecho — sesión 31"
+abajo, en un solo bloque de trabajo a pedido explícito del usuario. La
+Fase 7B (Storefront Next.js, `apps/storefront`) fue delegada a un
+subagente en background con el contrato público de 7A —ya cerrado,
+probado (unit/integración/E2E) y estable— como especificación completa;
+su resultado se revisa e integra en una sesión de seguimiento inmediata.
+El siguiente trabajo de backend no bloqueado es Fase 8 (Accounting) según
+`docs/ROADMAP.md` §12, salvo que el usuario indique otra prioridad.
+Alcance deliberadamente fuera de Fase 7A y diferido (no simulado, ver
+"Known limitations" en "Commerce" de `docs/SECURITY.md`): gateway de pago
+credenciado (heredado de ADR-009), cumplimiento/despacho automático
+(siempre una acción posterior manual vía Sales), motor de promociones/
+descuentos/cupones (no existe en ningún módulo todavía), motor de
+impuestos real en el lado público, ruteo real por dominio/hostname
+(`Storefront.domain` es metadata puramente informativa), autenticación/
+cuenta de cliente con historial de pedidos, búsqueda más allá del listado
+plano de productos publicados, job de abandono de carrito, y el límite de
+concurrencia genuinamente simultánea ya aceptado para POS (ADR-010),
+heredado explícitamente por ADR-011. Alcance deliberadamente fuera de
+Fase 6 y diferido (no simulado, ver "Known limitations" en "POS" de
 `docs/SECURITY.md`): adapters de hardware real (lector de código de
 barras, impresora térmica, gaveta, pantalla de cliente — diferidos hasta
 que exista hardware real que validar, misma razón ya aplicada a los

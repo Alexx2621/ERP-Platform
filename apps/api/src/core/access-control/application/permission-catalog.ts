@@ -116,4 +116,10 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
   { key: "pos.sales.manage", description: "Ring up POS sales." },
   { key: "pos.returns.read", description: "View the company's POS returns." },
   { key: "pos.returns.manage", description: "Record POS returns." },
+  { key: "commerce.storefronts.read", description: "View the company's storefronts and their catalog publications." },
+  {
+    key: "commerce.storefronts.manage",
+    description: "Create storefronts, change their status, and publish/unpublish products to them.",
+  },
+  { key: "commerce.orders.read", description: "View the company's completed online checkouts." },
 ];

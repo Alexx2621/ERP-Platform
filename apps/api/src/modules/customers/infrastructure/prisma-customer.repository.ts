@@ -27,6 +27,14 @@ export class PrismaCustomerRepository implements CustomerRepository {
     return record ? this.toDomain(record) : null;
   }
 
+  async findByEmail(tenantId: string, companyId: string, email: string): Promise<Customer | null> {
+    const record = await this.prisma.customer.findFirst({
+      where: { tenantId, companyId, email },
+      orderBy: { createdAt: "asc" },
+    });
+    return record ? this.toDomain(record) : null;
+  }
+
   async listByCompany(tenantId: string, companyId: string): Promise<Customer[]> {
     const records = await this.prisma.customer.findMany({
       where: { tenantId, companyId },

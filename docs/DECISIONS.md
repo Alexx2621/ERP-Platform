@@ -11,6 +11,9 @@ was ratified once the App Registry mechanism was implemented — see below.
 ADR-009 (Payment Gateway Adapters V1) was ratified once Payments (Phase 4B)
 was implemented — see below. ADR-010 (POS Terminal Idempotency Scope V1)
 was ratified once the POS module (Phase 6) was implemented — see below.
+ADR-011 (Commerce Checkout Payment/Fulfillment and Idempotency Model V1)
+was ratified once the Commerce module (Phase 7A) was implemented — see
+below.
 
 ---
 
@@ -951,3 +954,139 @@ single-row precedent.
   compared to `CapturePaymentUseCase`'s single-row precedent, silently
   inheriting that precedent's description would have overstated what is
   actually verified.
+
+---
+
+## ADR-011 — Commerce Checkout Payment/Fulfillment and Idempotency Model V1
+
+**Status:** Accepted (scope: `CheckoutUseCase`'s payment/fulfillment
+handling and its cart-keyed idempotency, as actually shipped; not a future
+credentialed-gateway integration or an automatic fulfillment pipeline)
+
+**Context**
+
+Phase 7A (Commerce Engine, `docs/ROADMAP.md` §11) needed a checkout flow
+that turns a public, anonymous shopping cart into a real order. Two
+questions had no existing answer in this codebase: (1) how does an
+anonymous, unauthenticated checkout pay, given ADR-009 already ruled out
+any credentialed payment gateway (no Stripe/PayPal — no real credentials
+exist in this environment, and fabricating one would violate MASTER_SPEC
+§90 far more seriously than any other simulation gap already accepted
+here); and (2) what is the idempotency contract for a checkout request,
+given POS's own `RingUpSaleUseCase` (ADR-010) already established a
+pre-check-plus-unique-constraint pattern for a structurally similar
+multi-step orchestrator — is that pattern simply reusable as-is, or does
+Commerce's checkout have a genuinely different shape worth exploiting?
+
+**Decision**
+
+1. **No credentialed payment method exists for storefront checkout —
+   only the same `BANK_TRANSFER` adapter ADR-009 already built.**
+   `CheckoutUseCase` accepts an optional `paymentReference` string. If
+   provided, it is capture immediately via the existing
+   `CapturePaymentUseCase`/`BankTransferPaymentGatewayAdapter` (unchanged
+   from ADR-009 — Commerce added no new adapter). If omitted, checkout
+   still succeeds: the resulting `CommerceOrder.paymentId` is `null`, and
+   the real `SalesOrder` is left `CONFIRMED` — reservation made, payment
+   pending. A staff member captures payment later through the exact same
+   `POST /api/v1/payments/capture` screen already built for every other
+   channel (Sales/POS) — no new payment-review UI was built for Commerce
+   specifically, because none was needed: a `CommerceOrder`'s `SalesOrder`
+   is, to Payments, indistinguishable from any other channel's order.
+2. **Fulfillment is never automatic.** Unlike POS's `RingUpSaleUseCase`
+   (which fulfills — issues real stock — in the same call, because an
+   in-person sale is physically handed over immediately), `CheckoutUseCase`
+   never calls `FulfillSalesOrderUseCase`. An online order is routinely
+   picked/packed/shipped hours or days after payment clears; forcing
+   immediate fulfillment would misrepresent that real-world timing.
+   Fulfillment happens later, through Sales' own existing
+   `POST /api/v1/sales/orders/:id/fulfill` — again, no new endpoint.
+3. **Idempotency is keyed by the Cart's own id, not a caller-supplied
+   string.** POS's `idempotencyKey` (ADR-010) has to be caller-supplied
+   because a POS terminal can ring up many independent sales against the
+   same shift with no other natural per-transaction identity. A Commerce
+   checkout is different: `Cart.convert()` only ever succeeds once (`OPEN
+   -> CONVERTED`, never reversible), so the cart itself already **is** the
+   one-to-one dedup key for its resulting order — no client-generated
+   idempotency key is required at all. `CommerceOrder` has a real
+   `@@unique([tenantId, cartId])` constraint enforcing this at the
+   database level; `CheckoutUseCase` pre-checks
+   `findByCartId` for the common sequential-retry case (a shopper's
+   browser resubmitting "place order" after a lost response) and reacts to
+   the constraint's own P2002 violation
+   (`CommerceOrderIdempotencyConflictError`, translated by
+   `PrismaCommerceOrderRepository.save`) for a genuine concurrent race —
+   the exact same two-layer shape ADR-010 already established for POS,
+   just with a structurally cleaner key. Verified against real Postgres
+   with 5 genuinely concurrent checkout calls sharing one `cartId`: all 5
+   resolve successfully, all 5 converge on the same `CommerceOrder.id`,
+   and exactly one row exists at the end
+   (`apps/api/test/integration/commerce.integration-spec.ts`).
+4. **The same residual concurrency window ADR-010 documented for POS
+   applies here too, inherited rather than re-litigated.** The
+   idempotency pre-check runs once, at the top of `CheckoutUseCase`,
+   before any Sales/Payments call — under a genuinely simultaneous
+   multi-request race (not a sequential retry, which is fully covered),
+   each racer can independently create its own real `SalesOrder` before
+   any of them commits the final `CommerceOrder` row. What is guaranteed,
+   and what was actually verified, is that exactly one `CommerceOrder`
+   survives and every caller's result converges on it — not that only one
+   `SalesOrder` was ever created. A fuller fix (claiming the cart before
+   any Sales/Payments call) remains deliberately out of scope for this
+   phase, for the same reasons ADR-010 gave for POS.
+5. **A guest customer is resolved by email, not created fresh every
+   checkout.** `Customers`' new `FindCustomerByEmailUseCase` (added this
+   phase) is tried first; only if no match exists does `CheckoutUseCase`
+   create one via the existing `CreateCustomerUseCase`, with a generated
+   code (`GUEST-<random>`). This required lowercasing `Customer.email` at
+   write time in `CreateCustomerUseCase`/`UpdateCustomerUseCase` (a real,
+   small fix made during this phase — email was previously stored
+   verbatim in whatever case a caller typed, which would have silently
+   defeated case-insensitive repeat-guest matching).
+6. **The checkout's own actor for Inventory's `createdByUserId` (a real,
+   non-null column with no exception for anonymous callers) is a
+   seeded, non-interactive "Storefront System" `User` row**, created via
+   `StorefrontSystemUserSeeder` — the same code-owned, upserted-at-boot
+   pattern already used for the permission catalog. It never receives a
+   `UserCredential`, so it can never authenticate; `CheckoutUseCase` is
+   its only caller. This was necessary because every other inventory
+   mutation in this codebase is attributed to a real, logged-in staff
+   member — a public checkout genuinely has none, and relaxing the
+   `NOT NULL` constraint for every other module too was rejected as a far
+   larger, unjustified change.
+
+**Consequences**
+
+- A `CommerceOrder` with `paymentId: null` is a completely normal, expected
+  state — not an error condition — and both the admin "Pedidos" list and
+  any future Next.js storefront confirmation page must present it
+  honestly ("pago pendiente de confirmación"), never implying a charge
+  succeeded when it did not.
+- Adding a real credentialed gateway later (the moment real provider
+  credentials exist) is additive: a new `PaymentGateway` adapter,
+  `CheckoutUseCase` passing a chosen method through — no schema change to
+  `CommerceOrder` is required, since `paymentId` is already nullable and
+  already models "captured vs. not yet".
+- No automatic-fulfillment pipeline, no shipping-provider integration, no
+  webhook-based payment confirmation exist yet — all remain real,
+  documented gaps (`docs/SECURITY.md` "Commerce"), not simulated.
+
+**Alternatives considered**
+
+- **Fabricating a fake "credit card" capture path** that always succeeds:
+  rejected outright, for the same MASTER_SPEC §90 reason ADR-009 already
+  gave, applied with equal force to an anonymous, public-facing checkout.
+- **Requiring `paymentReference` and rejecting checkout without one**:
+  rejected — it would make "buy now, pay via bank transfer you haven't
+  sent yet" impossible, a real and common e-commerce flow (place order,
+  then transfer, then staff confirms), not a corner case to disallow.
+- **Auto-fulfilling at checkout, mirroring POS**: rejected — POS's
+  same-moment fulfillment is correct specifically because an in-person
+  sale physically hands over goods immediately; applying that assumption
+  to an online order would misrepresent real warehouse timing and could
+  issue stock for an order that later needs to be cancelled before it
+  ever ships.
+- **A caller-supplied idempotency key, mirroring POS exactly**: rejected
+  as unnecessary complexity — Commerce's own `Cart` already provides a
+  cleaner, structurally guaranteed one-to-one key that requires no
+  cooperation from the client at all, unlike POS's terminal-generated key.

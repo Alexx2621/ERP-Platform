@@ -46,7 +46,11 @@ export class CreateCustomerUseCase {
       name: input.name,
       legalName: input.legalName?.trim() || null,
       taxId,
-      email: input.email?.trim() || null,
+      // Lowercased so email-based lookups (FindCustomerByEmailUseCase, added
+      // for Commerce's guest checkout) match regardless of the case a
+      // caller originally typed — the same normalization Users already
+      // apply via normalizeEmail().
+      email: input.email?.trim().toLowerCase() || null,
       phone: input.phone?.trim() || null,
       addressLine: input.addressLine?.trim() || null,
       city: input.city?.trim() || null,

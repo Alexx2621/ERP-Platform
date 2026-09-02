@@ -4,6 +4,7 @@ import {
   CheckCircle,
   Coins,
   Factory,
+  Globe,
   LockKey,
   Package,
   ShoppingCartSimple,
@@ -86,6 +87,10 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           <Button type="button" variant="secondary" onClick={() => navigate("/pos")}>
             <Coins size={17} weight="bold" aria-hidden="true" />
             Punto de venta
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate("/commerce")}>
+            <Globe size={17} weight="bold" aria-hidden="true" />
+            Comercio
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
             <ArrowLeft size={17} weight="bold" aria-hidden="true" />

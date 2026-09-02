@@ -1,5 +1,6 @@
 import type {
   AcceptMembershipInvitationInput,
+  AddCartLineInput,
   AddPriceListItemInput,
   AddProductVariantInput,
   AddPurchaseOrderLineInput,
@@ -14,8 +15,11 @@ import type {
   AuthenticatedUser,
   BrandResponse,
   CapturePaymentInput,
+  CartResponse,
   CategoryResponse,
+  CheckoutInput,
   CloseShiftInput,
+  CommerceOrderResponse,
   CompanyResponse,
   ConvertQuoteInput,
   CreateBrandInput,
@@ -33,6 +37,7 @@ import type {
   CreateRoleInput,
   CreateSalesOrderInput,
   CreateSalesReturnInput,
+  CreateStorefrontInput,
   CreateSupplierInput,
   CreateSupplierInvoiceInput,
   CreateTaxInput,
@@ -48,6 +53,7 @@ import type {
   InviteMembershipInput,
   ListInventoryBalancesFilter,
   ListInventoryMovementsFilter,
+  ListCommerceOrdersFilter,
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
   ListPaymentsFilter,
@@ -61,6 +67,8 @@ import type {
   ListQuotesFilter,
   ListSalesOrdersFilter,
   ListSalesReturnsFilter,
+  ListStorefrontProductsFilter,
+  ListStorefrontsFilter,
   ListSupplierInvoicesFilter,
   LoginInput,
   MembershipResponse,
@@ -83,6 +91,9 @@ import type {
   ProductVariantResponse,
   ProvisionTenantInput,
   ProvisionTenantResponse,
+  PublicProductDetailResponse,
+  PublicProductSummaryResponse,
+  PublishProductInput,
   PurchaseOrderLineResponse,
   PurchaseOrderResponse,
   PurchaseReceiptLineResponse,
@@ -112,12 +123,15 @@ import type {
   SetProductStatusInput,
   SetProductVariantStatusInput,
   SetSettingValueInput,
+  SetStorefrontStatusInput,
   SetSupplierStatusInput,
   SetTaxStatusInput,
   SetWarehouseStatusInput,
   SessionResponse,
   SettingDefinitionResponse,
   SettingValueResponse,
+  StorefrontProductResponse,
+  StorefrontResponse,
   SupplierInvoiceResponse,
   SupplierResponse,
   TaxResponse,
@@ -128,6 +142,7 @@ import type {
   UpdateBrandInput,
   UpdateCategoryInput,
   UpdateCustomerInput,
+  UpdateCartLineQuantityInput,
   UpdatePriceListInput,
   UpdatePriceListItemInput,
   UpdateProductInput,
@@ -2082,6 +2097,181 @@ export class ApiClient {
       companyId,
       body: input,
     });
+  }
+
+  // --- Commerce: admin (authenticated) side ---
+
+  async listStorefronts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListStorefrontsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<StorefrontResponse[]> {
+    return this.request<StorefrontResponse[]>(`/commerce/storefronts${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createStorefront(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateStorefrontInput,
+  ): Promise<StorefrontResponse> {
+    return this.request<StorefrontResponse>("/commerce/storefronts", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setStorefrontStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    storefrontId: string,
+    input: SetStorefrontStatusInput,
+  ): Promise<StorefrontResponse> {
+    return this.request<StorefrontResponse>(`/commerce/storefronts/${encodeURIComponent(storefrontId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listStorefrontProducts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    storefrontId: string,
+    filter: ListStorefrontProductsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<StorefrontProductResponse[]> {
+    return this.request<StorefrontProductResponse[]>(`/commerce/storefronts/${encodeURIComponent(storefrontId)}/products${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async publishProduct(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    storefrontId: string,
+    input: PublishProductInput,
+  ): Promise<StorefrontProductResponse> {
+    return this.request<StorefrontProductResponse>(`/commerce/storefronts/${encodeURIComponent(storefrontId)}/products`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async unpublishProduct(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    storefrontId: string,
+    productId: string,
+  ): Promise<StorefrontProductResponse> {
+    return this.request<StorefrontProductResponse>(
+      `/commerce/storefronts/${encodeURIComponent(storefrontId)}/products/${encodeURIComponent(productId)}`,
+      { method: "DELETE", accessToken, tenantSlug, companyId },
+    );
+  }
+
+  async listCommerceOrders(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListCommerceOrdersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<CommerceOrderResponse[]> {
+    return this.request<CommerceOrderResponse[]>(`/commerce/orders${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  // --- Commerce: public storefront side (no accessToken/tenantSlug — see docs/DECISIONS.md ADR-011) ---
+
+  async listPublicProducts(storefrontCode: string, limit?: number, signal?: AbortSignal): Promise<PublicProductSummaryResponse[]> {
+    return this.request<PublicProductSummaryResponse[]>(
+      `/storefront/${encodeURIComponent(storefrontCode)}/products${this.buildQuery({ limit })}`,
+      { signal },
+    );
+  }
+
+  async getPublicProduct(storefrontCode: string, productId: string, signal?: AbortSignal): Promise<PublicProductDetailResponse> {
+    return this.request<PublicProductDetailResponse>(
+      `/storefront/${encodeURIComponent(storefrontCode)}/products/${encodeURIComponent(productId)}`,
+      { signal },
+    );
+  }
+
+  async createCart(storefrontCode: string, cartId?: string): Promise<CartResponse> {
+    return this.request<CartResponse>(`/storefront/${encodeURIComponent(storefrontCode)}/carts`, {
+      method: "POST",
+      body: { cartId },
+    });
+  }
+
+  async getCart(storefrontCode: string, cartId: string, signal?: AbortSignal): Promise<CartResponse> {
+    return this.request<CartResponse>(`/storefront/${encodeURIComponent(storefrontCode)}/carts/${encodeURIComponent(cartId)}`, { signal });
+  }
+
+  async addCartLine(storefrontCode: string, cartId: string, input: AddCartLineInput): Promise<CartResponse> {
+    return this.request<CartResponse>(`/storefront/${encodeURIComponent(storefrontCode)}/carts/${encodeURIComponent(cartId)}/lines`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  async updateCartLineQuantity(
+    storefrontCode: string,
+    cartId: string,
+    lineId: string,
+    input: UpdateCartLineQuantityInput,
+  ): Promise<CartResponse> {
+    return this.request<CartResponse>(
+      `/storefront/${encodeURIComponent(storefrontCode)}/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}`,
+      { method: "PUT", body: input },
+    );
+  }
+
+  async removeCartLine(storefrontCode: string, cartId: string, lineId: string): Promise<CartResponse> {
+    return this.request<CartResponse>(
+      `/storefront/${encodeURIComponent(storefrontCode)}/carts/${encodeURIComponent(cartId)}/lines/${encodeURIComponent(lineId)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async checkout(storefrontCode: string, cartId: string, input: CheckoutInput): Promise<CommerceOrderResponse> {
+    return this.request<CommerceOrderResponse>(`/storefront/${encodeURIComponent(storefrontCode)}/checkout`, {
+      method: "POST",
+      body: { cartId, ...input },
+    });
+  }
+
+  async getPublicOrder(storefrontCode: string, orderId: string, signal?: AbortSignal): Promise<CommerceOrderResponse> {
+    return this.request<CommerceOrderResponse>(
+      `/storefront/${encodeURIComponent(storefrontCode)}/orders/${encodeURIComponent(orderId)}`,
+      { signal },
+    );
   }
 
   /** Builds a `?key=value&...` query string from a flat filter object, skipping undefined/empty values. */

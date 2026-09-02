@@ -45,7 +45,7 @@ export class UpdateCustomerUseCase {
     customer.update(input.name, {
       legalName: input.legalName === undefined ? customer.legalName : input.legalName.trim() || null,
       taxId,
-      email: input.email === undefined ? customer.email : input.email.trim() || null,
+      email: input.email === undefined ? customer.email : input.email.trim().toLowerCase() || null,
       phone: input.phone === undefined ? customer.phone : input.phone.trim() || null,
       addressLine: input.addressLine === undefined ? customer.addressLine : input.addressLine.trim() || null,
       city: input.city === undefined ? customer.city : input.city.trim() || null,

@@ -354,6 +354,46 @@ export interface ListPosReturnsFilter {
   limit?: number;
 }
 
+export type StorefrontStatus = components["schemas"]["StorefrontResponseDto"]["status"];
+export type StorefrontResponse = components["schemas"]["StorefrontResponseDto"];
+export type CreateStorefrontInput = components["schemas"]["CreateStorefrontDto"];
+export type SetStorefrontStatusInput = components["schemas"]["SetStorefrontStatusDto"];
+
+export type StorefrontProductStatus = components["schemas"]["StorefrontProductResponseDto"]["status"];
+export type StorefrontProductResponse = components["schemas"]["StorefrontProductResponseDto"];
+export type PublishProductInput = components["schemas"]["PublishProductDto"];
+
+export type CommerceOrderResponse = components["schemas"]["CommerceOrderResponseDto"];
+
+export type PublicProductSummaryResponse = components["schemas"]["PublicProductSummaryResponseDto"];
+export type PublicProductVariantResponse = Omit<components["schemas"]["PublicProductVariantResponseDto"], "attributes"> & {
+  attributes: Record<string, unknown>;
+};
+export type PublicProductDetailResponse = Omit<components["schemas"]["PublicProductDetailResponseDto"], "variants"> & {
+  variants: PublicProductVariantResponse[];
+};
+
+export type CartLineResponse = components["schemas"]["CartLineResponseDto"];
+export type CartStatus = components["schemas"]["CartResponseDto"]["status"];
+export type CartResponse = components["schemas"]["CartResponseDto"];
+export type AddCartLineInput = components["schemas"]["AddCartLineDto"];
+export type UpdateCartLineQuantityInput = components["schemas"]["UpdateCartLineQuantityDto"];
+export type CheckoutInput = components["schemas"]["CheckoutRequestDto"];
+
+export interface ListStorefrontsFilter {
+  status?: StorefrontStatus;
+  limit?: number;
+}
+
+export interface ListStorefrontProductsFilter {
+  limit?: number;
+}
+
+export interface ListCommerceOrdersFilter {
+  storefrontId?: string;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;
