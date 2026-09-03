@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreateWarehouseUseCase } from "../application/use-cases/create-warehouse.use-case";
 import { UpdateWarehouseUseCase } from "../application/use-cases/update-warehouse.use-case";
@@ -23,7 +24,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/warehouses")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("warehouses")
 export class WarehousesController {
   constructor(
     private readonly createWarehouse: CreateWarehouseUseCase,

@@ -3,11 +3,21 @@
 Estado: **El subconjunto "mínimo" (App Registry: `AppDefinition`/
 `TenantApp`/`AppConfiguration`, catálogo code-owned, chequeo real de
 dependencias/dependents) está implementado y ratificado en
-`docs/DECISIONS.md` ADR-005. El resto de este documento (manifests
-compilados en build, SemVer ranges, la máquina de estados completa,
-entitlement/facturación, registries de contribución de frontend/backend)
-sigue como propuesta de referencia sin implementar — ver ADR-005
-"Deferred".**
+`docs/DECISIONS.md` ADR-005. Desde ADR-015 (Fase 11, sesión 35), el
+catálogo (`FOUNDATION_APPS`) contiene los 15 módulos de negocio reales
+construidos en las Fases 2-10, con sus dependencias reales, y
+`AppEnablementGuard` aplica ese estado de verdad sobre los 32
+controladores de esos módulos — deshabilitar una app ahora bloquea de
+verdad sus propias rutas, no solo la pantalla "Apps". Un tenant nuevo
+habilita automáticamente el catálogo completo al aprovisionarse
+(`EnableAllCatalogAppsUseCase`), y un seeder de backfill
+(`TenantAppEnablementSyncSeeder`) hace lo mismo para tenants ya
+existentes en cada arranque del API. El resto de este documento
+(manifests compilados en build, SemVer ranges, la máquina de estados
+completa, entitlement/facturación, registries de contribución de
+frontend/backend, un "Plugin SDK" separado, un modelo de confianza real
+para terceros) sigue como propuesta de referencia sin implementar — ver
+ADR-005 y ADR-015, ambos "Deferred".**
 
 Alcance: módulos/apps oficiales, App Registry y extensiones controladas de V1
 

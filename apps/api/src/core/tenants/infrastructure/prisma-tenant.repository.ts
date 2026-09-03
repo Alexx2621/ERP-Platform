@@ -17,6 +17,11 @@ export class PrismaTenantRepository implements TenantRepository {
     return record ? Tenant.create(record) : null;
   }
 
+  async findAllActive(): Promise<Tenant[]> {
+    const records = await this.prisma.tenant.findMany({ where: { status: "ACTIVE" } });
+    return records.map((record) => Tenant.create(record));
+  }
+
   async save(tenant: Tenant): Promise<void> {
     const props = tenant.toProps();
     await this.prisma.tenant.upsert({

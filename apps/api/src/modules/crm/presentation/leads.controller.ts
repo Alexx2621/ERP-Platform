@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreateLeadUseCase } from "../application/use-cases/create-lead.use-case";
 import { UpdateLeadUseCase } from "../application/use-cases/update-lead.use-case";
@@ -29,7 +30,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/crm/leads")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("crm")
 export class LeadsController {
   constructor(
     private readonly createLead: CreateLeadUseCase,

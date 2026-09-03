@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CatalogModule } from "../catalog";
 import { PRICE_LIST_REPOSITORY } from "./domain/price-list.repository";
 import { PRICE_LIST_ITEM_REPOSITORY } from "./domain/price-list-item.repository";
@@ -27,7 +28,7 @@ import { PriceListsController } from "./presentation/price-lists.controller";
  * `GetPriceListItemUseCase`.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, AppRegistryModule],
   controllers: [PriceListsController],
   providers: [
     { provide: PRICE_LIST_REPOSITORY, useClass: PrismaPriceListRepository },

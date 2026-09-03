@@ -15,6 +15,10 @@ export class InMemoryTenantRepository implements TenantRepository {
     return null;
   }
 
+  async findAllActive(): Promise<Tenant[]> {
+    return [...this.records.values()].filter((tenant) => tenant.status === "ACTIVE");
+  }
+
   async save(tenant: Tenant): Promise<void> {
     this.records.set(tenant.id, tenant);
   }

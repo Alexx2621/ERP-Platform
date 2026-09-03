@@ -1,42 +1,22 @@
 import { expect, test } from "@playwright/test";
-import pg from "pg";
-
-const { Client } = pg;
 
 /**
- * FOUNDATION_APPS stays empty in production (docs/WORK_QUEUE.md — no
- * business module beyond the Core exists yet to register). This test
- * proves the App Registry mechanism itself end-to-end using two
- * test-only fixture apps, inserted directly like `grantPlatformAdmin` in
- * platform-admin.spec.ts — the ephemeral Testcontainers database is
- * discarded after the run, so no cleanup is needed here.
+ * docs/DECISIONS.md ADR-015: the app catalog now holds the 15 real
+ * business modules (`FOUNDATION_APPS`), a new tenant auto-enables all of
+ * them at provisioning (preserving the platform's pre-ADR-015 behavior),
+ * and — for the first time — disabling one for real blocks its own
+ * controllers' routes via `AppEnablementGuard`, not just the "Apps" screen
+ * itself. This test proves that end-to-end against the real backend: every
+ * app starts enabled, disabling one with active dependents is rejected by
+ * the real dependency graph, and disabling "sales" for real makes the
+ * "Ventas" screen itself fail with a real 403 — re-enabling it restores it.
  */
-async function seedFixtureApps(): Promise<void> {
-  const connectionString = process.env.E2E_DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("E2E_DATABASE_URL was not set by global-setup.ts");
-  }
-  const client = new Client({ connectionString });
-  await client.connect();
-  try {
-    await client.query(
-      `INSERT INTO app_definitions (id, key, name, version, kind, depends_on_keys, created_at, updated_at)
-       VALUES
-         (gen_random_uuid(), 'products', 'Products', '1.0.0', 'BUSINESS_APP', '{}', now(), now()),
-         (gen_random_uuid(), 'manufacturing', 'Manufacturing', '1.0.0', 'BUSINESS_APP', '{products}', now(), now())
-       ON CONFLICT (key) DO NOTHING`,
-    );
-  } finally {
-    await client.end();
-  }
-}
-
-test("enables and disables apps for a tenant, enforcing dependencies and dependents", async ({ page }) => {
+test("every catalog app starts enabled for a new tenant, and disabling one for real blocks its own module", async ({
+  page,
+}) => {
   const runId = `${Date.now()}-${process.pid}`;
   const tenantName = `Apps E2E ${runId}`;
   const tenantSlug = `apps-e2e-${runId}`;
-
-  await seedFixtureApps();
 
   await page.goto("/register");
   await page.getByLabel("Nombre completo").fill("Propietaria Apps E2E");
@@ -63,65 +43,101 @@ test("enables and disables apps for a tenant, enforcing dependencies and depende
   expect((await provisioningResponse).status()).toBe(201);
   await expect(page).toHaveURL(/\/workspace$/);
 
+  // A real customer — Ventas' own screen shows a page-level "no customers"
+  // notice before ever mounting its Cotizaciones/Pedidos/Devoluciones tabs
+  // (and therefore before ever calling /sales/quotes at all), so this is
+  // required for the later real-403 check to have a request to observe.
+  await page.getByRole("button", { name: "Contactos" }).click();
+  await page.getByRole("button", { name: "Nuevo cliente" }).click();
+  const customerDialog = page.getByRole("dialog", { name: "Nuevo cliente" });
+  await customerDialog.getByLabel("Código").fill("CUST-01");
+  await customerDialog.getByLabel("Nombre").fill("Distribuidora Aurora");
+  const createCustomerResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/customers") && response.request().method() === "POST",
+  );
+  await customerDialog.getByRole("button", { name: "Crear" }).click();
+  expect((await createCustomerResponse).status()).toBe(201);
+
+  await page.getByRole("button", { name: "Volver al workspace" }).click();
   await page.getByRole("button", { name: "Apps" }).click();
   await expect(page).toHaveURL(/\/apps$/);
   await expect(page.getByRole("heading", { name: "Apps", exact: true })).toBeVisible();
 
-  // Plain hasText filtering is ambiguous here: "Manufacturing"'s dependency
-  // column renders the text "products" (its dependsOnKeys), and Playwright's
-  // hasText string filter matches case-insensitively — so a "Products"
-  // filter also matches the Manufacturing row. Anchor on the row's leading
-  // "name key" text (rendered as `<b>{name}</b><code>{key}</code>`) instead.
-  const manufacturingRow = page.getByRole("row", { name: /^Manufacturing\s+manufacturing\b/ });
-  const productsRow = page.getByRole("row", { name: /^Products\s+products\b/ });
-  await expect(manufacturingRow).toContainText("Deshabilitada");
-  await expect(productsRow).toContainText("Deshabilitada");
+  // Real provisioning auto-enabled all 15 real business modules — no manual
+  // enablement needed before this test even starts.
+  const salesRow = page.getByRole("row", { name: /^Ventas\s+sales\b/ });
+  const paymentsRow = page.getByRole("row", { name: /^Pagos\s+payments\b/ });
+  const posRow = page.getByRole("row", { name: /^Punto de venta\s+pos\b/ });
+  const commerceRow = page.getByRole("row", { name: /^Comercio\s+commerce\b/ });
+  for (const row of [salesRow, paymentsRow, posRow, commerceRow]) {
+    await expect(row).toContainText("Habilitada");
+  }
 
-  // Enabling the dependent before its dependency is rejected by the real backend.
-  const rejectedEnableResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/manufacturing/enable") && response.request().method() === "POST",
-  );
-  await manufacturingRow.getByRole("button", { name: "Habilitar Manufacturing" }).click();
-  expect((await rejectedEnableResponse).status()).toBe(409);
-  await expect(page.getByText("Missing required, enabled dependencies: products.")).toBeVisible();
-  await expect(manufacturingRow).toContainText("Deshabilitada");
-
-  // Enable products, then manufacturing — both real HTTP round trips.
-  const enableProductsResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/products/enable") && response.request().method() === "POST",
-  );
-  await productsRow.getByRole("button", { name: "Habilitar Products" }).click();
-  expect((await enableProductsResponse).status()).toBe(201);
-  await expect(productsRow).toContainText("Habilitada");
-
-  const enableManufacturingResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/manufacturing/enable") && response.request().method() === "POST",
-  );
-  await manufacturingRow.getByRole("button", { name: "Habilitar Manufacturing" }).click();
-  expect((await enableManufacturingResponse).status()).toBe(201);
-  await expect(manufacturingRow).toContainText("Habilitada");
-
-  // Disabling products while manufacturing still depends on it is rejected.
+  // Disabling "sales" while payments/pos/commerce still depend on it (and are
+  // still enabled) is rejected by the real dependents check.
   const rejectedDisableResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/products/disable") && response.request().method() === "POST",
+    (response) => response.url().endsWith("/api/v1/apps/sales/disable") && response.request().method() === "POST",
   );
-  await productsRow.getByRole("button", { name: "Deshabilitar Products" }).click();
+  await salesRow.getByRole("button", { name: "Deshabilitar Ventas" }).click();
   expect((await rejectedDisableResponse).status()).toBe(409);
-  await expect(page.getByText("Cannot disable: still required by enabled app(s): manufacturing.")).toBeVisible();
-  await expect(productsRow).toContainText("Habilitada");
+  await expect(salesRow).toContainText("Habilitada");
 
-  // Disable manufacturing first, then products — real dependents check satisfied.
-  const disableManufacturingResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/manufacturing/disable") && response.request().method() === "POST",
-  );
-  await manufacturingRow.getByRole("button", { name: "Deshabilitar Manufacturing" }).click();
-  expect((await disableManufacturingResponse).status()).toBe(201);
-  await expect(manufacturingRow).toContainText("Deshabilitada");
+  // Disable sales' real dependents first, in the order their own dependents allow.
+  for (const [row, key, label] of [
+    [commerceRow, "commerce", "Comercio"],
+    [posRow, "pos", "Punto de venta"],
+    [paymentsRow, "payments", "Pagos"],
+  ] as const) {
+    const disableResponse = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/v1/apps/${key}/disable`) && response.request().method() === "POST",
+    );
+    await row.getByRole("button", { name: `Deshabilitar ${label}` }).click();
+    expect((await disableResponse).status()).toBe(201);
+    await expect(row).toContainText("Deshabilitada");
+  }
 
-  const disableProductsResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/v1/apps/products/disable") && response.request().method() === "POST",
+  // Now disabling "sales" itself succeeds for real.
+  const disableSalesResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/apps/sales/disable") && response.request().method() === "POST",
   );
-  await productsRow.getByRole("button", { name: "Deshabilitar Products" }).click();
-  expect((await disableProductsResponse).status()).toBe(201);
-  await expect(productsRow).toContainText("Deshabilitada");
+  await salesRow.getByRole("button", { name: "Deshabilitar Ventas" }).click();
+  expect((await disableSalesResponse).status()).toBe(201);
+  await expect(salesRow).toContainText("Deshabilitada");
+
+  // The real proof of ADR-015: Ventas' own screen now fails with a real 403
+  // from AppEnablementGuard, not just the Apps screen showing it disabled.
+  await page.getByRole("button", { name: "Volver al workspace" }).click();
+  const blockedQuotesResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/sales/quotes") && response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: "Ventas" }).click();
+  expect((await blockedQuotesResponse).status()).toBe(403);
+  await expect(page.getByText('App "sales" is not enabled for this tenant.').first()).toBeVisible();
+
+  // Enabling a dependent (payments) before its own dependency (sales, still
+  // disabled) is rejected by the real dependency check.
+  await page.getByRole("button", { name: "Volver al workspace" }).click();
+  await page.getByRole("button", { name: "Apps" }).click();
+  const rejectedEnableResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/apps/payments/enable") && response.request().method() === "POST",
+  );
+  await paymentsRow.getByRole("button", { name: "Habilitar Pagos" }).click();
+  expect((await rejectedEnableResponse).status()).toBe(409);
+  await expect(paymentsRow).toContainText("Deshabilitada");
+
+  // Re-enabling sales restores the real module immediately.
+  const enableSalesResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/apps/sales/enable") && response.request().method() === "POST",
+  );
+  await salesRow.getByRole("button", { name: "Habilitar Ventas" }).click();
+  expect((await enableSalesResponse).status()).toBe(201);
+  await expect(salesRow).toContainText("Habilitada");
+
+  await page.getByRole("button", { name: "Volver al workspace" }).click();
+  const restoredQuotesResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/sales/quotes") && response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: "Ventas" }).click();
+  expect((await restoredQuotesResponse).status()).toBe(200);
+  await expect(page.getByText("Todavía no hay cotizaciones", { exact: false })).toBeVisible();
 });

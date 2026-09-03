@@ -6,9 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-03 (sesión 34,
-Fase 10 — Manufactura completa en un solo bloque de trabajo, a pedido
-explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-03 (sesión 35,
+Fase 11 — Plugin Platform completa a alcance proporcional en un solo
+bloque de trabajo, a pedido explícito del usuario). Modelo operativo
+actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,11 +22,30 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 10 (Manufactura) está completa** — ver "Hecho — sesión 34" abajo,
-en un solo bloque de trabajo a pedido explícito del usuario. El siguiente
-trabajo no bloqueado es Fase 11 (Plugin Platform) según
-`docs/ROADMAP.md` §15, salvo que el usuario indique otra prioridad.
-Alcance deliberadamente fuera de Fase 10 y diferido (no simulado —
+**Fase 11 (Plugin Platform) está completa a alcance proporcional** — ver
+"Hecho — sesión 35" abajo, en un solo bloque de trabajo a pedido
+explícito del usuario. El siguiente trabajo no bloqueado es Fase 12
+(Scale) según `docs/ROADMAP.md` §16 — pero esa fase es explícitamente
+"solo por evidencia": cada iniciativa ahí (read replicas, partitioning,
+OpenSearch, servicios dedicados, Kafka/Kubernetes, multi-region) requiere
+sus propias métricas y ADR, no un trabajo a iniciar automáticamente sin
+una señal real de necesidad — no hay tráfico de producción todavía. Salvo
+que el usuario indique otra prioridad, el trabajo de mantenimiento
+razonable a continuar es ratificar formalmente ADR-001/002/003 (Modular
+Monolith, PostgreSQL/Prisma, Multi-Tenancy — sus decisiones ya están
+implementadas y verificadas repetidamente, solo falta el documento
+formal). Alcance deliberadamente fuera de Fase 11 y diferido (no
+simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
+"Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
+SDK" separado de `@erp/api-client`, rangos SemVer/certificación de
+compatibilidad (cada app del catálogo tiene una sola versión todavía),
+un "marketplace interno" visualmente distinto de la pantalla "Apps" ya
+existente, registries de contribución de frontend/backend declarativos,
+gatear el storefront público de Commerce sobre la habilitación de
+"commerce", entitlement/facturación SaaS conectado al enablement, y
+cualquier modelo de confianza real para plugins de terceros más allá del
+spike ya documentado en `docs/PLUGINS.md` §16. Alcance deliberadamente
+fuera de Fase 10 y diferido (no simulado —
 decisión central de la fase, ver `docs/DECISIONS.md` ADR-014 y "Known
 limitations" en "Manufacturing" de `docs/SECURITY.md`): cálculo de costos
 en cualquier forma (condicionado explícitamente por `docs/ROADMAP.md` §14
@@ -96,6 +116,94 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 35 (Plugin Platform — Fase 11, alcance proporcional)
+
+Fase 11 completa a alcance proporcional en un solo bloque de trabajo, a
+pedido explícito del usuario ("Continua con la siguiente fase y dejala
+terminada de una vez"), inmediatamente después de cerrar la Fase 10 (ver
+"Hecho — sesión 34" abajo): el catálogo del App Registry pasó de vacío a
+los 15 módulos de negocio reales, con `AppEnablementGuard` haciendo que
+deshabilitar una app tenga por primera vez un efecto real sobre sus
+propias rutas — los entregables útiles y no fabricados de
+`docs/ROADMAP.md` §15, con una decisión de alcance deliberada y
+documentada en `docs/DECISIONS.md` ADR-015 (nuevo): construir literalmente
+un "Plugin SDK" separado, rangos SemVer, un marketplace visualmente
+distinto, o un modelo de confianza para terceros habría sido exactamente
+el tipo de maquinaria prematura que MASTER_SPEC §59/§93 advierte evitar,
+dado que cada uno de esos ya tiene un sustituto real y suficiente en este
+código base (`@erp/api-client`, la pantalla "Apps" ya existente, una sola
+versión por app, `docs/PLUGINS.md` §16) o carece de un segundo caso real
+que justifique la abstracción.
+
+- **`apps/api/src/core/app-registry/`**: `FOUNDATION_APPS` poblado con
+  los 15 módulos de negocio reales (`catalog`, `customers`, `suppliers`,
+  `taxes`, `warehouses`, `accounting`, `pricing`, `crm`, `inventory`,
+  `sales`, `payments`, `purchasing`, `pos`, `commerce`, `manufacturing`),
+  cada `dependsOnKeys` verificado contra el `imports` real de su propio
+  `*.module.ts`. `AppEnablementGuard` (nuevo, `@RequireApp(key)` a nivel
+  de clase, leído vía `Reflector.getAllAndOverride`) aplicado sobre los
+  32 controladores de esos 15 módulos, justo después de
+  `TenantContextGuard` — la única excepción deliberada es el controlador
+  público de Commerce (`StorefrontPublicController`), que nunca corre
+  `TenantContextGuard`. `EnableAllCatalogAppsUseCase` (nuevo, habilita
+  todo el catálogo para un tenant en orden de dependencias, reportando
+  solo lo genuinamente nuevo) e `IsAppEnabledForTenantUseCase` (nuevo, la
+  consulta real que usa el guard).
+- **Bug real de diseño encontrado y corregido antes del primer commit**:
+  `EnableAllCatalogAppsUseCase` reportaba como "recién habilitada"
+  cualquier app procesada sin error — pero como `EnableAppUseCase` es en
+  sí mismo idempotente, esto hacía que un segundo backfill sobre un
+  tenant ya completo reportara todo como "recién habilitado" en vez de
+  nada — corregido consultando el estado previo de cada `TenantApp` antes
+  de intentar habilitarla.
+- **`TenantsController.provision()`** llama `EnableAllCatalogAppsUseCase`
+  justo después de `seedOwnerRole` — un tenant nuevo habilita
+  automáticamente el catálogo completo, preservando el comportamiento
+  previo de la plataforma ahora que el enforcement es real.
+  **`TenantAppEnablementSyncSeeder`** (nuevo, `apps/api/src/core/tenants/
+  application/`) corre en cada arranque del API — backfill real para
+  cada tenant `ACTIVE` ya existente, mismo patrón que
+  `OwnerRolePermissionSyncSeeder` (sesión 28).
+- **`AppRegistryModule` refactorizado a módulo hoja** — sin ninguna
+  dependencia hacia otro módulo del Core. `AppsController` movido a
+  `tenants/presentation/apps.controller.ts` para evitar un ciclo real de
+  módulos, mismo patrón ya usado por `RolesController`/
+  `AuditEntriesController`/`NotificationsController`/`MembershipsController`.
+- Sin migración de base de datos — reutiliza `app_definitions`/
+  `tenant_apps`/`app_configurations` ya existentes desde ADR-005.
+- **Bug real encontrado y corregido durante la propia escritura del
+  E2E**: la pantalla de Ventas muestra un aviso a nivel de página
+  completa ("Todavía no hay clientes...") antes de montar la pestaña de
+  Cotizaciones cuando la empresa no tiene clientes — sin un cliente real
+  creado de antemano, el E2E nunca observaba la petición real a
+  `/sales/quotes` que necesitaba para confirmar el `403` real; corregido
+  agregando la creación de un cliente real, no un cambio de producción.
+- Tests: 19 tests unitarios nuevos en `apps/api` (4 de
+  `EnableAllCatalogAppsUseCase`, 5 de `IsAppEnabledForTenantUseCase`, 5
+  de `AppEnablementGuard`, 3 de `TenantAppEnablementSyncSeeder`, 2 de
+  `app-catalog.spec.ts` extendido) — 1055 tests unitarios totales en
+  `apps/api` (antes 1036). 1 escenario de integración nuevo contra
+  Postgres real con el catálogo real completo, habilitación completa de
+  un tenant nuevo, backfill real de un tenant parcialmente habilitado, y
+  aislamiento cross-tenant — 48/48 en total (antes 47). **E2E real
+  reescrito por completo** (`apps/e2e/tests/app-registry.spec.ts`,
+  reemplazando la versión de sesión 22 basada en fixtures SQL): ciclo de
+  vida completo por navegador real — las 15 apps reales confirmadas
+  habilitadas tras el aprovisionamiento, rechazo real de deshabilitar
+  "sales" con dependents activos, deshabilitación real en cascada, la
+  propia pantalla de Ventas fallando con un `403` real, un intento de
+  habilitar un dependiente antes que su dependencia rechazado, y la
+  pantalla restaurada tras re-habilitar — 18/18 Playwright en total
+  (mismo conteo de archivos, uno reescrito).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 9
+  paquetes/apps, `pnpm --filter @erp/api test` (1055/1055), `pnpm
+  --filter @erp/api test:integration` (48/48 contra Postgres real),
+  `pnpm --filter @erp/e2e run test:e2e` (18/18 Playwright, corrida contra
+  infraestructura efímera tras detener los cuatro servidores persistentes
+  y reiniciar Docker Desktop, detenido silenciosamente entre bloques de
+  esta sesión — mismo patrón operativo ya documentado en sesiones
+  anteriores) — todo verde.
 
 ### Hecho — sesión 34 (Manufacturing — Fase 10, completa de una vez)
 
@@ -3345,8 +3453,19 @@ costo en ningún lugar del módulo — `docs/ROADMAP.md` §14 condiciona
 explícitamente el costeo a "un modelo de costeo aprobado antes de
 calcular costos", nunca aprobado en este código base — ni trazabilidad de
 lote/serie, heredando en cambio el mismo hueco ya documentado de
-Inventory en vez de construir una versión parcial e inconsistente).
-Pendientes de numerar formalmente cuando corresponda: ADR-001 (Modular
-Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el
-patrón de `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra
-Postgres real: manual, integration test, y ahora E2E de navegador).
+Inventory en vez de construir una versión parcial e inconsistente);
+ADR-015 (App Registry Enablement Enforcement V1 — implementado y
+ratificado en sesión 35, catálogo poblado con los 15 módulos de negocio
+reales y `AppEnablementGuard` aplicado sobre sus 32 controladores,
+deshabilitar una app tiene por primera vez un efecto real; un tenant
+nuevo auto-habilita el catálogo completo al aprovisionarse y un seeder de
+backfill hace lo mismo para tenants ya existentes en cada arranque,
+preservando el comportamiento previo de la plataforma; deliberadamente
+sin un Plugin SDK separado, sin rangos SemVer, sin un marketplace
+visualmente distinto de la pantalla "Apps" ya existente, y sin ningún
+modelo de confianza real para terceros más allá del spike ya documentado
+en `docs/PLUGINS.md` §16). Pendientes de numerar formalmente cuando
+corresponda: ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma),
+ADR-003 (Multi-Tenancy — el patrón de `docs/MULTITENANCY.md` §8 ya está
+verificado tres veces contra Postgres real: manual, integration test, y
+ahora E2E de navegador).

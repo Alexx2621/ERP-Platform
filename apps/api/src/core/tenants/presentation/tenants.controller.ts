@@ -6,6 +6,7 @@ import { CurrentAuth, type AuthContext, SessionAuthGuard } from "../../auth";
 import { SeedOwnerRoleUseCase } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
 import { ListCompaniesUseCase } from "../../companies";
+import { EnableAllCatalogAppsUseCase } from "../../app-registry";
 import { ProvisionTenantUseCase } from "../application/provision-tenant.use-case";
 import { ListMyTenantsUseCase } from "../application/list-my-tenants.use-case";
 import { ProvisionTenantDto } from "./dto/provision-tenant.dto";
@@ -28,6 +29,7 @@ export class TenantsController {
     private readonly seedOwnerRole: SeedOwnerRoleUseCase,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
     private readonly listCompanies: ListCompaniesUseCase,
+    private readonly enableAllCatalogApps: EnableAllCatalogAppsUseCase,
   ) {}
 
   /**
@@ -46,6 +48,15 @@ export class TenantsController {
    * transaction, and `apps/worker`'s `TenantProvisionedNotificationHandler`
    * consumes it idempotently (ADR-008's inbox) to request the notification.
    * This is genuinely event-driven now, not a direct call dressed up as one.
+   *
+   * `enableAllCatalogApps` (docs/DECISIONS.md ADR-015) is a third,
+   * equally non-atomic step: V1 has no per-app opt-in step in onboarding
+   * yet (MASTER_SPEC §68's "elegir aplicaciones" isn't built), so every
+   * new tenant starts with the entire current app catalog enabled —
+   * preserving the platform's pre-ADR-015 behavior (every module worked
+   * for every tenant) now that `AppEnablementGuard` genuinely enforces
+   * enablement on business modules' routes. The tenant can disable
+   * individual apps for real afterward from the existing "Apps" screen.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -90,6 +101,16 @@ export class TenantsController {
         action: "access_control.owner_role.seeded",
         resource: "RoleAssignment",
         newValues: { membershipId: result.ownerMembership.id },
+        correlationId: request.correlationId,
+      });
+
+      const enabledAppKeys = await this.enableAllCatalogApps.execute(result.tenant.id);
+      await this.recordAuditEntry.execute({
+        userId: null,
+        tenantId: result.tenant.id,
+        action: "app_registry.tenant_apps.bulk_enabled",
+        resource: "TenantApp",
+        newValues: { keys: enabledAppKeys },
         correlationId: request.correlationId,
       });
 

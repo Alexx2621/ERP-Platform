@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CatalogModule } from "../catalog";
 import { WarehousesModule } from "../warehouses";
 import { TaxesModule } from "../taxes";
@@ -66,6 +67,7 @@ import { SalesReturnsController } from "./presentation/sales-returns.controller"
     PricingModule,
     CustomersModule,
     InventoryModule,
+    AppRegistryModule,
   ],
   controllers: [QuotesController, SalesOrdersController, SalesReturnsController],
   providers: [

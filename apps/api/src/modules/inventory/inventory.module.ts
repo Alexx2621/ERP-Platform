@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CatalogModule } from "../catalog";
 import { WarehousesModule } from "../warehouses";
 import { INVENTORY_MOVEMENT_REPOSITORY } from "./domain/inventory-movement.repository";
@@ -44,7 +45,7 @@ import { InventoryController } from "./presentation/inventory.controller";
  * and reuses `RecordIssueUseCase` (goods returned to a supplier).
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule, AppRegistryModule],
   controllers: [InventoryController],
   providers: [
     { provide: INVENTORY_MOVEMENT_REPOSITORY, useClass: PrismaInventoryMovementRepository },

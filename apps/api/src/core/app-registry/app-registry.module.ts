@@ -1,8 +1,4 @@
 import { Module } from "@nestjs/common";
-import { AuthModule } from "../auth";
-import { TenantsModule } from "../tenants";
-import { AccessControlModule } from "../access-control";
-import { AuditModule } from "../audit";
 import { APP_DEFINITION_REPOSITORY } from "./domain/app-definition.repository";
 import { TENANT_APP_REPOSITORY } from "./domain/tenant-app.repository";
 import { APP_CONFIGURATION_REPOSITORY } from "./domain/app-configuration.repository";
@@ -14,20 +10,25 @@ import { ListAppDefinitionsUseCase } from "./application/use-cases/list-app-defi
 import { ListTenantAppsUseCase } from "./application/use-cases/list-tenant-apps.use-case";
 import { EnableAppUseCase } from "./application/use-cases/enable-app.use-case";
 import { DisableAppUseCase } from "./application/use-cases/disable-app.use-case";
+import { EnableAllCatalogAppsUseCase } from "./application/use-cases/enable-all-catalog-apps.use-case";
+import { IsAppEnabledForTenantUseCase } from "./application/use-cases/is-app-enabled-for-tenant.use-case";
 import { ListAppConfigurationUseCase } from "./application/use-cases/list-app-configuration.use-case";
 import { SetAppConfigurationUseCase } from "./application/use-cases/set-app-configuration.use-case";
-import { AppsController } from "./presentation/apps.controller";
+import { AppEnablementGuard } from "./presentation/app-enablement.guard";
 
 /**
- * Nothing depends on App Registry, so — like Configuration/Files — there is
- * no module-loading cycle risk here: AppsController can safely import
- * TenantContextGuard/CurrentTenantContext from Tenants and PermissionGuard/
- * RequirePermission from Access Control directly, and live physically in
- * this module's own presentation/ folder.
+ * A deliberate leaf module since docs/DECISIONS.md ADR-015 — zero imports
+ * of Auth/Tenants/AccessControl/Audit or any other Core module. Before
+ * ADR-015 it imported all four purely for `AppsController` (moved to
+ * `tenants/presentation/apps.controller.ts` — see that file's docstring
+ * for why). Staying leaf here is now load-bearing, not incidental: every
+ * one of the 15 business modules (Catalog, Sales, Inventory, ...) needs to
+ * import `AppRegistryModule` for `AppEnablementGuard`, and none of them
+ * can risk a module-loading cycle back into this one.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
-  controllers: [AppsController],
+  imports: [],
+  controllers: [],
   providers: [
     { provide: APP_DEFINITION_REPOSITORY, useClass: PrismaAppDefinitionRepository },
     { provide: TENANT_APP_REPOSITORY, useClass: PrismaTenantAppRepository },
@@ -37,16 +38,23 @@ import { AppsController } from "./presentation/apps.controller";
     ListTenantAppsUseCase,
     EnableAppUseCase,
     DisableAppUseCase,
+    EnableAllCatalogAppsUseCase,
+    IsAppEnabledForTenantUseCase,
     ListAppConfigurationUseCase,
     SetAppConfigurationUseCase,
+    AppEnablementGuard,
   ],
   exports: [
     ListAppDefinitionsUseCase,
     ListTenantAppsUseCase,
     EnableAppUseCase,
     DisableAppUseCase,
+    EnableAllCatalogAppsUseCase,
+    IsAppEnabledForTenantUseCase,
     ListAppConfigurationUseCase,
     SetAppConfigurationUseCase,
+    AppCatalogSeeder,
+    AppEnablementGuard,
   ],
 })
 export class AppRegistryModule {}

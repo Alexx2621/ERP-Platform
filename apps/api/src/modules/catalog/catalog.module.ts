@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { UNIT_OF_MEASURE_REPOSITORY } from "./domain/unit-of-measure.repository";
 import { CATEGORY_REPOSITORY } from "./domain/category.repository";
 import { BRAND_REPOSITORY } from "./domain/brand.repository";
@@ -49,7 +50,7 @@ import { ProductsController } from "./presentation/products.controller";
  * presentation/ folder.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, AppRegistryModule],
   controllers: [UnitsOfMeasureController, CategoriesController, BrandsController, ProductsController],
   providers: [
     { provide: UNIT_OF_MEASURE_REPOSITORY, useClass: PrismaUnitOfMeasureRepository },

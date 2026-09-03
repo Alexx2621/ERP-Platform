@@ -6,6 +6,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { UsersModule } from "../../core/users";
 import { RedisService } from "../../shared/redis/redis.service";
 import type { EnvironmentVariables } from "../../shared/config/environment-variables";
@@ -74,6 +75,7 @@ import { PublicStorefrontContextGuard } from "./presentation/public-storefront-c
     CustomersModule,
     SalesModule,
     PaymentsModule,
+    AppRegistryModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService, RedisService],

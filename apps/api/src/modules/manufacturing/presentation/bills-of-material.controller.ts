@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreateBillOfMaterialUseCase } from "../application/use-cases/create-bill-of-material.use-case";
 import { SetBillOfMaterialStatusUseCase } from "../application/use-cases/set-bill-of-material-status.use-case";
@@ -25,7 +26,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/manufacturing/bills-of-material")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("manufacturing")
 export class BillsOfMaterialController {
   constructor(
     private readonly createBillOfMaterial: CreateBillOfMaterialUseCase,

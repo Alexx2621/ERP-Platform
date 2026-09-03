@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { GetTrialBalanceUseCase } from "../application/use-cases/get-trial-balance.use-case";
 import { GetAccountLedgerUseCase } from "../application/use-cases/get-account-ledger.use-case";
 import { AccountLedgerQueryDto, AccountLedgerResponseDto, AsOfDateQueryDto, TrialBalanceResponseDto } from "./dto/report.dto";
@@ -19,7 +20,8 @@ function resolveAsOfDate(asOfDate: string | undefined): Date {
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/accounting/reports")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("accounting")
 export class AccountingReportsController {
   constructor(
     private readonly getTrialBalance: GetTrialBalanceUseCase,

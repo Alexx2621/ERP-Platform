@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreatePosRegisterUseCase } from "../application/use-cases/create-pos-register.use-case";
 import { ListPosRegistersUseCase } from "../application/use-cases/list-pos-registers.use-case";
@@ -17,7 +18,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/pos/registers")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("pos")
 export class PosRegistersController {
   constructor(
     private readonly createRegister: CreatePosRegisterUseCase,

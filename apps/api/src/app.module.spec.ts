@@ -11,6 +11,7 @@ import {
   RolesController,
   AuditEntriesController,
   NotificationsController,
+  AppsController,
 } from "./core/tenants";
 import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "./core/audit";
 import { TenantsController } from "./core/tenants/presentation/tenants.controller";
@@ -46,7 +47,7 @@ import {
 import { ListUsersUseCase } from "./core/users";
 import { ListPlatformSettingsUseCase } from "./core/configuration";
 import { ListPlatformAuditEntriesUseCase } from "./core/audit";
-import { AppsController, EnableAppUseCase, DisableAppUseCase, ListTenantAppsUseCase } from "./core/app-registry";
+import { EnableAppUseCase, DisableAppUseCase, ListTenantAppsUseCase } from "./core/app-registry";
 import {
   UnitsOfMeasureController,
   CategoriesController,

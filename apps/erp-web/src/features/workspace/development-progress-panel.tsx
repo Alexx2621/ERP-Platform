@@ -20,7 +20,7 @@ export const developmentRoadmap: readonly RoadmapPhase[] = [
   { id: "phase-8", name: "Contabilidad", progress: 100 },
   { id: "phase-9", name: "CRM", progress: 100 },
   { id: "phase-10", name: "Manufactura", progress: 100 },
-  { id: "phase-11", name: "Plataforma de plugins", progress: 0 },
+  { id: "phase-11", name: "Plataforma de plugins", progress: 100 },
   { id: "phase-12", name: "Escala", progress: 0 },
 ] as const;
 
@@ -30,7 +30,7 @@ export const overallDevelopmentProgress = Math.round(
 );
 
 const nextMilestones = [
-  "Fase 11 — Plataforma de plugins: SDK estable, App Registry avanzado y marketplace interno",
+  "Fase 12 — Escala: solo por evidencia, cada iniciativa requiere sus propias métricas y ADR",
 ] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {
@@ -93,7 +93,7 @@ export function DevelopmentProgressPanel() {
             <div className="shrink-0 rounded-[10px] border border-[var(--line)] bg-[var(--field)] px-4 py-3">
               <p className="text-[10px] font-bold text-[var(--muted)]">Última fase cerrada</p>
               <p className="mt-1 font-mono text-[18px] font-extrabold text-[var(--ink)]">
-                Manufactura 100%
+                Plataforma de plugins 100%
               </p>
             </div>
           </div>
@@ -148,9 +148,9 @@ export function DevelopmentProgressPanel() {
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
             Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85%; Foundation,
-            Master Data, Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM
-            y Manufactura están cerradas formalmente al 100%; las fases funcionales restantes,
-            empezando por la Plataforma de plugins, permanecen en 0%.
+            Master Data, Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM,
+            Manufactura y la Plataforma de plugins están cerradas formalmente al 100%; solo Escala
+            permanece en 0%, ya que es explícitamente "solo por evidencia".
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para

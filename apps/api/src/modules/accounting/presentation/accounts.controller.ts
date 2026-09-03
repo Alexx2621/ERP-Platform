@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreateAccountUseCase } from "../application/use-cases/create-account.use-case";
 import { UpdateAccountUseCase } from "../application/use-cases/update-account.use-case";
@@ -18,7 +19,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/accounting/accounts")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("accounting")
 export class AccountsController {
   constructor(
     private readonly createAccount: CreateAccountUseCase,

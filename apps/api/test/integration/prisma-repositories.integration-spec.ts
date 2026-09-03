@@ -85,6 +85,9 @@ import { DisableAppUseCase } from "../../src/core/app-registry/application/use-c
 import { ListTenantAppsUseCase } from "../../src/core/app-registry/application/use-cases/list-tenant-apps.use-case";
 import { ListAppConfigurationUseCase } from "../../src/core/app-registry/application/use-cases/list-app-configuration.use-case";
 import { SetAppConfigurationUseCase } from "../../src/core/app-registry/application/use-cases/set-app-configuration.use-case";
+import { EnableAllCatalogAppsUseCase } from "../../src/core/app-registry/application/use-cases/enable-all-catalog-apps.use-case";
+import { IsAppEnabledForTenantUseCase } from "../../src/core/app-registry/application/use-cases/is-app-enabled-for-tenant.use-case";
+import { FOUNDATION_APPS, validateAppCatalog } from "../../src/core/app-registry/application/app-catalog";
 import {
   AppDependencyNotSatisfiedError,
   AppHasActiveDependentsError,
@@ -1674,4 +1677,73 @@ describe("Prisma repositories against PostgreSQL", () => {
       listConfiguration.execute({ tenantId: tenantB.id, key: "products" }),
     ).rejects.toThrow(AppNotEnabledError);
   });
+
+  it(
+    "enables the real FOUNDATION_APPS catalog for a tenant end-to-end, and backfills a " +
+      "partially-enabled tenant (docs/DECISIONS.md ADR-015)",
+    async () => {
+      const prisma = asRepositoryClient(harness.prisma);
+      const users = new PrismaUserRepository(prisma);
+      const tenants = new PrismaTenantRepository(prisma);
+      const definitions = new PrismaAppDefinitionRepository(prisma);
+      const tenantApps = new PrismaTenantAppRepository(prisma);
+      const now = new Date("2026-09-03T00:00:00.000Z");
+
+      const owner = createUser(now, "app-catalog-owner@example.com");
+      const tenantC = createTenant(now, "app-registry-tenant-c");
+      const tenantD = createTenant(now, "app-registry-tenant-d");
+      await users.save(owner);
+      await tenants.save(tenantC);
+      await tenants.save(tenantD);
+
+      // The real, production catalog — validated the same way AppCatalogSeeder
+      // validates it at boot, then seeded the same way (upsert by key).
+      validateAppCatalog(FOUNDATION_APPS);
+      for (const manifest of FOUNDATION_APPS) {
+        await definitions.upsert(
+          AppDefinition.create({
+            id: newId(),
+            key: manifest.key,
+            name: manifest.name,
+            version: manifest.version,
+            kind: manifest.kind,
+            dependsOnKeys: manifest.dependsOnKeys,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        );
+      }
+
+      const enableApp = new EnableAppUseCase(definitions, tenantApps);
+      const enableAllCatalogApps = new EnableAllCatalogAppsUseCase(definitions, tenantApps, enableApp);
+      const isAppEnabled = new IsAppEnabledForTenantUseCase(definitions, tenantApps);
+      const listTenantApps = new ListTenantAppsUseCase(definitions, tenantApps);
+
+      // A brand-new tenant: every one of the 15 real apps enables in one pass,
+      // in dependency order, against real Postgres.
+      const enabledKeys = await enableAllCatalogApps.execute(tenantC.id);
+      expect(enabledKeys.sort()).toEqual(FOUNDATION_APPS.map((manifest) => manifest.key).sort());
+      const tenantCSummaries = await listTenantApps.execute(tenantC.id);
+      expect(tenantCSummaries.every((summary) => summary.status === "ENABLED")).toBe(true);
+      expect(await isAppEnabled.execute({ tenantId: tenantC.id, key: "manufacturing" })).toBe(true);
+
+      // A tenant that only ever enabled a handful of apps by hand (simulating
+      // an already-provisioned tenant from before ADR-015) gets backfilled
+      // with exactly the apps it was missing — never touching what it already had.
+      await enableApp.execute({ tenantId: tenantD.id, key: "catalog" });
+      await enableApp.execute({ tenantId: tenantD.id, key: "warehouses" });
+      const backfilledKeys = await enableAllCatalogApps.execute(tenantD.id);
+      expect(backfilledKeys).not.toContain("catalog");
+      expect(backfilledKeys).not.toContain("warehouses");
+      expect(backfilledKeys).toContain("manufacturing");
+      const tenantDSummaries = await listTenantApps.execute(tenantD.id);
+      expect(tenantDSummaries.every((summary) => summary.status === "ENABLED")).toBe(true);
+
+      // Cross-tenant isolation: disabling one app for tenantC never touches tenantD.
+      const disableApp = new DisableAppUseCase(definitions, tenantApps);
+      await disableApp.execute({ tenantId: tenantC.id, key: "manufacturing" });
+      expect(await isAppEnabled.execute({ tenantId: tenantC.id, key: "manufacturing" })).toBe(false);
+      expect(await isAppEnabled.execute({ tenantId: tenantD.id, key: "manufacturing" })).toBe(true);
+    },
+  );
 });

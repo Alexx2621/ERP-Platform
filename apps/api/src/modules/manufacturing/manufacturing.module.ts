@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CatalogModule } from "../catalog";
 import { WarehousesModule } from "../warehouses";
 import { InventoryModule } from "../inventory";
@@ -55,7 +56,7 @@ import { ProductionOrdersController } from "./presentation/production-orders.con
  * knows Manufacturing exists.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule, InventoryModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CatalogModule, WarehousesModule, InventoryModule, AppRegistryModule],
   controllers: [BillsOfMaterialController, ProductionOrdersController],
   providers: [
     { provide: BILL_OF_MATERIAL_REPOSITORY, useClass: PrismaBillOfMaterialRepository },

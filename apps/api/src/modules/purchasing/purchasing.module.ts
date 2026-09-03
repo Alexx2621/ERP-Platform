@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CatalogModule } from "../catalog";
 import { WarehousesModule } from "../warehouses";
 import { SuppliersModule } from "../suppliers";
@@ -64,6 +65,7 @@ import { SupplierInvoicesController } from "./presentation/supplier-invoices.con
     WarehousesModule,
     SuppliersModule,
     InventoryModule,
+    AppRegistryModule,
   ],
   controllers: [
     PurchaseOrdersController,

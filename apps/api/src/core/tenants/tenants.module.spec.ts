@@ -18,6 +18,8 @@ import { RolesController } from "./presentation/roles.controller";
 import { AuditEntriesController } from "./presentation/audit-entries.controller";
 import { NotificationsController } from "./presentation/notifications.controller";
 import { MembershipsController } from "./presentation/memberships.controller";
+import { AppsController } from "./presentation/apps.controller";
+import { TenantAppEnablementSyncSeeder } from "./application/tenant-app-enablement-sync-seeder";
 import { TenantsModule } from "./tenants.module";
 import { SeedOwnerRoleUseCase } from "../access-control";
 import { RecordAuditEntryUseCase, ListAuditEntriesUseCase } from "../audit";
@@ -26,6 +28,7 @@ import {
   ListNotificationsUseCase,
   MarkNotificationReadUseCase,
 } from "../notifications";
+import { EnableAllCatalogAppsUseCase, ListAppDefinitionsUseCase } from "../app-registry";
 
 // TenantsModule now imports AuthModule (for SessionAuthGuard on TenantsController),
 // which in turn needs Redis for its throttler storage — see auth.module.spec.ts
@@ -83,6 +86,10 @@ describe("TenantsModule wiring", () => {
     expect(moduleRef.get(ListMembershipsUseCase)).toBeInstanceOf(ListMembershipsUseCase);
     expect(moduleRef.get(ListPendingInvitationsUseCase)).toBeInstanceOf(ListPendingInvitationsUseCase);
     expect(moduleRef.get(MembershipsController)).toBeInstanceOf(MembershipsController);
+    expect(moduleRef.get(AppsController)).toBeInstanceOf(AppsController);
+    expect(moduleRef.get(EnableAllCatalogAppsUseCase)).toBeInstanceOf(EnableAllCatalogAppsUseCase);
+    expect(moduleRef.get(ListAppDefinitionsUseCase)).toBeInstanceOf(ListAppDefinitionsUseCase);
+    expect(moduleRef.get(TenantAppEnablementSyncSeeder)).toBeInstanceOf(TenantAppEnablementSyncSeeder);
 
     await moduleRef.close();
   });

@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { WarehousesModule } from "../warehouses";
 import { SalesModule } from "../sales";
 import { PaymentsModule } from "../payments";
@@ -47,7 +48,7 @@ import { PosReturnsController } from "./presentation/pos-returns.controller";
  * `channel: "POS"` order placed through their own controllers.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, WarehousesModule, SalesModule, PaymentsModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, WarehousesModule, SalesModule, PaymentsModule, AppRegistryModule],
   controllers: [PosRegistersController, PosShiftsController, PosSalesController, PosReturnsController],
   providers: [
     { provide: POS_REGISTER_REPOSITORY, useClass: PrismaPosRegisterRepository },

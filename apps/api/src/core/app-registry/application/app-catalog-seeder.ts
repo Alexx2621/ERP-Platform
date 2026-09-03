@@ -19,6 +19,17 @@ export class AppCatalogSeeder implements OnModuleInit {
   constructor(@Inject(APP_DEFINITION_REPOSITORY) private readonly definitions: AppDefinitionRepository) {}
 
   async onModuleInit(): Promise<void> {
+    await this.seed();
+  }
+
+  /**
+   * Exposed so `TenantAppEnablementSyncSeeder` can await it explicitly
+   * before backfilling tenant enablement — same "don't rely on same-module
+   * onModuleInit ordering" lesson `OwnerRolePermissionSyncSeeder` already
+   * applied to `PermissionCatalogSeeder`. Idempotent: calling it twice on
+   * the same boot is harmless.
+   */
+  async seed(): Promise<void> {
     validateAppCatalog(FOUNDATION_APPS);
 
     const now = new Date();

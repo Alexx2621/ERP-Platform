@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreateJournalEntryUseCase } from "../application/use-cases/create-journal-entry.use-case";
 import { ReverseJournalEntryUseCase } from "../application/use-cases/reverse-journal-entry.use-case";
@@ -25,7 +26,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/accounting/journal-entries")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("accounting")
 export class JournalEntriesController {
   constructor(
     private readonly createJournalEntry: CreateJournalEntryUseCase,

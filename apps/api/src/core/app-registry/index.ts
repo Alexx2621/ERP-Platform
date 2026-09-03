@@ -10,6 +10,11 @@ export {
 } from "./application/use-cases/list-tenant-apps.use-case";
 export { EnableAppUseCase, type EnableAppInput } from "./application/use-cases/enable-app.use-case";
 export { DisableAppUseCase, type DisableAppInput } from "./application/use-cases/disable-app.use-case";
+export { EnableAllCatalogAppsUseCase } from "./application/use-cases/enable-all-catalog-apps.use-case";
+export {
+  IsAppEnabledForTenantUseCase,
+  type IsAppEnabledForTenantInput,
+} from "./application/use-cases/is-app-enabled-for-tenant.use-case";
 export {
   ListAppConfigurationUseCase,
   type ListAppConfigurationInput,
@@ -18,6 +23,7 @@ export {
   SetAppConfigurationUseCase,
   type SetAppConfigurationInput,
 } from "./application/use-cases/set-app-configuration.use-case";
+export { AppCatalogSeeder } from "./application/app-catalog-seeder";
 export {
   AppNotFoundError,
   AppDependencyNotSatisfiedError,
@@ -25,7 +31,8 @@ export {
   AppNotEnabledError,
 } from "./application/errors";
 export { handleAppRegistryError } from "./presentation/app-registry-error.mapper";
-export { AppsController } from "./presentation/apps.controller";
+export { AppEnablementGuard } from "./presentation/app-enablement.guard";
+export { RequireApp, APP_METADATA_KEY } from "./presentation/require-app.decorator";
 export { SetAppConfigurationDto } from "./presentation/dto/set-app-configuration.dto";
 export {
   AppDefinitionResponseDto,

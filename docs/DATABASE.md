@@ -510,19 +510,24 @@ cleanly both there and against the ephemeral Testcontainers instance used by
 
 ---
 
-## App Registry tables (2026-08-30)
+## App Registry tables (2026-08-30; populated for real 2026-09-03, ADR-015)
 
-Scope: `docs/PLUGINS.md`, `docs/DECISIONS.md` ADR-005 (V1 mínimo). Applied to
-the real running PostgreSQL instance via `prisma migrate dev` (not just
-diffed).
+Scope: `docs/PLUGINS.md`, `docs/DECISIONS.md` ADR-005 (V1 mínimo) and
+ADR-015 (real enforcement, Phase 11). Applied to the real running
+PostgreSQL instance via `prisma migrate dev` (not just diffed). No schema
+change was needed for ADR-015 — it populates and enforces the same three
+tables ADR-005 already built.
 
 ### `app_definitions`
 
 Global, code-owned catalog — same pattern as `permissions`. Seeded
 idempotently by `AppCatalogSeeder` from the code-owned `FOUNDATION_APPS`
-array, which ships **empty** in production (no business module beyond the
-Platform Core exists yet to register — see ADR-005 and `docs/SECURITY.md`
-"App Registry").
+array, which — since ADR-015 — holds the 15 real business modules built
+across Phases 2-10 (`catalog`, `customers`, `suppliers`, `taxes`,
+`warehouses`, `accounting`, `pricing`, `crm`, `inventory`, `sales`,
+`payments`, `purchasing`, `pos`, `commerce`, `manufacturing`), each
+`depends_on_keys` mirroring that module's real NestJS `imports` array
+exactly (see ADR-015 and `docs/SECURITY.md` "App Registry").
 
 | Column | Type | Notes |
 | --- | --- | --- |

@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CUSTOMER_REPOSITORY } from "./domain/customer.repository";
 import { PrismaCustomerRepository } from "./infrastructure/prisma-customer.repository";
 import { CreateCustomerUseCase } from "./application/use-cases/create-customer.use-case";
@@ -20,7 +21,7 @@ import { CustomersController } from "./presentation/customers.controller";
  * (docs/ARCHITECTURE.md §6) — Customers itself has zero knowledge of Sales.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, AppRegistryModule],
   controllers: [CustomersController],
   providers: [
     { provide: CUSTOMER_REPOSITORY, useClass: PrismaCustomerRepository },

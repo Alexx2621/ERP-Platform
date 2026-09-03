@@ -70,6 +70,7 @@ export { RolesController } from "./presentation/roles.controller";
 export { AuditEntriesController } from "./presentation/audit-entries.controller";
 export { NotificationsController } from "./presentation/notifications.controller";
 export { MembershipsController } from "./presentation/memberships.controller";
+export { AppsController } from "./presentation/apps.controller";
 export {
   MembershipResponseDto,
   MembershipWithUserResponseDto,

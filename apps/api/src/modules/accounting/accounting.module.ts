@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { ACCOUNT_REPOSITORY } from "./domain/account.repository";
 import { FISCAL_PERIOD_REPOSITORY } from "./domain/fiscal-period.repository";
 import { JOURNAL_ENTRY_REPOSITORY } from "./domain/journal-entry.repository";
@@ -44,7 +45,7 @@ import { AccountingReportsController } from "./presentation/accounting-reports.c
  * wire a real integration mapping into it.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, AppRegistryModule],
   controllers: [AccountsController, FiscalPeriodsController, JournalEntriesController, AccountingReportsController],
   providers: [
     { provide: ACCOUNT_REPOSITORY, useClass: PrismaAccountRepository },

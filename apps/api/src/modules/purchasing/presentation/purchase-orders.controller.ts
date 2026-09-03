@@ -5,6 +5,7 @@ import { SessionAuthGuard } from "../../../core/auth";
 import { TenantContextGuard, CurrentTenantContext } from "../../../core/tenants";
 import type { TenantExecutionContext } from "../../../core/tenants";
 import { PermissionGuard, RequirePermission } from "../../../core/access-control";
+import { AppEnablementGuard, RequireApp } from "../../../core/app-registry";
 import { RecordAuditEntryUseCase } from "../../../core/audit";
 import { CreatePurchaseOrderUseCase } from "../application/use-cases/create-purchase-order.use-case";
 import { AddPurchaseOrderLineUseCase } from "../application/use-cases/add-purchase-order-line.use-case";
@@ -22,7 +23,8 @@ import { requireCompanyId } from "./require-company-id";
 @ApiBearerAuth("session")
 @ApiTenantHeaders()
 @Controller("api/v1/purchasing/orders")
-@UseGuards(SessionAuthGuard, TenantContextGuard)
+@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)
+@RequireApp("purchasing")
 export class PurchaseOrdersController {
   constructor(
     private readonly createOrder: CreatePurchaseOrderUseCase,

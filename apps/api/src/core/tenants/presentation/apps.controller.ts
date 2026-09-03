@@ -2,27 +2,34 @@ import { Body, Controller, Get, HttpStatus, Param, Post, Put, UseGuards } from "
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import { SessionAuthGuard } from "../../auth";
-import { TenantContextGuard, CurrentTenantContext } from "../../tenants";
-import type { TenantExecutionContext } from "../../tenants";
 import { PermissionGuard, RequirePermission } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
-import { ListAppDefinitionsUseCase } from "../application/use-cases/list-app-definitions.use-case";
-import { ListTenantAppsUseCase } from "../application/use-cases/list-tenant-apps.use-case";
-import { EnableAppUseCase } from "../application/use-cases/enable-app.use-case";
-import { DisableAppUseCase } from "../application/use-cases/disable-app.use-case";
-import { ListAppConfigurationUseCase } from "../application/use-cases/list-app-configuration.use-case";
-import { SetAppConfigurationUseCase } from "../application/use-cases/set-app-configuration.use-case";
-import { SetAppConfigurationDto } from "./dto/set-app-configuration.dto";
-import { AppConfigurationResponseDto, AppDefinitionResponseDto, TenantAppResponseDto } from "./dto/app-response.dto";
-import { handleAppRegistryError } from "./app-registry-error.mapper";
+import {
+  ListAppDefinitionsUseCase,
+  ListTenantAppsUseCase,
+  EnableAppUseCase,
+  DisableAppUseCase,
+  ListAppConfigurationUseCase,
+  SetAppConfigurationUseCase,
+  SetAppConfigurationDto,
+  AppConfigurationResponseDto,
+  AppDefinitionResponseDto,
+  TenantAppResponseDto,
+  handleAppRegistryError,
+} from "../../app-registry";
+import { TenantContextGuard } from "./tenant-context.guard";
+import { CurrentTenantContext } from "./current-tenant-context.decorator";
+import type { TenantExecutionContext } from "../application/tenant-execution-context";
 
 /**
- * App Registry V1 mínimo (docs/PLUGINS.md, docs/DECISIONS.md ADR-005). Lives
- * physically under app-registry/presentation/ (unlike Roles/Audit/Notifications,
- * which live under tenants/presentation/): TenantsModule does not need
- * AppRegistryModule for anything at provisioning time, so importing
- * TenantContextGuard/CurrentTenantContext here from Tenants creates no
- * module-loading cycle — same reasoning as ConfigurationModule/FilesModule.
+ * App Registry V1 (docs/PLUGINS.md, docs/DECISIONS.md ADR-005/ADR-015).
+ * Lives physically under tenants/presentation/ — like RolesController/
+ * AuditEntriesController/NotificationsController/MembershipsController —
+ * because it needs TenantContextGuard/CurrentTenantContext from Tenants;
+ * AppRegistryModule itself has zero dependency on Tenants (a deliberate
+ * leaf module since ADR-015, so every business module can import it for
+ * AppEnablementGuard without risking a cycle), so this is the only
+ * direction that avoids a module-loading cycle.
  */
 @ApiTags("App Registry")
 @ApiBearerAuth("session")

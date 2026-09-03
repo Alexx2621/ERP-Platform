@@ -851,71 +851,101 @@ ADR-008's "Deferred" section.
   eventual requirements; not built ahead of a real consumer that would
   produce meaningful values for them.
 
-## App Registry (2026-08-30)
+## App Registry (2026-08-30; enablement enforcement 2026-09-03, ADR-015)
 
 Scope: `AppDefinition`/`TenantApp`/`AppConfiguration`
 (`apps/api/src/core/app-registry`) — implements `docs/PLUGINS.md` at the
-"mínimo" scope ratified in `docs/DECISIONS.md` ADR-005. Closes the last
-item of the original `docs/WORK_QUEUE.md` backlog.
+"mínimo" scope ratified in `docs/DECISIONS.md` ADR-005. Closed the last
+item of the original `docs/WORK_QUEUE.md` backlog. Since ADR-015
+(Phase 11), `FOUNDATION_APPS` holds the 15 real business modules and
+`AppEnablementGuard` genuinely enforces `TenantApp.status` on all 32 of
+their controllers — the mechanism this section originally documented as
+mechanically complete but functionally inert is now load-bearing.
 
 ### Assets
 
 - `apps.read`/`apps.manage` permissions — gate visibility of the catalog
   and a tenant's own enablement state, and the ability to enable/disable an
   app or change its configuration, respectively.
-- `TenantApp.status` — the source of truth for whether an app's future
-  routes/jobs (once any exist) would be allowed to run for a tenant. No
-  route or job actually checks this yet (see "Known limitations" below).
+- `TenantApp.status` — **the real, enforced source of truth** for whether
+  a business module's routes are reachable for a tenant, checked by
+  `AppEnablementGuard` on every request to any of the 15 real modules'
+  32 controllers, applied at the controller-class level via
+  `@RequireApp(key)`.
 - `AppConfiguration.value` — arbitrary JSON scoped to one tenant's one
   enabled app; never validated against a schema (no per-app setting
   catalog exists yet).
+- `EnableAllCatalogAppsUseCase` — enables the entire current catalog for
+  one tenant in dependency order, reporting only the apps genuinely newly
+  enabled (never misreporting an already-enabled app). Called from
+  `TenantsController.provision()` for every new tenant, and from
+  `TenantAppEnablementSyncSeeder` (runs on every API boot) to backfill
+  every already-provisioned, `ACTIVE` tenant with whatever the catalog has
+  grown to include since it was provisioned — the same "sync on every
+  boot" pattern already proven for `OwnerRolePermissionSyncSeeder`
+  (session 28's real permission-catalog-drift bug).
 
 ### Threats considered and controls
 
 | Threat | Control |
 | --- | --- |
-| A tenant enables an app whose required dependency isn't enabled, leaving the platform in an inconsistent state | `EnableAppUseCase` checks every `dependsOnKeys` entry is itself `ENABLED` for the same tenant before enabling — verified against real Postgres with a real fixture dependency graph, both the rejection and the success-after-dependency-enabled path. |
-| A tenant disables an app that another enabled app still depends on, breaking that dependent silently | `DisableAppUseCase` scans the full catalog for any `ENABLED` app whose `dependsOnKeys` includes the one being disabled, and rejects with `AppHasActiveDependentsError` naming the blocking app(s) — verified against real Postgres, including the case where disabling becomes possible again once the dependent is disabled first. |
+| A disabled app's routes remain reachable anyway | `AppEnablementGuard` runs after `TenantContextGuard` on every one of the 15 real modules' 32 controllers, rejecting with a real `403 APP_NOT_ENABLED_FOR_TENANT` when `IsAppEnabledForTenantUseCase` finds no `ENABLED` `TenantApp` row — verified end-to-end against a real backend: disabling `sales` for real makes the `/sales` screen itself fail with this exact error, and re-enabling it restores the screen immediately. |
+| Turning on real enforcement locks every existing tenant out of every module it already used | `TenantsController.provision()` auto-enables the entire catalog for every new tenant (`EnableAllCatalogAppsUseCase`), and `TenantAppEnablementSyncSeeder` backfills every already-`ACTIVE` tenant on every API boot — verified against real Postgres with a partially-enabled tenant receiving exactly the apps it was missing, never re-touching what it already had. |
+| A tenant enables an app whose required dependency isn't enabled, leaving the platform in an inconsistent state | `EnableAppUseCase` checks every `dependsOnKeys` entry is itself `ENABLED` for the same tenant before enabling — verified against real Postgres with both the real 15-app catalog and a fixture dependency graph, both the rejection and the success-after-dependency-enabled path. |
+| A tenant disables an app that another enabled app still depends on, breaking that dependent silently | `DisableAppUseCase` scans the full catalog for any `ENABLED` app whose `dependsOnKeys` includes the one being disabled, and rejects with `AppHasActiveDependentsError` naming the blocking app(s) — verified end-to-end (real HTTP, real browser) that disabling `sales` while `payments`/`pos`/`commerce` are still enabled is rejected, and that disabling all three first makes it succeed. |
 | Tenant A's enablement, dependency graph, or configuration values leak into or are affected by Tenant B | `TenantApp`/`AppConfiguration` are always queried and written scoped to the caller's resolved `tenantId` from `TenantExecutionContext`, never from request-body input; `@@unique([tenantId, appDefinitionId])` makes a cross-tenant row structurally impossible to conflate. Verified against real Postgres with two real tenants sharing the same catalog. |
-| A catalog entry with a duplicate key, a dependency on a nonexistent app, or a dependency cycle gets seeded | `validateAppCatalog` runs before any write in `AppCatalogSeeder.onModuleInit` and throws, failing the whole application boot rather than allowing a partially-invalid catalog into the database — matches `docs/PLUGINS.md` §5's "un catálogo inválido impide el build/deployment; no se descubre el error durante una activación tenant." Verified with fixture catalogs covering duplicate keys, unknown dependencies, direct cycles and indirect cycles. |
+| A catalog entry with a duplicate key, a dependency on a nonexistent app, or a dependency cycle gets seeded | `validateAppCatalog` runs before any write in `AppCatalogSeeder.onModuleInit`/`.seed()` and throws, failing the whole application boot rather than allowing a partially-invalid catalog into the database — matches `docs/PLUGINS.md` §5's "un catálogo inválido impide el build/deployment; no se descubre el error durante una activación tenant." Verified with both the real 15-app `FOUNDATION_APPS` catalog and fixture catalogs covering duplicate keys, unknown dependencies, direct cycles and indirect cycles. |
+| `AppEnablementGuard` is applied to a controller without `@RequireApp()`, or runs before `TenantContextGuard` | Fails closed with a `500 APP_METADATA_MISSING`/`APP_ENABLEMENT_GUARD_REQUIRES_TENANT_CONTEXT` `AppException` respectively — same "loud misconfiguration, never a silent bypass" pattern already established by `PermissionGuard`. |
 | Configuring an app that isn't enabled for the tenant | `SetAppConfigurationUseCase`/`ListAppConfigurationUseCase` both require a `TenantApp` row with `status === "ENABLED"`; a disabled or never-enabled app rejects with `AppNotEnabledError`, never silently persisting orphaned configuration. |
 | Enabling/disabling an app without a permission grant, or across a tenant a membership doesn't belong to | Same `PermissionGuard`/`TenantContextGuard` stack as every other tenant-scoped controller — `apps.manage` required for enable/disable/configure, `apps.read` for the read endpoints, deny-by-default. |
 
 ### Known limitations (accepted for this slice, not silently ignored)
 
-- **`FOUNDATION_APPS` ships empty in production.** No business module
-  beyond the Platform Core exists yet to register — this is the reason
-  this backlog item was deferred for 21 sessions before being built
-  (`docs/WORK_QUEUE.md`, ADR-005). The mechanism is validated with fixture
-  apps in tests and one manual smoke test against the real dev database
-  (cleaned up afterward), never with a fabricated production entry.
-- **No route/job actually checks `TenantApp.status` yet.** `docs/PLUGINS.md`
-  §8's "a central guard verifies app enablement" backend extension model is
-  not built — there is no app-specific route or job in the codebase today
-  to gate. Enabling/disabling an app currently has no observable effect
-  beyond the App Registry's own state and audit trail. Must be built
-  alongside the first real business app that needs it.
+- ~~`FOUNDATION_APPS` ships empty in production.~~ Closed by ADR-015 —
+  the catalog now holds the 15 real business modules with their real
+  dependency graph.
+- ~~No route/job actually checks `TenantApp.status` yet.~~ Closed by
+  ADR-015 for routes — `AppEnablementGuard` gates all 32 controllers
+  across the 15 real modules. Jobs (BullMQ/worker-side) still have no
+  equivalent gate; no business module has any job to gate yet either.
+- **No UI hiding for a disabled app.** `docs/PLUGINS.md` §9's own
+  guidance ("ocultar UI no es autorización") is why this is not treated as
+  a security gap — the workspace's module buttons still render regardless
+  of enablement, and clicking one for a disabled app surfaces the real
+  backend `403` through the existing generic error-handling path. A real,
+  deliberately deferred UX improvement, documented in ADR-015.
+- **The public, unauthenticated Commerce storefront is not gated on
+  `commerce` enablement.** `StorefrontPublicController` never runs
+  `TenantContextGuard` (it resolves context from the public
+  `storefrontCode` instead), so `AppEnablementGuard`'s precondition
+  doesn't apply the same way — deliberately out of scope for ADR-015, a
+  real future increment.
 - **No SemVer range compatibility checking.** `AppDefinition.version` is a
   plain informational string; `dependsOnKeys` matches by key only, not by
   version range. Acceptable with exactly one version per app in the
-  catalog today (ADR-005); revisit once any app actually ships a second
-  version.
+  catalog today (ADR-005/ADR-015); revisit once any app actually ships a
+  second version.
 - **No entitlement/plan gating.** Any tenant with `apps.manage` can enable
   any catalog app it can see — `docs/PLUGINS.md` §3.6's "Entitlement"
   concept (a commercial/technical right granted by plan) is not connected
   to enablement at all. Acceptable with no SaaS billing yet (MASTER_SPEC
   §56, still deferred); must be revisited before any paid plan
   differentiation is real.
-- **No frontend contribution registries.** `apps/erp-web`'s new "Apps"
-  page (`/apps`) only lists/toggles apps — no module can yet register a
-  route, menu item, dashboard widget, or settings page conditional on its
-  own enablement (`docs/PLUGINS.md` §9). Zero business apps exist to need
-  this yet.
+- **No frontend contribution registries.** `apps/erp-web`'s "Apps" page
+  (`/apps`) only lists/toggles apps — no module registers a route, menu
+  item, dashboard widget, or settings page conditional on its own
+  enablement (`docs/PLUGINS.md` §9); the workspace's module buttons remain
+  static JSX. Deliberately deferred by ADR-015 — building a registry to
+  replace a sidebar that already works, with no second consumer to
+  validate the abstraction against, would be premature.
 - **No backfill of `apps.read`/`apps.manage` for tenants provisioned before
   this change**, same accepted gap already documented for every prior
   permission addition (Typed Configuration, Files, Membership Invitations)
   — `SeedOwnerRoleUseCase` only grants the permission catalog as it exists
-  *at provisioning time*.
+  *at provisioning time*. Unlike that gap, the *app-enablement* backfill
+  itself is real and automatic (`TenantAppEnablementSyncSeeder`) — only the
+  RBAC permission backfill for `apps.*` specifically is the
+  already-accepted, unrelated gap.
 
 ## Catalog (Master Data — Phase 2, 2026-08-31)
 

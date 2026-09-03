@@ -21,7 +21,10 @@ Real Sales-Side Producer) was ratified once the CRM module (Phase 9) was
 implemented — see below. ADR-014 (Manufacturing Costing and Traceability
 Scope V1 — No Cost Calculation Ahead of an Approved Costing Model) was
 ratified once the Manufacturing module (Phase 10) was implemented — see
-below.
+below. ADR-015 (App Registry Enablement Enforcement V1 — Real Backend
+Gating for the 15 Business Modules, Auto-Enabled Catalog at Provisioning)
+was ratified once `AppEnablementGuard` was wired to every business
+controller (Phase 11) — see below.
 
 ---
 
@@ -1478,3 +1481,220 @@ and nothing built since has changed that.
   same reasoning ADR-009 used to ship `CASH`/`BANK_TRANSFER` payments now
   rather than wait for a credentialed gateway, and ADR-012 used to ship
   Accounting's manual engine now rather than wait for automatic postings.
+
+---
+
+## ADR-015 — App Registry Enablement Enforcement V1 (Real Backend Gating for the 15 Business Modules, Auto-Enabled Catalog at Provisioning)
+
+**Status:** Accepted (scope: populating `FOUNDATION_APPS` with the 15 real
+business modules built across Phases 2-10, wiring `AppEnablementGuard` to
+every one of their controllers for real, and the auto-enable-at-
+provisioning + backfill mechanism that keeps existing behavior unchanged;
+not the fuller future scope of `docs/PLUGINS.md`, e.g. compiled manifest
+files, SemVer dependency ranges, frontend/backend contribution registries,
+a real onboarding app-selection step, or any third-party trust model)
+
+**Context**
+
+ADR-005 (Phase 1G/22) built the App Registry *mechanism* — `AppDefinition`/
+`TenantApp`/`AppConfiguration`, dependency/dependents checks, enable/
+disable — but deliberately shipped with `FOUNDATION_APPS` empty, since no
+business module existed yet to register. Every phase since (Master Data
+through Manufacturing) shipped as an ordinary NestJS module under
+`apps/api/src/modules/*`, never as a catalog entry — so, until this phase,
+the App Registry had never gated a single real request. `docs/ROADMAP.md`
+§15 (Phase 11 — Plugin Platform) asks for "App Registry avanzado", a
+stable "Plugin SDK", an internal marketplace, wider versioned feature
+contributions, install/upgrade UX, and a first isolated third-party-trust
+spike. Building all of that literally, now, would mean inventing SemVer
+upgrade paths for modules that have only ever shipped one version each,
+and a frontend contribution registry to replace a sidebar that already
+works — the same kind of premature machinery MASTER_SPEC §59/§93 has
+warned against in every prior phase. The one piece of §15 with a real,
+missing, and immediately verifiable gap was simpler and more valuable than
+any of that: the App Registry had a complete enable/disable mechanism that
+had **never once been checked by a real controller** — a tenant could
+"disable" an app from the Apps screen and every one of its routes would
+keep working exactly as before. This ADR closes that specific gap for
+real, and scopes everything else in §15 as deliberately deferred.
+
+**Decision**
+
+1. **`FOUNDATION_APPS` is populated with the 15 real business modules,
+   one entry per NestJS module, `dependsOnKeys` mirroring each module's
+   real `imports` array exactly** (verified by inspection of every
+   `*.module.ts`, not guessed): `catalog`, `customers`, `suppliers`,
+   `taxes`, `warehouses`, `accounting` and `pricing` (→ `catalog`) have no
+   business dependents beyond what's listed; `crm` (→ `customers`);
+   `inventory` (→ `catalog`, `warehouses`); `sales` (→ `catalog`,
+   `warehouses`, `taxes`, `pricing`, `customers`, `inventory` — the widest
+   fan-out); `payments` (→ `sales`); `purchasing` (→ `catalog`,
+   `warehouses`, `suppliers`, `inventory`); `pos` (→ `warehouses`,
+   `sales`, `payments`); `commerce` (→ `catalog`, `warehouses`,
+   `customers`, `sales`, `payments`); `manufacturing` (→ `catalog`,
+   `warehouses`, `inventory`). `validateAppCatalog` (already built by
+   ADR-005) confirms this is a real, acyclic DAG — the same mechanism that
+   sat unused against an empty catalog for nine phases now validates
+   something real for the first time.
+2. **`AppEnablementGuard` is a new, real guard — the first thing in this
+   codebase's history that makes disabling an app actually block its own
+   module's routes.** Applied at the controller-*class* level (via
+   `@RequireApp(key)`, read through `Reflector.getAllAndOverride` across
+   both handler and class — unlike `PermissionGuard`'s handler-only
+   `RequirePermission`, since every route in a given business controller
+   belongs to the same app) on all 32 controllers across the 15 modules,
+   in the guard chain right after `TenantContextGuard`:
+   `@UseGuards(SessionAuthGuard, TenantContextGuard, AppEnablementGuard)`.
+   The one deliberate exception is Commerce's public, unauthenticated
+   `StorefrontPublicController` — it never runs `TenantContextGuard` at
+   all (it resolves tenant/company/storefront from the public
+   `storefrontCode` instead, via `PublicStorefrontContextGuard`), so
+   `AppEnablementGuard`'s `request.tenantContext` precondition does not
+   apply to it the same way; gating the anonymous storefront surface on
+   enablement is real future work, not something this ADR silently
+   assumes is covered.
+3. **`AppRegistryModule` becomes a deliberate leaf module with zero
+   dependency on any other Core module** — before this ADR it imported
+   `AuthModule`/`TenantsModule`/`AccessControlModule`/`AuditModule`
+   purely for `AppsController`'s own guard/audit dependencies. Since every
+   one of the 15 business modules now needs to import `AppRegistryModule`
+   for `AppEnablementGuard`, and `AppRegistryModule` already needed to
+   import `TenantsModule` for `TenantContextGuard`, keeping both directions
+   would have been a real module-loading cycle the moment `TenantsModule`
+   also needed `AppRegistryModule` (for auto-enabling a new tenant's
+   catalog — see point 4). The fix is the same one already used repeatedly
+   in this codebase (`RolesController`, `AuditEntriesController`,
+   `NotificationsController`, `MembershipsController`): `AppsController`
+   physically moved to `tenants/presentation/apps.controller.ts`, and
+   `AppRegistryModule` now provides only its own repositories, use cases,
+   and `AppEnablementGuard` — nothing that requires importing anything
+   else.
+4. **A new tenant auto-enables the entire current catalog at provisioning
+   time** (`EnableAllCatalogAppsUseCase`, called from
+   `TenantsController.provision()` right after `SeedOwnerRoleUseCase`,
+   same non-atomic best-effort shape as every other post-provisioning
+   step). V1 has no per-app opt-in step in onboarding
+   (MASTER_SPEC §68's "elegir aplicaciones" was never built) — without
+   this, the moment `AppEnablementGuard` started enforcing real gating,
+   *every* new tenant would start with *zero* working business modules,
+   since `tenant_apps` begins empty for anyone. Auto-enabling everything
+   preserves the platform's pre-ADR-015 behavior exactly (every module
+   already worked for every tenant) while making the App Registry's
+   enable/disable mechanism genuinely load-bearing from this point
+   forward — a tenant can now disable an app for real from the existing
+   Apps screen and get a real effect, the first time that has ever been
+   true.
+5. **A companion backfill (`TenantAppEnablementSyncSeeder`) runs on every
+   API boot**, same "explicitly await the other seeder, don't rely on
+   same-module `onModuleInit` ordering" pattern `OwnerRolePermissionSyncSeeder`
+   already established for the permission catalog (a real, previously-hit
+   bug in this exact codebase, session 28). It enables every catalog app
+   an already-*active* tenant hasn't enabled yet — without it, every
+   tenant provisioned before this ADR shipped would have lost access to
+   every one of its business modules the instant `AppEnablementGuard`
+   went live, the same class of regression `OwnerRolePermissionSyncSeeder`
+   was built to prevent for permissions. `EnableAllCatalogAppsUseCase`
+   itself only reports the apps it genuinely newly enabled (checking prior
+   `TenantApp` state before attempting each one, since `EnableAppUseCase`
+   is itself idempotent and would otherwise silently misreport
+   already-enabled apps as "just enabled") — a real bug found and fixed by
+   this phase's own test suite before it ever reached the seeder's log
+   output.
+6. **Ordering within `EnableAllCatalogAppsUseCase` is a fixed-point
+   iteration, not a real topological sort**: repeatedly attempt every
+   not-yet-enabled app and stop once a pass makes no progress. This is
+   sufficient and always terminates, because `validateAppCatalog` already
+   guarantees the catalog is a real DAG — building an actual topological
+   sort for a graph already proven acyclic would be complexity with no
+   behavioral difference.
+
+**Consequences**
+
+- Disabling an app from the Apps screen now has a real, immediate,
+  verified effect on that module's own controllers — confirmed end-to-end
+  against a real backend with a real dependency chain (disabling `sales`
+  is rejected while `payments`/`pos`/`commerce` are still enabled;
+  disabling all three first, then `sales`, succeeds; the `/sales` screen
+  itself then fails with a real `403 APP_NOT_ENABLED_FOR_TENANT`;
+  re-enabling `sales` restores it immediately).
+- Hiding UI for a disabled app was explicitly **not** built in this phase
+  (`docs/PLUGINS.md` §9: "Ocultar UI no es autorización") — the workspace's
+  module buttons still render regardless of enablement state; clicking one
+  for a disabled app surfaces the real backend error through the existing
+  generic error-handling path (`getErrorMessage`/`ErrorNotice`) rather than
+  the button being hidden or disabled ahead of time. This is a real,
+  accepted UX gap, not a security gap: the backend is the actual authority
+  either way.
+- Every future business module follows the same two-step pattern to be
+  gated for real: add one entry to `FOUNDATION_APPS` with its real
+  `dependsOnKeys`, and apply `@UseGuards(..., AppEnablementGuard)` +
+  `@RequireApp(key)` to its controllers. No new infrastructure is needed
+  per module.
+- `docs/ROADMAP.md` §15's other asks — a stable Plugin SDK, SemVer
+  compatibility certification, an internal marketplace beyond the existing
+  Apps screen, wider frontend/backend contribution registries, real
+  install/upgrade UX for multiple versions, and a first third-party-trust
+  spike — remain deliberately out of scope; see "Deferred" below.
+
+**Deferred**
+
+- **Plugin SDK / compatibility certification**: `@erp/api-client`,
+  generated from the real OpenAPI spec since session 21, already serves
+  every internal consumer (`apps/erp-web`, `apps/storefront`) as this
+  codebase's de facto SDK — "Plugin" in V1 is explicitly synonymous with
+  "official, bundled module" (`docs/PLUGINS.md` §1), not a third-party
+  package, so no separate SDK artifact or compatibility-certification
+  pipeline was built for this phase.
+- **Internal marketplace**: the existing "Apps" screen already is exactly
+  what `docs/PLUGINS.md` §13 describes — list the catalog, show
+  dependencies, enable/disable per tenant — now populated with the 15 real
+  apps instead of an empty catalog. No visually distinct "marketplace" was
+  built as a separate concept.
+- **SemVer dependency ranges / compiled manifest files / CI catalog
+  validation**: every app in `FOUNDATION_APPS` has exactly one version
+  (`"1.0.0"`) with no upgrade path to reconcile yet — the same reasoning
+  ADR-005 already gave for deferring this, still true a phase later, since
+  no app has shipped a second version.
+- **Frontend/backend contribution registries** (`registerRoute`/
+  `registerMenuItem`/etc., `docs/PLUGINS.md` §9): the ERP Web workspace's
+  module buttons remain static JSX, not dynamically contributed — building
+  a declarative registry to replace a sidebar that already works, with no
+  second consumer to validate the abstraction against, would be exactly
+  the premature machinery this codebase has avoided everywhere else.
+- **Gating the public, unauthenticated Commerce storefront on `commerce`
+  enablement**: `StorefrontPublicController` is untouched by this ADR (see
+  point 2) — a real future increment, not assumed covered.
+- **Third-party trust model**: `docs/PLUGINS.md` §16 already is the spike
+  this phase's roadmap item asks for — a documented list of the concrete
+  prerequisites (sandboxing, signing, secret brokering, revocation, a
+  public registry, incident response) a real third-party marketplace would
+  need before it could exist. Nothing in this phase moves any of those
+  prerequisites forward; V1 still runs only official, bundled code.
+
+**Alternatives considered**
+
+- **Building a real onboarding app-selection step** (MASTER_SPEC §68's
+  "elegir aplicaciones") instead of auto-enabling everything at
+  provisioning: rejected for this phase — it is real, valuable future UX,
+  but building it now would have coupled a UX feature to a backend
+  enforcement change for no necessary reason; auto-enable-everything is
+  the minimal change that makes enforcement safe to turn on today, and a
+  future app-selection step can simply choose not to call
+  `EnableAllCatalogAppsUseCase` for every app once it exists.
+- **Hiding disabled apps' UI immediately**, treating "ocultar UI no es
+  autorización" as reason enough to skip it entirely: rejected as too
+  extreme in the other direction — the guidance means hiding is not a
+  *substitute* for backend authorization, not that hiding has no UX value;
+  it is simply not this phase's scope, given the real backend enforcement
+  already ships the security-relevant half of the feature.
+- **A real topological sort for `EnableAllCatalogAppsUseCase`**: rejected
+  as unneeded complexity — `validateAppCatalog` already guarantees the
+  catalog is acyclic, so a fixed-point retry loop converges in at most
+  `O(depth)` passes with no additional data structure.
+- **Leaving `AppRegistryModule` importing Tenants/Auth/AccessControl/Audit
+  and instead giving each of the 15 business modules a narrower, ad hoc
+  way to reach the guard** (e.g. re-exporting it through some other
+  already-imported module): rejected — it would have hidden the real
+  dependency shape behind indirection; making `AppRegistryModule` a true
+  leaf and moving `AppsController` out is the same pattern this codebase
+  already uses consistently for exactly this situation.

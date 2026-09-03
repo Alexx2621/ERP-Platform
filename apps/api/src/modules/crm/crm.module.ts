@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { CustomersModule } from "../customers";
 import { LEAD_REPOSITORY } from "./domain/lead.repository";
 import { PIPELINE_REPOSITORY } from "./domain/pipeline.repository";
@@ -51,7 +52,7 @@ import { ActivitiesController } from "./presentation/activities.controller";
  * documented, honest gap rather than a silent omission.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CustomersModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, CustomersModule, AppRegistryModule],
   controllers: [LeadsController, PipelinesController, OpportunitiesController, ActivitiesController],
   providers: [
     { provide: LEAD_REPOSITORY, useClass: PrismaLeadRepository },

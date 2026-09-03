@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { SalesModule } from "../sales";
 import { PAYMENT_REPOSITORY } from "./domain/payment.repository";
 import { PrismaPaymentRepository } from "./infrastructure/prisma-payment.repository";
@@ -23,7 +24,7 @@ import { PaymentsController } from "./presentation/payments.controller";
  * `BANK_TRANSFER` are the only two adapters this slice ships.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, SalesModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, SalesModule, AppRegistryModule],
   controllers: [PaymentsController],
   providers: [
     { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },

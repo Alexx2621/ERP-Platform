@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { SUPPLIER_REPOSITORY } from "./domain/supplier.repository";
 import { PrismaSupplierRepository } from "./infrastructure/prisma-supplier.repository";
 import { CreateSupplierUseCase } from "./application/use-cases/create-supplier.use-case";
@@ -19,7 +20,7 @@ import { SuppliersController } from "./presentation/suppliers.controller";
  * Customers.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, AppRegistryModule],
   controllers: [SuppliersController],
   providers: [
     { provide: SUPPLIER_REPOSITORY, useClass: PrismaSupplierRepository },

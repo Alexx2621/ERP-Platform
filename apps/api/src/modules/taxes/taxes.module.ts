@@ -3,6 +3,7 @@ import { AuthModule } from "../../core/auth";
 import { TenantsModule } from "../../core/tenants";
 import { AccessControlModule } from "../../core/access-control";
 import { AuditModule } from "../../core/audit";
+import { AppRegistryModule } from "../../core/app-registry";
 import { TAX_REPOSITORY } from "./domain/tax.repository";
 import { PrismaTaxRepository } from "./infrastructure/prisma-tax.repository";
 import { CreateTaxUseCase } from "./application/use-cases/create-tax.use-case";
@@ -19,7 +20,7 @@ import { TaxesController } from "./presentation/taxes.controller";
  * cycle-free dependency — Taxes itself has zero knowledge of Sales.
  */
 @Module({
-  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule],
+  imports: [AuthModule, TenantsModule, AccessControlModule, AuditModule, AppRegistryModule],
   controllers: [TaxesController],
   providers: [
     { provide: TAX_REPOSITORY, useClass: PrismaTaxRepository },
