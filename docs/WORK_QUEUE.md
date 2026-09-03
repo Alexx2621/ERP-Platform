@@ -6,10 +6,10 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-03 (sesión 35,
-Fase 11 — Plugin Platform completa a alcance proporcional en un solo
-bloque de trabajo, a pedido explícito del usuario). Modelo operativo
-actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-03 (sesión 36,
+Fase 12 — Scale evaluada explícitamente y cerrada formalmente sin
+implementar ninguna iniciativa, por falta de evidencia real, a pedido
+explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -22,19 +22,21 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 11 (Plugin Platform) está completa a alcance proporcional** — ver
-"Hecho — sesión 35" abajo, en un solo bloque de trabajo a pedido
-explícito del usuario. El siguiente trabajo no bloqueado es Fase 12
-(Scale) según `docs/ROADMAP.md` §16 — pero esa fase es explícitamente
-"solo por evidencia": cada iniciativa ahí (read replicas, partitioning,
-OpenSearch, servicios dedicados, Kafka/Kubernetes, multi-region) requiere
-sus propias métricas y ADR, no un trabajo a iniciar automáticamente sin
-una señal real de necesidad — no hay tráfico de producción todavía. Salvo
-que el usuario indique otra prioridad, el trabajo de mantenimiento
-razonable a continuar es ratificar formalmente ADR-001/002/003 (Modular
-Monolith, PostgreSQL/Prisma, Multi-Tenancy — sus decisiones ya están
-implementadas y verificadas repetidamente, solo falta el documento
-formal). Alcance deliberadamente fuera de Fase 11 y diferido (no
+**Fase 12 (Scale) fue evaluada explícitamente y cerrada formalmente sin
+implementar ninguna iniciativa** — ver "Hecho — sesión 36" abajo. Esa fase
+es, por diseño del propio `docs/ROADMAP.md` §16, "solo por evidencia":
+cada iniciativa ahí (read replicas, partitioning, OpenSearch, servicios
+dedicados, Kafka/Kubernetes, multi-region) requiere sus propias métricas y
+ADR independientes, y `docs/PROJECT_STATE.md` ("Production Status") sigue
+registrando "Not deployed" — sin tráfico real no hay evidencia posible que
+satisfaga ese gate. Construir cualquiera de esas iniciativas hoy habría
+sido exactamente la sobrearquitectura que MASTER_SPEC §52/§53/§59/§93
+advierte evitar. Salvo que el usuario aporte evidencia real de necesidad
+de escalar algo específico o indique otra prioridad, el trabajo de
+mantenimiento razonable a continuar es ratificar formalmente
+ADR-001/002/003 (Modular Monolith, PostgreSQL/Prisma, Multi-Tenancy — sus
+decisiones ya están implementadas y verificadas repetidamente, solo falta
+el documento formal). Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
 SDK" separado de `@erp/api-client`, rangos SemVer/certificación de
@@ -116,6 +118,49 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 36 (Fase 12 — Scale, evaluada y cerrada sin evidencia)
+
+A pedido explícito del usuario ("Ok, continua con la fase 12 entonces"),
+inmediatamente después de cerrar la Fase 11. Antes de escribir cualquier
+código, se preguntó explícitamente al usuario cómo proceder (`docs/ROADMAP.md`
+§16 titula la fase "Scale, solo por evidencia" y exige métricas + ADR
+independiente por iniciativa; `docs/PROJECT_STATE.md` registra "Not
+deployed" — sin producción real no existe evidencia posible), y el usuario
+eligió explícitamente documentar la fase como "en espera de evidencia" en
+vez de construir cualquier iniciativa de forma especulativa.
+
+- **Ningún código nuevo** — el propio roadmap condiciona cada una de las
+  ocho iniciativas listadas (read replicas, table partitioning,
+  OpenSearch, CDN/image pipeline avanzado, servicios dedicados para
+  Notifications/Search/Files/Payments/Commerce/Inventory, RabbitMQ/Kafka,
+  Kubernetes, multi-region/database-per-tenant) a su propia evidencia y su
+  propio ADR; construir cualquiera sin esa evidencia habría sido la misma
+  sobrearquitectura que MASTER_SPEC §52/§53/§59/§93 y cada ADR de 009 a
+  015 evitaron consistentemente en su propio dominio.
+- **`docs/PROJECT_STATE.md`**: nueva sección "Revisión de Fase 12 (Scale)
+  — sin evidencia, sesión 36" (justo después de `## In Progress`) con el
+  razonamiento completo y, para cada una de las ocho iniciativas, la señal
+  concreta y medible que la activaría — no un criterio genérico, sino uno
+  específico por iniciativa (ej. "read replicas" se activa por contención
+  real de conexiones/CPU del primary bajo carga real; "table
+  partitioning" nombra las tablas append-only candidatas reales de este
+  schema — `inventory_movements`, `audit_entries`, `outbox_messages`/
+  `inbox_messages`). `## In Progress` actualizado para reflejar el cierre
+  formal de la fase.
+- **`docs/WORK_QUEUE.md`** (este archivo): "### Próximo" reescrito para
+  reflejar el cierre de Fase 12 sin implementación, apuntando a ratificar
+  ADR-001/002/003 como el trabajo de mantenimiento razonable siguiente
+  salvo que el usuario aporte evidencia real o indique otra prioridad.
+- Sin cambios a `docs/ROADMAP.md` §16 — su propio texto ya expresaba
+  correctamente el gate "solo por evidencia"; no había nada que corregir
+  ahí, solo dejar registrada la evaluación explícita en
+  `docs/PROJECT_STATE.md`.
+- Sin cambios a `development-progress-panel.tsx` — "Escala" ya estaba
+  correctamente en 0% con el texto "solo por evidencia" desde el cierre de
+  la Fase 11 (sesión 35); no hay nada que actualizar ahí.
+- Sin validación de lint/typecheck/test/build aplicable — no se tocó
+  ningún archivo de código, solo documentación.
 
 ### Hecho — sesión 35 (Plugin Platform — Fase 11, alcance proporcional)
 

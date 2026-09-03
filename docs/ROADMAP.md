@@ -417,6 +417,8 @@ Posibles iniciativas, cada una con métricas y ADR independientes:
 
 No es una migración única a “microservices”; cada extracción debe tener ownership, contrato, consistency model, SLO, runbook y rollback.
 
+**Evaluada explícitamente el 2026-09-03 (sesión 36)**: sin producción desplegada (`docs/PROJECT_STATE.md`, "Production Status") no existe evidencia real que satisfaga el gate de ninguna iniciativa listada arriba. Cerrada formalmente sin implementar nada — ver "Revisión de Fase 12 (Scale) — sin evidencia" en `docs/PROJECT_STATE.md` para el detalle completo y la señal concreta que activaría cada iniciativa.
+
 ## 17. Workstreams transversales
 
 ### Seguridad

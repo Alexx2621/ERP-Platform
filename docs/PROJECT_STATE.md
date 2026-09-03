@@ -2507,12 +2507,85 @@ Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
 sesión 34** y **Fase 11 (Plugin Platform) quedó formalmente cerrada en la
 sesión 35**, ambas en un solo bloque de trabajo cada una (ver Completed
 arriba y "Hecho — sesión 34"/"Hecho — sesión 35" en `docs/WORK_QUEUE.md`).
-El siguiente bloque no bloqueado es Fase 12 (Scale) según
-`docs/ROADMAP.md` §16, explícitamente "solo por evidencia" — cada
-iniciativa ahí requiere sus propias métricas y ADR, no un trabajo a
-iniciar automáticamente sin señal real de necesidad; salvo indicación
-distinta del usuario, el próximo trabajo real más probable es routine
-maintenance (ratificar ADR-001/002/003) o lo que el usuario indique.
+**Fase 12 (Scale) fue evaluada explícitamente en la sesión 36, a pedido
+directo del usuario ("continua con la fase 12"), y formalmente cerrada sin
+implementar ninguna iniciativa** — ver "Revisión de Fase 12 (Scale) — sin
+evidencia" más abajo para el detalle completo y las señales concretas que
+activarían cada iniciativa. El siguiente trabajo no bloqueado es
+mantenimiento de rutina (ratificar ADR-001/002/003 formalmente), salvo que
+el usuario aporte evidencia real de necesidad de escalar algo específico o
+indique otra prioridad.
+
+## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
+
+`docs/ROADMAP.md` §16 titula la fase explícitamente "Scale, solo por
+evidencia" y exige que cada iniciativa listada (read replicas,
+partitioning, OpenSearch, CDN/image pipeline avanzado, servicios dedicados
+para Notifications/Search/Files/Payments/Commerce/Inventory, RabbitMQ/
+Kafka, Kubernetes, multi-region/residency o database-per-tenant) tenga
+"métricas y ADR independientes" antes de empezar — no es una migración
+única a microservicios, y MASTER_SPEC §52/§53 ya rechaza explícitamente
+adoptar Kafka/Kubernetes "inicialmente". `docs/PROJECT_STATE.md` registra
+en su propia sección "Production Status" (ver más abajo): **Not deployed**
+— no existe tráfico real, no existe un solo SLO medido contra producción,
+y no existe ninguna métrica real de ningún componente bajo carga real. Sin
+ese despliegue no hay, por definición, evidencia que satisfaga el propio
+gate que el roadmap se impone a sí mismo para esta fase.
+
+Construir cualquiera de las ocho iniciativas listadas hoy —sin esa
+evidencia— sería exactamente el tipo de sobrearquitectura que MASTER_SPEC
+§59/§93 advierte evitar y que cada ADR de esta sesión (009 a 015) evitó
+consistentemente en su propio dominio: introducir Kafka sin un volumen de
+eventos real que lo justifique, o Kubernetes sin múltiples servicios
+desplegados de forma independiente que lo requieran, sería fabricar
+infraestructura para una necesidad hipotética, no resolver una real. Por
+eso esta fase se cierra formalmente **sin ningún cambio de código**: el
+trabajo real y honesto de esta sesión es dejar registrada la señal
+concreta y medible que activaría cada iniciativa, para que una futura
+sesión con evidencia real no tenga que re-derivar el criterio desde cero.
+
+Señales que activarían cada iniciativa (ninguna presente hoy):
+
+- **Read replicas**: lecturas pesadas (reportes, dashboards, listados
+  grandes) compitiendo de forma medible con escrituras críticas
+  (inventario, pagos, contabilidad) por conexiones o CPU del primary bajo
+  carga real — no un umbral arbitrario, sino contención observada.
+- **Table partitioning**: una tabla append-only de alto volumen de este
+  schema (`inventory_movements`, `audit_entries`, `outbox_messages`/
+  `inbox_messages` son las candidatas reales, todas ya diseñadas
+  append-only desde su fase de origen) creciendo hasta que sus índices
+  dejen de caber en memoria o sus queries por rango de fecha se degraden
+  de forma medible.
+- **OpenSearch**: el volumen o la latencia de búsqueda de catálogo/
+  clientes/pedidos superando lo que los índices de PostgreSQL pueden
+  sostener bajo carga real, o una necesidad real de faceting/relevancia
+  que PostgreSQL no ofrece razonablemente — MASTER_SPEC §85 ya condiciona
+  esto a "cuando se necesite".
+- **CDN/image pipeline avanzado**: el storefront público de Commerce
+  (Fase 7B, `apps/storefront`) sirviendo imágenes de producto a tráfico
+  público real y medible, no bajo desarrollo.
+- **Servicios dedicados** (Notifications/Search/Files/Payments/Commerce/
+  Inventory): cuando el perfil de escalado, disponibilidad u ownership de
+  uno de esos módulos diverja materialmente del resto del monolito — los
+  criterios exactos ya están en `docs/ARCHITECTURE.md` §15 ("Criterios
+  para extraer un microservicio"), sin que ninguno se cumpla hoy.
+- **RabbitMQ/Kafka**: el volumen o fan-out de eventos reales superando lo
+  que el outbox transaccional + bus in-process (ADR-004) puede sostener —
+  hoy solo existe un productor real (`tenancy.tenant.provisioned.v1`), sin
+  ninguna señal de saturación posible todavía.
+- **Kubernetes**: múltiples servicios reales desplegados de forma
+  independiente, necesidad de autoscaling demostrada bajo tráfico real, y
+  un equipo cuya operación lo justifique — MASTER_SPEC §53 exactamente.
+- **Multi-region/residency o database-per-tenant**: un requisito real y
+  concreto de residencia de datos por jurisdicción de un cliente real, o
+  un SLA de disponibilidad multi-región contratado — no una precaución
+  especulativa.
+
+**Conclusión.** Fase 12 queda formalmente cerrada como "evaluada, sin
+evidencia" — no como "pendiente" ni como "bloqueada". Cualquier sesión
+futura con una señal real de las listadas arriba puede reabrir la
+iniciativa correspondiente directamente, con su propio ADR independiente,
+sin necesidad de re-evaluar las demás.
 
 ## Pending
 
