@@ -1647,3 +1647,97 @@ extension to any existing table was needed — the first business-module
 migration in this codebase to be purely additive with zero touches to
 tables owned by another module, a direct consequence of Accounting having
 no cross-module FK at all (docs/DECISIONS.md ADR-012).
+
+## CRM tables (Phase 9, 2026-09-02)
+
+Scope: `docs/ROADMAP.md` §13 — Lead, Pipeline/PipelineStage, Opportunity,
+Activity. `apps/api/src/modules/crm`. Second business module (after Sales)
+with a genuine FK-backed reference into Customers (`leads.converted_customer_id`,
+`opportunities.customer_id`, `activities.related_customer_id`), never a
+duplicated Party/Customer concept — see the `Lead` model's own docstring.
+
+### `leads`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `name` | `varchar(200)` | |
+| `company_name` | `varchar(200)?` | |
+| `email` / `phone` | `varchar(200)?` / `varchar(40)?` | |
+| `source` | `varchar(100)?` | Free text (e.g. "Sitio web", "Referido") — no fixed catalog. |
+| `status` | `LeadStatus` | `NEW` / `CONTACTED` / `QUALIFIED` / `CONVERTED` / `LOST`. `CONVERTED`/`LOST` are terminal (`Lead.isTerminal`) — no code path moves a lead out of either. |
+| `owner_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT`. Defaults to the creating user (`CreateLeadUseCase`), reassignable via update. |
+| `consent_marketing` | `boolean` | Default `false`. |
+| `consented_at` | `timestamptz(6)?` | Set whenever `consent_marketing` is toggled. |
+| `converted_customer_id` | `uuid?` | → `customers(tenantId, id)`, `ON DELETE RESTRICT`. Set exactly once, by `ConvertLeadUseCase`, never cleared or reassigned. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `pipelines`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `code` | `varchar(50)` | `@@unique([tenantId, companyId, code])`. |
+| `name` | `varchar(150)` | |
+| `status` | `MasterDataStatus` | Reused shared enum (`ACTIVE`/`INACTIVE`), same as `taxes`/`warehouses`/`accounts`. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `pipeline_stages`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `pipeline_id` | `uuid` | `pipeline_id` → `pipelines(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `name` | `varchar(100)` | |
+| `sort_order` | `int` | Always appended at the end by `AddPipelineStageUseCase` (`existingStages.length`) — no reorder use case, so no unique constraint on this column. |
+| `is_won` / `is_lost` | `boolean` | Default `false` each. Never both `true` on the same stage — enforced in the domain (`PipelineStage.create()`). |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `opportunities`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `name` | `varchar(200)` | |
+| `pipeline_id` / `stage_id` | `uuid` | → `pipelines(tenantId, id)` / `pipeline_stages(tenantId, id)`, both `ON DELETE RESTRICT`. `MoveOpportunityStageUseCase` rejects a target stage whose own `pipeline_id` doesn't match the opportunity's. |
+| `customer_id` / `lead_id` | `uuid?` / `uuid?` | → `customers(tenantId, id)` / `leads(tenantId, id)`, both `ON DELETE RESTRICT`. Both optional and never mutually exclusive — an opportunity can have neither, either, or both. |
+| `amount` | `numeric(14,4)` | Non-negative, validated via the module's own dependency-free BigInt decimal arithmetic (`crm/domain/decimal.ts`) — never a JavaScript float. |
+| `currency` | `varchar(3)` | ISO 4217-shaped, not validated against a real currency list — same scope boundary already accepted for `price_lists.currency`. |
+| `expected_close_date` | `date?` | Civil date, not an instant. |
+| `status` | `OpportunityStatus` | `OPEN` → `WON` \| `LOST`, terminal — `UpdateOpportunityUseCase`/`MoveOpportunityStageUseCase` both reject once `status !== "OPEN"`. |
+| `owner_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT`. Defaults to the creating user. |
+| `closed_at` | `timestamptz(6)?` | Set once, when `status` transitions away from `OPEN`. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `activities`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `type` | `ActivityType` | `CALL` / `EMAIL` / `MEETING` / `NOTE` / `TASK`. |
+| `subject` | `varchar(200)` | |
+| `notes` | `varchar(2000)?` | |
+| `related_lead_id` / `related_opportunity_id` / `related_customer_id` | `uuid?` each | → `leads(tenantId, id)` / `opportunities(tenantId, id)` / `customers(tenantId, id)`, all `ON DELETE RESTRICT`. Exactly one non-null, enforced in the domain (`Activity.create()`) and pre-validated in the application layer (`CreateActivityUseCase`) before ever reaching it — no database-level constraint expresses "exactly one of three columns", since Postgres has no direct equivalent short of a `CHECK` constraint this schema does not add. |
+| `owner_id` | `uuid` | → `users(id)`, `ON DELETE RESTRICT`. Defaults to the creating user. |
+| `due_at` | `timestamptz(6)?` | |
+| `completed_at` | `timestamptz(6)?` | Set once, by `CompleteActivityUseCase`; `Activity.complete()` rejects a second completion. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### Migration
+
+`packages/database/prisma/migrations/20260902195127_crm/` — same
+non-interactive `prisma migrate diff --script` workaround already
+established, applied cleanly to real Postgres on the first attempt: five
+new tables and three new enums (`LeadStatus`, `OpportunityStatus`,
+`ActivityType`), plus `@@unique([tenantId, id])` on `leads`, `pipelines`,
+`pipeline_stages` and `opportunities` (each a real FK consumer within this
+same migration — `opportunities.lead_id`, `activities.related_*`). No
+extension to any table owned by another module was needed beyond the FKs
+into `customers`/`users`, both pre-existing tables.

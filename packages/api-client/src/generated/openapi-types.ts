@@ -2423,6 +2423,251 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/crm/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's leads. */
+        get: operations["LeadsController_list"];
+        put?: never;
+        /** Create a lead for the active company. */
+        post: operations["LeadsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/leads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one lead. */
+        get: operations["LeadsController_get"];
+        /** Update a lead's contact fields. */
+        put: operations["LeadsController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/leads/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move a lead through its non-terminal statuses (NEW/CONTACTED/QUALIFIED) or mark it LOST. */
+        put: operations["LeadsController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/leads/{id}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Grant or revoke a lead's marketing consent. */
+        put: operations["LeadsController_updateConsent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/leads/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert a lead to a real Customer — resolves an existing customer by email or creates a new one. */
+        post: operations["LeadsController_convert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's pipelines. */
+        get: operations["PipelinesController_list"];
+        put?: never;
+        /** Create a pipeline for the active company. */
+        post: operations["PipelinesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/pipelines/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a pipeline. */
+        put: operations["PipelinesController_updateStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/pipelines/{id}/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a pipeline's stages, in order. */
+        get: operations["PipelinesController_listStages"];
+        put?: never;
+        /** Append a new stage to a pipeline. */
+        post: operations["PipelinesController_addStage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/pipelines/{id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open opportunity value per stage, summed fresh from the ledger of real opportunities. */
+        get: operations["PipelinesController_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/opportunities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the active company's opportunities. */
+        get: operations["OpportunitiesController_list"];
+        put?: never;
+        /** Open an opportunity in a pipeline stage. */
+        post: operations["OpportunitiesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/opportunities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one opportunity. */
+        get: operations["OpportunitiesController_get"];
+        /** Update an OPEN opportunity's name, amount and expected close date. */
+        put: operations["OpportunitiesController_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/opportunities/{id}/stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move an opportunity to a different stage of its own pipeline — a won/lost stage closes it in the same step. */
+        put: operations["OpportunitiesController_moveStage"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List activities logged against a lead, an opportunity, or a customer. */
+        get: operations["ActivitiesController_list"];
+        put?: never;
+        /** Log an activity against exactly one of a lead, an opportunity, or a customer. */
+        post: operations["ActivitiesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/crm/activities/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an activity as completed. */
+        post: operations["ActivitiesController_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4127,6 +4372,186 @@ export interface components {
             rows: components["schemas"]["AccountLedgerRowResponseDto"][];
             /** @example 100.0000 */
             endingBalance: string;
+        };
+        LeadResponseDto: {
+            id: string;
+            name: string;
+            companyName: string | null;
+            email: string | null;
+            phone: string | null;
+            source: string | null;
+            /** @enum {string} */
+            status: "NEW" | "CONTACTED" | "QUALIFIED" | "CONVERTED" | "LOST";
+            ownerId: string;
+            consentMarketing: boolean;
+            /** Format: date-time */
+            consentedAt: string | null;
+            convertedCustomerId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateLeadDto: {
+            /** @example Ada Lovelace */
+            name: string;
+            companyName?: string;
+            email?: string;
+            phone?: string;
+            source?: string;
+            /** @description Defaults to the caller. */
+            ownerId?: string;
+        };
+        UpdateLeadDto: {
+            name: string;
+            companyName?: string;
+            email?: string;
+            phone?: string;
+            source?: string;
+        };
+        SetLeadStatusDto: {
+            /** @enum {string} */
+            status: "NEW" | "CONTACTED" | "QUALIFIED" | "LOST";
+        };
+        SetLeadConsentDto: {
+            consentMarketing: boolean;
+        };
+        ConvertLeadResponseDto: {
+            lead: components["schemas"]["LeadResponseDto"];
+            customerId: string;
+            wasExistingCustomer: boolean;
+        };
+        PipelineResponseDto: {
+            id: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreatePipelineDto: {
+            /** @example SALES */
+            code: string;
+            /** @example Sales Pipeline */
+            name: string;
+        };
+        SetPipelineStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        PipelineStageResponseDto: {
+            id: string;
+            pipelineId: string;
+            name: string;
+            sortOrder: number;
+            isWon: boolean;
+            isLost: boolean;
+        };
+        AddPipelineStageDto: {
+            /** @example Qualification */
+            name: string;
+            /** @default false */
+            isWon: boolean;
+            /** @default false */
+            isLost: boolean;
+        };
+        PipelineStageSummaryResponseDto: {
+            stageId: string;
+            stageName: string;
+            sortOrder: number;
+            openCount: number;
+            /** @example 1500.0000 */
+            openAmountTotal: string;
+        };
+        PipelineSummaryResponseDto: {
+            pipelineId: string;
+            pipelineName: string;
+            rows: components["schemas"]["PipelineStageSummaryResponseDto"][];
+            /** @example 1500.0000 */
+            totalOpenAmount: string;
+        };
+        OpportunityResponseDto: {
+            id: string;
+            name: string;
+            pipelineId: string;
+            stageId: string;
+            customerId: string | null;
+            leadId: string | null;
+            /** @example 5000.0000 */
+            amount: string;
+            currency: string;
+            /** Format: date-time */
+            expectedCloseDate: string | null;
+            /** @enum {string} */
+            status: "OPEN" | "WON" | "LOST";
+            ownerId: string;
+            /** Format: date-time */
+            closedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateOpportunityDto: {
+            /** @example Acme Renewal */
+            name: string;
+            pipelineId: string;
+            stageId: string;
+            customerId?: string;
+            leadId?: string;
+            /** @example 5000.0000 */
+            amount: string;
+            /** @example USD */
+            currency: string;
+            /** @example 2026-03-01 */
+            expectedCloseDate?: string;
+            /** @description Defaults to the caller. */
+            ownerId?: string;
+        };
+        UpdateOpportunityDto: {
+            name: string;
+            /** @example 5000.0000 */
+            amount: string;
+            /** @example 2026-03-01 */
+            expectedCloseDate?: string;
+        };
+        MoveOpportunityStageDto: {
+            stageId: string;
+        };
+        ActivityResponseDto: {
+            id: string;
+            /** @enum {string} */
+            type: "CALL" | "EMAIL" | "MEETING" | "NOTE" | "TASK";
+            subject: string;
+            notes: string | null;
+            relatedLeadId: string | null;
+            relatedOpportunityId: string | null;
+            relatedCustomerId: string | null;
+            ownerId: string;
+            /** Format: date-time */
+            dueAt: string | null;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateActivityDto: {
+            /** @enum {string} */
+            type: "CALL" | "EMAIL" | "MEETING" | "NOTE" | "TASK";
+            /** @example Intro call */
+            subject: string;
+            notes?: string;
+            /** @description Exactly one of relatedLeadId/relatedOpportunityId/relatedCustomerId is required. */
+            relatedLeadId?: string;
+            relatedOpportunityId?: string;
+            relatedCustomerId?: string;
+            /** @example 2026-01-20T15:00:00.000Z */
+            dueAt?: string;
+            /** @description Defaults to the caller. */
+            ownerId?: string;
         };
     };
     responses: never;
@@ -9168,6 +9593,592 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountLedgerResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_list: {
+        parameters: {
+            query?: {
+                status?: "NEW" | "CONTACTED" | "QUALIFIED" | "CONVERTED" | "LOST";
+                ownerId?: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"][];
+                };
+            };
+        };
+    };
+    LeadsController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLeadDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLeadDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLeadStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_updateConsent: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLeadConsentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadResponseDto"];
+                };
+            };
+        };
+    };
+    LeadsController_convert: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertLeadResponseDto"];
+                };
+            };
+        };
+    };
+    PipelinesController_list: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineResponseDto"][];
+                };
+            };
+        };
+    };
+    PipelinesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePipelineDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineResponseDto"];
+                };
+            };
+        };
+    };
+    PipelinesController_updateStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPipelineStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineResponseDto"];
+                };
+            };
+        };
+    };
+    PipelinesController_listStages: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineStageResponseDto"][];
+                };
+            };
+        };
+    };
+    PipelinesController_addStage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPipelineStageDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineStageResponseDto"];
+                };
+            };
+        };
+    };
+    PipelinesController_summary: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineSummaryResponseDto"];
+                };
+            };
+        };
+    };
+    OpportunitiesController_list: {
+        parameters: {
+            query?: {
+                pipelineId?: string;
+                stageId?: string;
+                status?: "OPEN" | "WON" | "LOST";
+                ownerId?: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponseDto"][];
+                };
+            };
+        };
+    };
+    OpportunitiesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOpportunityDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponseDto"];
+                };
+            };
+        };
+    };
+    OpportunitiesController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponseDto"];
+                };
+            };
+        };
+    };
+    OpportunitiesController_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOpportunityDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponseDto"];
+                };
+            };
+        };
+    };
+    OpportunitiesController_moveStage: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveOpportunityStageDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityResponseDto"];
+                };
+            };
+        };
+    };
+    ActivitiesController_list: {
+        parameters: {
+            query?: {
+                relatedLeadId?: string;
+                relatedOpportunityId?: string;
+                relatedCustomerId?: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponseDto"][];
+                };
+            };
+        };
+    };
+    ActivitiesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateActivityDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponseDto"];
+                };
+            };
+        };
+    };
+    ActivitiesController_complete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponseDto"];
                 };
             };
         };

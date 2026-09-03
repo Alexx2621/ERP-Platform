@@ -2,7 +2,9 @@ import type {
   AcceptMembershipInvitationInput,
   AccountLedgerResponse,
   AccountResponse,
+  ActivityResponse,
   AddCartLineInput,
+  AddPipelineStageInput,
   AddPriceListItemInput,
   AddProductVariantInput,
   AddPurchaseOrderLineInput,
@@ -23,13 +25,18 @@ import type {
   CloseShiftInput,
   CommerceOrderResponse,
   CompanyResponse,
+  ConvertLeadResponse,
   ConvertQuoteInput,
   CreateAccountInput,
+  CreateActivityInput,
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
   CreateFiscalPeriodInput,
   CreateJournalEntryInput,
+  CreateLeadInput,
+  CreateOpportunityInput,
+  CreatePipelineInput,
   CreatePosRegisterInput,
   CreatePosReturnInput,
   CreatePriceListInput,
@@ -59,13 +66,17 @@ import type {
   InviteMembershipInput,
   JournalEntryLineResponse,
   JournalEntryResponse,
+  LeadResponse,
   ListAccountsFilter,
+  ListActivitiesFilter,
   ListInventoryBalancesFilter,
   ListInventoryMovementsFilter,
   ListCommerceOrdersFilter,
   ListInventoryReservationsFilter,
   ListInventoryTransfersFilter,
   ListJournalEntriesFilter,
+  ListLeadsFilter,
+  ListOpportunitiesFilter,
   ListPaymentsFilter,
   ListPosRegistersFilter,
   ListPosReturnsFilter,
@@ -83,10 +94,15 @@ import type {
   LoginInput,
   MembershipResponse,
   MembershipWithUserResponse,
+  MoveOpportunityStageInput,
   OpenShiftInput,
+  OpportunityResponse,
   PaymentResponse,
   PendingInvitationResponse,
   PermissionResponse,
+  PipelineResponse,
+  PipelineStageResponse,
+  PipelineSummaryResponse,
   PlatformSettingResponse,
   PlatformSettingValueResponse,
   PlatformUserResponse,
@@ -127,7 +143,10 @@ import type {
   SetAccountStatusInput,
   SetAppConfigurationInput,
   SetCustomerStatusInput,
+  SetLeadConsentInput,
+  SetLeadStatusInput,
   SetMasterDataStatusInput,
+  SetPipelineStatusInput,
   SetPlatformSettingValueInput,
   SetPlatformUserStatusInput,
   SetPosRegisterStatusInput,
@@ -157,6 +176,8 @@ import type {
   UpdateCategoryInput,
   UpdateCustomerInput,
   UpdateCartLineQuantityInput,
+  UpdateLeadInput,
+  UpdateOpportunityInput,
   UpdatePriceListInput,
   UpdatePriceListItemInput,
   UpdateProductInput,
@@ -2473,6 +2494,225 @@ export class ApiClient {
       tenantSlug,
       companyId,
       signal,
+    });
+  }
+
+  // --- CRM ---
+
+  async listLeads(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListLeadsFilter = {},
+    signal?: AbortSignal,
+  ): Promise<LeadResponse[]> {
+    return this.request<LeadResponse[]>(`/crm/leads${this.buildQuery(filter)}`, { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async getLead(accessToken: string, tenantSlug: string, companyId: string, leadId: string, signal?: AbortSignal): Promise<LeadResponse> {
+    return this.request<LeadResponse>(`/crm/leads/${encodeURIComponent(leadId)}`, { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createLead(accessToken: string, tenantSlug: string, companyId: string, input: CreateLeadInput): Promise<LeadResponse> {
+    return this.request<LeadResponse>("/crm/leads", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async updateLead(accessToken: string, tenantSlug: string, companyId: string, leadId: string, input: UpdateLeadInput): Promise<LeadResponse> {
+    return this.request<LeadResponse>(`/crm/leads/${encodeURIComponent(leadId)}`, { method: "PUT", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async setLeadStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    leadId: string,
+    input: SetLeadStatusInput,
+  ): Promise<LeadResponse> {
+    return this.request<LeadResponse>(`/crm/leads/${encodeURIComponent(leadId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async setLeadConsent(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    leadId: string,
+    input: SetLeadConsentInput,
+  ): Promise<LeadResponse> {
+    return this.request<LeadResponse>(`/crm/leads/${encodeURIComponent(leadId)}/consent`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async convertLead(accessToken: string, tenantSlug: string, companyId: string, leadId: string): Promise<ConvertLeadResponse> {
+    return this.request<ConvertLeadResponse>(`/crm/leads/${encodeURIComponent(leadId)}/convert`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async listPipelines(accessToken: string, tenantSlug: string, companyId: string, signal?: AbortSignal): Promise<PipelineResponse[]> {
+    return this.request<PipelineResponse[]>("/crm/pipelines", { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createPipeline(accessToken: string, tenantSlug: string, companyId: string, input: CreatePipelineInput): Promise<PipelineResponse> {
+    return this.request<PipelineResponse>("/crm/pipelines", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async setPipelineStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    pipelineId: string,
+    input: SetPipelineStatusInput,
+  ): Promise<PipelineResponse> {
+    return this.request<PipelineResponse>(`/crm/pipelines/${encodeURIComponent(pipelineId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listPipelineStages(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    pipelineId: string,
+    signal?: AbortSignal,
+  ): Promise<PipelineStageResponse[]> {
+    return this.request<PipelineStageResponse[]>(`/crm/pipelines/${encodeURIComponent(pipelineId)}/stages`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addPipelineStage(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    pipelineId: string,
+    input: AddPipelineStageInput,
+  ): Promise<PipelineStageResponse> {
+    return this.request<PipelineStageResponse>(`/crm/pipelines/${encodeURIComponent(pipelineId)}/stages`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async getPipelineSummary(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    pipelineId: string,
+    signal?: AbortSignal,
+  ): Promise<PipelineSummaryResponse> {
+    return this.request<PipelineSummaryResponse>(`/crm/pipelines/${encodeURIComponent(pipelineId)}/summary`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listOpportunities(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListOpportunitiesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<OpportunityResponse[]> {
+    return this.request<OpportunityResponse[]>(`/crm/opportunities${this.buildQuery(filter)}`, { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async getOpportunity(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    opportunityId: string,
+    signal?: AbortSignal,
+  ): Promise<OpportunityResponse> {
+    return this.request<OpportunityResponse>(`/crm/opportunities/${encodeURIComponent(opportunityId)}`, { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createOpportunity(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateOpportunityInput,
+  ): Promise<OpportunityResponse> {
+    return this.request<OpportunityResponse>("/crm/opportunities", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async updateOpportunity(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    opportunityId: string,
+    input: UpdateOpportunityInput,
+  ): Promise<OpportunityResponse> {
+    return this.request<OpportunityResponse>(`/crm/opportunities/${encodeURIComponent(opportunityId)}`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async moveOpportunityStage(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    opportunityId: string,
+    input: MoveOpportunityStageInput,
+  ): Promise<OpportunityResponse> {
+    return this.request<OpportunityResponse>(`/crm/opportunities/${encodeURIComponent(opportunityId)}/stage`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listActivities(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListActivitiesFilter = {},
+    signal?: AbortSignal,
+  ): Promise<ActivityResponse[]> {
+    return this.request<ActivityResponse[]>(`/crm/activities${this.buildQuery(filter)}`, { accessToken, tenantSlug, companyId, signal });
+  }
+
+  async createActivity(accessToken: string, tenantSlug: string, companyId: string, input: CreateActivityInput): Promise<ActivityResponse> {
+    return this.request<ActivityResponse>("/crm/activities", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async completeActivity(accessToken: string, tenantSlug: string, companyId: string, activityId: string): Promise<ActivityResponse> {
+    return this.request<ActivityResponse>(`/crm/activities/${encodeURIComponent(activityId)}/complete`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
     });
   }
 

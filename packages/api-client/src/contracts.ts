@@ -433,6 +433,51 @@ export interface ListJournalEntriesFilter {
   limit?: number;
 }
 
+export type LeadStatus = components["schemas"]["LeadResponseDto"]["status"];
+export type LeadResponse = components["schemas"]["LeadResponseDto"];
+export type CreateLeadInput = components["schemas"]["CreateLeadDto"];
+export type UpdateLeadInput = components["schemas"]["UpdateLeadDto"];
+export type SetLeadStatusInput = components["schemas"]["SetLeadStatusDto"];
+export type SetLeadConsentInput = components["schemas"]["SetLeadConsentDto"];
+export type ConvertLeadResponse = components["schemas"]["ConvertLeadResponseDto"];
+
+export type PipelineStatus = components["schemas"]["PipelineResponseDto"]["status"];
+export type PipelineResponse = components["schemas"]["PipelineResponseDto"];
+export type CreatePipelineInput = components["schemas"]["CreatePipelineDto"];
+export type SetPipelineStatusInput = components["schemas"]["SetPipelineStatusDto"];
+export type PipelineStageResponse = components["schemas"]["PipelineStageResponseDto"];
+export type AddPipelineStageInput = components["schemas"]["AddPipelineStageDto"];
+export type PipelineStageSummaryResponse = components["schemas"]["PipelineStageSummaryResponseDto"];
+export type PipelineSummaryResponse = components["schemas"]["PipelineSummaryResponseDto"];
+
+export type OpportunityStatus = components["schemas"]["OpportunityResponseDto"]["status"];
+export type OpportunityResponse = components["schemas"]["OpportunityResponseDto"];
+export type CreateOpportunityInput = components["schemas"]["CreateOpportunityDto"];
+export type UpdateOpportunityInput = components["schemas"]["UpdateOpportunityDto"];
+export type MoveOpportunityStageInput = components["schemas"]["MoveOpportunityStageDto"];
+
+export type ActivityType = components["schemas"]["ActivityResponseDto"]["type"];
+export type ActivityResponse = components["schemas"]["ActivityResponseDto"];
+export type CreateActivityInput = components["schemas"]["CreateActivityDto"];
+
+export interface ListLeadsFilter {
+  status?: LeadStatus;
+  ownerId?: string;
+}
+
+export interface ListOpportunitiesFilter {
+  pipelineId?: string;
+  stageId?: string;
+  status?: OpportunityStatus;
+  ownerId?: string;
+}
+
+export interface ListActivitiesFilter {
+  relatedLeadId?: string;
+  relatedOpportunityId?: string;
+  relatedCustomerId?: string;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

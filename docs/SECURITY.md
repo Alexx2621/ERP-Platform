@@ -1629,3 +1629,107 @@ with no real caller yet.
   `.approve`), Accounting has a single `accounting.entries.manage`
   permission for both creating and posting; a maker-checker workflow for
   manual entries is real future scope, not built here.
+
+## CRM (Phase 9, 2026-09-02)
+
+Scope: `apps/api/src/modules/crm` — Lead, Pipeline/PipelineStage,
+Opportunity, Activity. Seventh business module of this codebase, and the
+second (after Sales) with a genuine, code-level dependency on Customers:
+`ConvertLeadUseCase` calls `FindCustomerByEmailUseCase`/
+`CreateCustomerUseCase` from the public Customers contract, never the
+customer's own tables. `CrmModule` imports `CustomersModule` directly, one
+directed, cycle-free dependency — same shape as `SalesModule`'s own import
+of `CustomersModule`.
+
+### Assets
+
+- `crm.leads.read`/`.manage`, `crm.pipelines.read`/`.manage`,
+  `crm.opportunities.read`/`.manage`, `crm.activities.read`/`.manage` — 8
+  new permissions, all company-scoped like every other business module
+  (`requireCompanyId`). Team/privacy scoping beyond company-level RBAC is
+  not built (see Known limitations).
+- `Lead.status` — `NEW -> CONTACTED -> QUALIFIED` are freely revisitable,
+  but `CONVERTED`/`LOST` are terminal (`Lead.isTerminal`); no code path
+  transitions a lead out of either. `SetLeadStatusUseCase` rejects the
+  attempt with `LeadAlreadyTerminalError`, and `SetLeadStatusDto` itself
+  cannot even express `CONVERTED` as a target (that value only ever
+  reaches `Lead` via `Lead.markConverted()`, called exclusively by
+  `ConvertLeadUseCase`).
+- `Lead.convertedCustomerId` — set exactly once, by
+  `ConvertLeadUseCase.execute()`, and never cleared or reassigned; it is
+  the durable record of which real `Customer` a lead became.
+- `Opportunity.status` — `OPEN -> WON | LOST` is a one-way door, enforced
+  by `MoveOpportunityStageUseCase`/`UpdateOpportunityUseCase` both
+  rejecting any further mutation once `status !== "OPEN"`
+  (`OpportunityNotOpenError`) — same "closed is terminal" philosophy as
+  `FiscalPeriod.close()`.
+- `Activity` relation fields (`relatedLeadId`/`relatedOpportunityId`/
+  `relatedCustomerId`) — the domain enforces **exactly one** non-null at
+  creation (`Activity.create()`), with `CreateActivityUseCase`
+  pre-validating the same invariant and resolving whichever id was
+  supplied against its owning module's real, company-scoped lookup
+  (`LeadRepository`/`OpportunityRepository`/Customers'
+  `GetCustomerUseCase`) before ever reaching the domain guard — the same
+  "application throws the typed, HTTP-mappable error; domain is the
+  backstop" split already used by `ReverseJournalEntryUseCase`/
+  `JournalEntryAlreadyReversedError`.
+- `Opportunity.amount` — validated as a non-negative decimal via the
+  module's own dependency-free BigInt decimal arithmetic
+  (`crm/domain/decimal.ts`), never a JavaScript float; `Opportunity.update()`
+  validates both `name` and `amount` before mutating either field (a real
+  bug found and fixed during this phase's own test-writing — the original
+  implementation mutated `name` before validating `amount`, which would
+  have left a partially-applied change behind on a rejected update).
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| An opportunity references a pipeline/stage/lead/customer from another company, letting one company's pipeline data leak into or corrupt another's | `CreateOpportunityUseCase` re-validates every referenced id as real, company-owned (`PipelineNotFoundError`/`PipelineStageNotFoundError`/`LeadNotFoundError`, and Customers' own `GetCustomerUseCase` for `customerId`) before creating anything — the same defense-in-depth pattern every other module applies, verified against real Postgres with a genuine cross-company customer rejected via its real FK-backed lookup (`CustomerNotFoundError`). |
+| A stage is moved to one that doesn't belong to the opportunity's own pipeline, corrupting the pipeline's reporting | `MoveOpportunityStageUseCase` loads the target `PipelineStage` and rejects if `stage.pipelineId !== opportunity.pipelineId`, never trusting a client-supplied stage id to already belong to the right pipeline. |
+| An activity is created with zero or more than one relation, leaving it un-attributable or double-attributed | Enforced at two levels: `Activity.create()` rejects unless exactly one of the three relation ids is non-null (domain-level backstop); `CreateActivityUseCase` counts the non-empty relation inputs itself and throws the typed `ActivityMustRelateToExactlyOneError` before ever calling the domain, giving callers an HTTP-mappable `400` instead of a generic domain exception. |
+| A lead is converted twice, creating two `Customer` records for the same real prospect or silently re-running side effects | `ConvertLeadUseCase` calls `Lead.markConverted()`, which — like every other terminal-state transition in this module — throws once the lead is already `CONVERTED`/`LOST`; a second conversion attempt on the same lead is rejected with `LeadAlreadyTerminalError`, never silently re-executed. |
+| A converted lead's guest customer is duplicated because the same person converts through two separate leads (or is re-entered) | `ConvertLeadUseCase` tries `FindCustomerByEmailUseCase` first — the exact same guest-resolution pattern Commerce's `CheckoutUseCase` already established for anonymous checkout — and only creates a fresh `Customer` via `CreateCustomerUseCase` if no match exists, reusing `Customers`' own case-insensitive email normalization (a real data bug already found and fixed in the Commerce phase, inherited here for free). |
+| A pipeline stage is marked as both winning and losing, making the pipeline's own reporting logic ambiguous | `PipelineStage.create()` rejects `isWon && isLost` both `true` at the domain level — a stage is either a normal stage, a winning stage, or a losing stage, never more than one. |
+| The pipeline summary silently drifts from the real set of open opportunities over time (a stored counter falling out of sync) | `GetPipelineSummaryUseCase` recomputes every stage's open count and open-amount total fresh from `OpportunityRepository.listOpenByPipeline` on every call — there is no stored summary column anywhere in this module; the same "ledger read, never a drifting counter" philosophy `InventoryBalance`/Accounting's Trial Balance already established. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No Sales-event consumer.** `docs/ROADMAP.md` §13 lists "Eventos de
+  Sales consumidos de forma idempotente" as a deliverable; this phase
+  deliberately does not build one — see docs/DECISIONS.md ADR-013 for the
+  full reasoning (no module besides Tenants has ever published a real
+  outbox event yet, and wiring a real Sales-side producer is a separate,
+  cross-cutting change to an already-shipped module, out of proportion for
+  this phase). `CreateActivityUseCase` is exported from `CrmModule` ahead
+  of a documented future consumer, the same precedent ADR-008's inbox and
+  ADR-012's posting port already established (build and verify the
+  mechanism the consumer will need, without inventing the consumer itself
+  against an unvalidated event schema).
+- **No dedicated "Team" entity or team-scoped permissions.** The Phase 9
+  exit criterion "permisos de equipo... verificados" is satisfied with
+  standard company-scoped RBAC (`crm.*.read`/`.manage`) plus an `ownerId`
+  field on `Lead`/`Opportunity`/`Activity` (defaulting to the creating
+  user, reassignable via update) — a deliberate choice not to invent a new
+  "Team" concept that exists nowhere else in Foundation for a single
+  module's needs.
+- **No dedicated consent/privacy audit trail beyond `Lead.consentMarketing`/
+  `consentedAt`.** MASTER_SPEC's "Consent/privacy" note is satisfied by a
+  real, settable field with a timestamp — not a full consent-history ledger
+  or a data-subject-request workflow.
+- **No notification-preference model.** `docs/ROADMAP.md` §13 mentions
+  "notification preferences" alongside consent/privacy; this phase does not
+  build a CRM-specific preference model — `UserPreference` (Foundation)
+  already exists as a generic mechanism a future increment could extend.
+- **No opportunity forecasting/weighted-pipeline value.** `GetPipelineSummaryUseCase`
+  sums raw `amount` per stage, with no probability-weighting by stage.
+- **No lead scoring, deduplication, or bulk import.** A lead is created one
+  at a time via the real form; nothing flags a likely-duplicate lead by
+  name/email/company similarity.
+- **`Activity.relatedCustomerId` accepts any real customer id the caller
+  supplies**, with no UI-level customer picker in `apps/erp-web` — the
+  admin UI accepts a raw customer id as free text (with an explicit hint
+  pointing to the Contactos screen), the same proportionate-scope choice
+  already documented for `Opportunity.customerId` at creation. The backend
+  itself always validates the id against Customers' real, company-scoped
+  lookup regardless of how the UI collected it.

@@ -18,6 +18,7 @@ export type AppPath =
   | "/pos"
   | "/commerce"
   | "/accounting"
+  | "/crm"
   | "/platform-admin";
 
 const VALID_PATHS = new Set<AppPath>([
@@ -38,6 +39,7 @@ const VALID_PATHS = new Set<AppPath>([
   "/pos",
   "/commerce",
   "/accounting",
+  "/crm",
   "/platform-admin",
 ]);
 

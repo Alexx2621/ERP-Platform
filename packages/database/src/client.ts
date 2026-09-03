@@ -68,6 +68,11 @@ export type {
   FiscalPeriod,
   JournalEntry,
   JournalEntryLine,
+  Lead,
+  Pipeline,
+  PipelineStage,
+  Opportunity,
+  Activity,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -102,6 +107,9 @@ export {
   CartStatus,
   AccountType,
   FiscalPeriodStatus,
+  LeadStatus,
+  OpportunityStatus,
+  ActivityType,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

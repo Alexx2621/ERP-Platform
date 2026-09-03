@@ -1469,6 +1469,139 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented CRM endpoints", async () => {
+    const lead = {
+      id: "lead-1",
+      name: "Grace Hopper",
+      companyName: "Hopper Analytics",
+      email: "grace@hopper.dev",
+      phone: null,
+      source: null,
+      status: "NEW",
+      ownerId: "user-1",
+      consentMarketing: false,
+      consentedAt: null,
+      convertedCustomerId: null,
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    };
+    const convertResult = { lead: { ...lead, status: "CONVERTED", convertedCustomerId: "customer-1" }, customerId: "customer-1", wasExistingCustomer: false };
+    const pipeline = { id: "pipeline-1", code: "SALES", name: "Sales Pipeline", status: "ACTIVE", createdAt: "2026-09-02T00:00:00.000Z", updatedAt: "2026-09-02T00:00:00.000Z" };
+    const stage = { id: "stage-1", pipelineId: "pipeline-1", name: "Qualification", sortOrder: 0, isWon: false, isLost: false };
+    const summary = { pipelineId: "pipeline-1", pipelineName: "Sales Pipeline", rows: [], totalOpenAmount: "0.0000" };
+    const opportunity = {
+      id: "opportunity-1",
+      name: "Hopper Analytics Deal",
+      pipelineId: "pipeline-1",
+      stageId: "stage-1",
+      customerId: "customer-1",
+      leadId: "lead-1",
+      amount: "12345.6789",
+      currency: "USD",
+      expectedCloseDate: null,
+      status: "OPEN",
+      ownerId: "user-1",
+      closedAt: null,
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    };
+    const activity = {
+      id: "activity-1",
+      type: "NOTE",
+      subject: "Deal closed won",
+      notes: null,
+      relatedLeadId: null,
+      relatedOpportunityId: null,
+      relatedCustomerId: "customer-1",
+      ownerId: "user-1",
+      dueAt: null,
+      completedAt: null,
+      createdAt: "2026-09-02T00:00:00.000Z",
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([lead]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(lead), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(lead), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(lead), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...lead, status: "QUALIFIED" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...lead, consentMarketing: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(convertResult), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([pipeline]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(pipeline), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...pipeline, status: "INACTIVE" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([stage]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(stage), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(summary), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([opportunity]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(opportunity), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(opportunity), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(opportunity), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...opportunity, status: "WON", stageId: "stage-2" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([activity]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(activity), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...activity, completedAt: "2026-09-02T01:00:00.000Z" }), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listLeads("access-token", "grupo-aurora", "company-1", { status: "NEW" });
+    await client.getLead("access-token", "grupo-aurora", "company-1", "lead-1");
+    await client.createLead("access-token", "grupo-aurora", "company-1", { name: "Grace Hopper", companyName: "Hopper Analytics", email: "grace@hopper.dev" });
+    await client.updateLead("access-token", "grupo-aurora", "company-1", "lead-1", { name: "Grace Hopper" });
+    await client.setLeadStatus("access-token", "grupo-aurora", "company-1", "lead-1", { status: "QUALIFIED" });
+    await client.setLeadConsent("access-token", "grupo-aurora", "company-1", "lead-1", { consentMarketing: true });
+    await client.convertLead("access-token", "grupo-aurora", "company-1", "lead-1");
+    await client.listPipelines("access-token", "grupo-aurora", "company-1");
+    await client.createPipeline("access-token", "grupo-aurora", "company-1", { code: "SALES", name: "Sales Pipeline" });
+    await client.setPipelineStatus("access-token", "grupo-aurora", "company-1", "pipeline-1", { status: "INACTIVE" });
+    await client.listPipelineStages("access-token", "grupo-aurora", "company-1", "pipeline-1");
+    await client.addPipelineStage("access-token", "grupo-aurora", "company-1", "pipeline-1", { name: "Qualification", isWon: false, isLost: false });
+    await client.getPipelineSummary("access-token", "grupo-aurora", "company-1", "pipeline-1");
+    await client.listOpportunities("access-token", "grupo-aurora", "company-1", { pipelineId: "pipeline-1" });
+    await client.getOpportunity("access-token", "grupo-aurora", "company-1", "opportunity-1");
+    await client.createOpportunity("access-token", "grupo-aurora", "company-1", {
+      name: "Hopper Analytics Deal",
+      pipelineId: "pipeline-1",
+      stageId: "stage-1",
+      customerId: "customer-1",
+      leadId: "lead-1",
+      amount: "12345.6789",
+      currency: "USD",
+    });
+    await client.updateOpportunity("access-token", "grupo-aurora", "company-1", "opportunity-1", { name: "Hopper Analytics Deal", amount: "12345.6789" });
+    await client.moveOpportunityStage("access-token", "grupo-aurora", "company-1", "opportunity-1", { stageId: "stage-2" });
+    await client.listActivities("access-token", "grupo-aurora", "company-1", { relatedCustomerId: "customer-1" });
+    await client.createActivity("access-token", "grupo-aurora", "company-1", { type: "NOTE", subject: "Deal closed won", relatedCustomerId: "customer-1" });
+    await client.completeActivity("access-token", "grupo-aurora", "company-1", "activity-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/crm/leads?status=NEW", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/crm/leads/lead-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/crm/leads", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/crm/leads/lead-1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/crm/leads/lead-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/crm/leads/lead-1/consent", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/crm/leads/lead-1/convert", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/crm/pipelines", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/crm/pipelines", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/crm/pipelines/pipeline-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/crm/pipelines/pipeline-1/stages", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/crm/pipelines/pipeline-1/stages", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/crm/pipelines/pipeline-1/summary", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(14, "/api/v1/crm/opportunities?pipelineId=pipeline-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(15, "/api/v1/crm/opportunities/opportunity-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(16, "/api/v1/crm/opportunities", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(17, "/api/v1/crm/opportunities/opportunity-1", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(18, "/api/v1/crm/opportunities/opportunity-1/stage", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(19, "/api/v1/crm/activities?relatedCustomerId=customer-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(20, "/api/v1/crm/activities", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(21, "/api/v1/crm/activities/activity-1/complete", expect.objectContaining({ method: "POST" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

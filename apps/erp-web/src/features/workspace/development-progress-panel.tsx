@@ -15,10 +15,10 @@ export const developmentRoadmap: readonly RoadmapPhase[] = [
   { id: "phase-3", name: "Inventario", progress: 100 },
   { id: "phase-4", name: "Ventas y Pagos", progress: 100 },
   { id: "phase-5", name: "Compras", progress: 100 },
-  { id: "phase-6", name: "POS", progress: 0 },
-  { id: "phase-7", name: "E-commerce", progress: 0 },
-  { id: "phase-8", name: "Contabilidad", progress: 0 },
-  { id: "phase-9", name: "CRM", progress: 0 },
+  { id: "phase-6", name: "POS", progress: 100 },
+  { id: "phase-7", name: "E-commerce", progress: 100 },
+  { id: "phase-8", name: "Contabilidad", progress: 100 },
+  { id: "phase-9", name: "CRM", progress: 100 },
   { id: "phase-10", name: "Manufactura", progress: 0 },
   { id: "phase-11", name: "Plataforma de plugins", progress: 0 },
   { id: "phase-12", name: "Escala", progress: 0 },
@@ -30,7 +30,7 @@ export const overallDevelopmentProgress = Math.round(
 );
 
 const nextMilestones = [
-  "Fase 6 — POS: ventas en mostrador, turnos de caja, pagos e impresión de tickets",
+  "Fase 10 — Manufactura: listas de materiales, órdenes de producción y consumo de materiales",
 ] as const;
 
 function ProgressMeter({ label, value }: { label: string; value: number }) {
@@ -93,7 +93,7 @@ export function DevelopmentProgressPanel() {
             <div className="shrink-0 rounded-[10px] border border-[var(--line)] bg-[var(--field)] px-4 py-3">
               <p className="text-[10px] font-bold text-[var(--muted)]">Última fase cerrada</p>
               <p className="mt-1 font-mono text-[18px] font-extrabold text-[var(--ink)]">
-                Compras 100%
+                CRM 100%
               </p>
             </div>
           </div>
@@ -148,8 +148,9 @@ export function DevelopmentProgressPanel() {
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
             Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85%; Foundation,
-            Master Data, Inventario, Ventas y Pagos y Compras están cerradas formalmente al 100%;
-            las fases funcionales restantes, empezando por POS, permanecen en 0%.
+            Master Data, Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad y CRM
+            están cerradas formalmente al 100%; las fases funcionales restantes, empezando por
+            Manufactura, permanecen en 0%.
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para

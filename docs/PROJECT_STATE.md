@@ -1,6 +1,26 @@
 # Project State
 
-Última actualización: 2026-09-02 (sesión 32), tras implementar el módulo
+Última actualización: 2026-09-02 (sesión 33), tras implementar el módulo
+de CRM (Fase 9) completo — Lead (con conversión real a `Customer` vía el
+contrato público de Customers), Pipeline/PipelineStage configurables,
+Opportunity (con transición `OPEN → WON | LOST` terminal), y Activity
+(exactamente una relación entre lead/oportunidad/cliente real) — a pedido
+explícito del usuario ("Continua con la fase 9"), inmediatamente después
+de cerrar la Fase 8. Ver "PHASE 9 — CRM" en `## Current Phase` y "Hecho —
+sesión 33" en `docs/WORK_QUEUE.md` para el detalle completo, incluyendo la
+decisión de alcance deliberada y documentada en `docs/DECISIONS.md`
+ADR-013: el motor de CRM se construyó completo y se verificó de extremo a
+extremo contra Postgres real, pero **ningún handler consume eventos de
+Sales** — ningún módulo de este código base, salvo Tenants, ha publicado
+jamás un evento real de dominio por el outbox, y construir un consumidor
+especulativo contra un schema de evento inventado (sin productor real que
+lo valide) habría sido exactamente el tipo de maquinaria prematura que
+MASTER_SPEC §59/§93 advierte evitar. Octavo módulo de negocio del código
+base y el segundo (tras Sales) con una dependencia real y directa hacia
+Customers — `CrmModule` importa `CustomersModule` directamente, una
+dependencia dirigida y libre de ciclos.
+
+Actualización previa: 2026-09-02 (sesión 32), tras implementar el módulo
 de Contabilidad (Fase 8) completo — Chart of Accounts, Fiscal Periods,
 Journal Entries/Lines de partida doble, reversión, y los reportes Balance
 de Comprobación/Ledger de cuenta — a pedido explícito del usuario
@@ -144,6 +164,60 @@ revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
 
+PHASE 9 — CRM, **iniciada y formalmente cerrada el 2026-09-02 (sesión 33,
+en un solo bloque de trabajo)**, a pedido explícito del usuario ("Continua
+con la fase 9"), inmediatamente después de cerrar la Fase 8: Lead
+(`NEW → CONTACTED → QUALIFIED`, libremente revisitable; `CONVERTED`/`LOST`
+terminales — `Lead.isTerminal`), Pipeline/PipelineStage (pipelines
+configurables por compañía, con `isWon`/`isLost` por etapa — nunca ambos a
+la vez, validado en el dominio), Opportunity (`OPEN → WON | LOST`,
+terminal — `UpdateOpportunityUseCase`/`MoveOpportunityStageUseCase`
+rechazan cualquier mutación posterior), y Activity (exactamente una
+relación entre prospecto/oportunidad/cliente real, validada en dos
+niveles — la aplicación primero, con un error tipado y mapeable a HTTP;
+el dominio como respaldo) — `apps/api/src/modules/crm`. **Segundo módulo
+de negocio del código base (tras Sales) con una dependencia real y directa
+hacia Customers**: `ConvertLeadUseCase` llama a
+`FindCustomerByEmailUseCase`/`CreateCustomerUseCase` del contrato público
+de Customers — resuelve un cliente ya existente por correo (mismo patrón
+de resolución de invitado ya usado por el checkout de Commerce) o crea uno
+nuevo, nunca una copia paralela de los datos del cliente. `CrmModule`
+importa `CustomersModule` directamente, una dependencia dirigida y libre
+de ciclos. **Bug real de dominio encontrado y corregido durante la propia
+escritura de tests, antes del primer commit**: `Opportunity.update()`
+mutaba `this.props.name` antes de validar `amount`, así que un
+`assertValidNonNegativeDecimal` fallido dejaba un cambio de nombre
+parcialmente aplicado — corregido validando ambos campos antes de mutar
+cualquiera. El exit criteria de `docs/ROADMAP.md` §13 ("pipeline
+configurable, permisos de equipo y privacidad verificados") se satisface
+con RBAC estándar por compañía (8 permisos nuevos:
+`crm.leads.read/.manage`, `crm.pipelines.read/.manage`,
+`crm.opportunities.read/.manage`, `crm.activities.read/.manage`) más un
+campo `ownerId` en Lead/Opportunity/Activity (por defecto el usuario que
+crea, reasignable) — una decisión deliberada de no inventar una entidad
+"Team" nueva que no existe en ningún otro módulo de Foundation, y
+`Lead.consentMarketing`/`consentedAt` reales para el consentimiento.
+**Ningún handler consume eventos de Sales** — la decisión central de la
+fase, documentada en `docs/DECISIONS.md` ADR-013 (nuevo): ningún módulo de
+este código base, salvo Tenants, ha publicado jamás un evento real de
+dominio por el outbox, y construir un consumidor especulativo contra un
+schema de evento inventado habría sido la misma maquinaria prematura que
+MASTER_SPEC §59/§93 advierte evitar; `CreateActivityUseCase` queda
+exportado desde `CrmModule` por adelantado, el mismo precedente ya usado
+por `RecordReceiptUseCase`/`ConfirmSalesOrderUseCase` antes de tener su
+primer caller real. Tabla nueva (migración `20260902195127_crm`,
+**generada y aplicada directamente contra Postgres real** vía el mismo
+workaround no-interactivo ya establecido, aplicada limpiamente al primer
+intento). Contrato HTTP nuevo, cuatro controladores
+(`/api/v1/crm/leads`, `.../pipelines`, `.../opportunities`,
+`.../activities`). Alcance deliberadamente fuera de Fase 9, sin
+aprobación explícita: consumidor real de eventos de Sales (ADR-013, la
+decisión central de esta fase), entidad "Team" dedicada, forecasting/
+pipeline ponderado por probabilidad, scoring/deduplicación de leads, e
+importación masiva — ver "Known limitations" en `docs/SECURITY.md` "CRM".
+Próxima fase no bloqueada: PHASE 10 — Manufactura (`docs/ROADMAP.md`
+§14), salvo indicación distinta del usuario.
+
 PHASE 8 — Accounting, **iniciada y formalmente cerrada el 2026-09-02
 (sesión 32, en un solo bloque de trabajo)**, a pedido explícito del
 usuario ("Continua con la fase 8 y terminala de una vez"): Account
@@ -190,9 +264,7 @@ central de esta fase), Balance General/Estado de Resultados formales más
 allá del Balance de Comprobación, reapertura de períodos, workflow de
 aprobación tipo maker-checker para asientos manuales, contabilidad
 multi-moneda, y una funcionalidad dedicada de reconciliación bancaria —
-ver "Known limitations" en `docs/SECURITY.md` "Accounting". Próxima fase
-no bloqueada: PHASE 9 — CRM (`docs/ROADMAP.md` §13), salvo indicación
-distinta del usuario.
+ver "Known limitations" en `docs/SECURITY.md` "Accounting".
 
 PHASE 7 — Commerce (7A, Commerce Engine), **iniciada y formalmente
 cerrada el 2026-09-02 (sesión 31, en un solo bloque de trabajo)**:
@@ -1814,6 +1886,96 @@ bloqueen.
   reversión real confirmada tanto en la lista de asientos como en el
   Balance de Comprobación recalculado (neto exactamente `0.0000`) — 16/16
   Playwright en total (antes 15).
+- **CRM — Fase 9, motor completo** (`apps/api/src/modules/crm`, Claude,
+  sesión 33, en un solo bloque de trabajo, ADR-013): Lead (`NEW →
+  CONTACTED → QUALIFIED` libremente revisitable, `CONVERTED`/`LOST`
+  terminales — `Lead.isTerminal`), Pipeline/PipelineStage (pipelines
+  configurables por compañía, `isWon`/`isLost` nunca ambos a la vez,
+  validado en el dominio, siempre agregadas al final por
+  `AddPipelineStageUseCase`), Opportunity (`OPEN → WON | LOST` terminal,
+  vinculada a `Customer`/`Lead` sin duplicar ninguno de los dos), y
+  Activity (exactamente una relación entre prospecto/oportunidad/cliente
+  real, validada primero en la aplicación con un error tipado y mapeable
+  a HTTP, y como respaldo en el dominio). **Segundo módulo de negocio del
+  código base (tras Sales) con una dependencia real y directa hacia
+  Customers**: `ConvertLeadUseCase` resuelve un cliente ya existente por
+  correo vía `FindCustomerByEmailUseCase` (mismo patrón de resolución de
+  invitado ya usado por el checkout de Commerce) o crea uno nuevo vía
+  `CreateCustomerUseCase`, ambos del contrato público real de Customers
+  — nunca una copia paralela de sus datos. `CrmModule` importa
+  `CustomersModule` directamente, una dependencia dirigida y libre de
+  ciclos. Copia propia y acotada de aritmética decimal BigInt sin
+  dependencias (`apps/api/src/modules/crm/domain/decimal.ts`), usada por
+  `Opportunity.amount` y por `GetPipelineSummaryUseCase` para sumar los
+  montos abiertos por etapa. **Bug real de dominio encontrado y corregido
+  antes del primer commit, durante la propia escritura de tests**:
+  `Opportunity.update()` mutaba `this.props.name` antes de validar
+  `amount` vía `assertValidNonNegativeDecimal`, así que una validación de
+  monto fallida dejaba un cambio de nombre parcialmente aplicado —
+  corregido validando ambos campos antes de mutar cualquiera. El exit
+  criteria de `docs/ROADMAP.md` §13 ("pipeline configurable, permisos de
+  equipo y privacidad verificados") se satisface con RBAC estándar por
+  compañía (8 permisos nuevos: `crm.leads.read/.manage`,
+  `crm.pipelines.read/.manage`, `crm.opportunities.read/.manage`,
+  `crm.activities.read/.manage`) más un campo `ownerId` en
+  Lead/Opportunity/Activity (por defecto el usuario que crea, reasignable
+  vía actualización) — decisión deliberada de no inventar una entidad
+  "Team" nueva que no existe en ningún otro módulo de Foundation — y
+  `Lead.consentMarketing`/`consentedAt` reales para el consentimiento.
+  **Ningún handler consume eventos de Sales** — la decisión central de la
+  fase (ADR-013 nuevo): ningún módulo de este código base, salvo Tenants,
+  ha publicado jamás un evento real de dominio por el outbox, así que
+  construir un consumidor especulativo contra un schema de evento
+  inventado (sin productor real que lo valide) habría sido exactamente la
+  maquinaria prematura que MASTER_SPEC §59/§93 advierte evitar; wiring un
+  productor real de Sales exigiría además extender la interfaz de
+  `SalesOrderRepository.save()` para aceptar una transacción compartida,
+  un cambio real y separado a un módulo ya construido y probado (Fase 4),
+  desproporcionado para esta fase. `CreateActivityUseCase` queda
+  exportado desde `CrmModule` por adelantado, el mismo precedente ya
+  usado por `RecordReceiptUseCase`/`ConfirmSalesOrderUseCase` antes de
+  tener su primer caller real. Tabla nueva (migración
+  `20260902195127_crm`, **generada y aplicada directamente contra
+  Postgres real** vía el mismo workaround no-interactivo ya establecido,
+  combinando cinco tablas nuevas, tres enums nuevos, y
+  `@@unique([tenantId, id])` nuevo en `leads`/`pipelines`/
+  `pipeline_stages`/`opportunities` — cada una consumida por FK dentro de
+  esta misma migración —, aplicada limpiamente al primer intento).
+  Contrato HTTP nuevo, cuatro controladores (`/api/v1/crm/leads`,
+  `.../pipelines`, `.../opportunities`, `.../activities`).
+  **`@erp/api-client`**: ~20 tipos y 21 métodos nuevos generados desde el
+  spec OpenAPI real, sin bugs de fidelidad de decoradores — todos los
+  DTOs llevaron `type:`/`nullable:` explícitos desde el inicio. **UI**
+  (`apps/erp-web/src/features/crm/`, ruta nueva `/crm`, botón "CRM" en el
+  workspace): pestañas Prospectos/Pipelines/Oportunidades/Actividades.
+  Prospectos, Pipelines y Oportunidades se cargan una sola vez a nivel de
+  página, no por pestaña activa — la pestaña Actividades necesita las
+  mismas listas de Prospectos y Oportunidades para sus selectores de
+  relación independientemente de cuál pestaña esté activa por defecto,
+  aplicando proactivamente la misma lección que la propia UI de POS tuvo
+  que corregir reactivamente en la sesión 30. El ID de cliente en los
+  formularios de Oportunidad/Actividad se acepta como texto libre (con un
+  hint explícito hacia la pantalla de Contactos) — el backend valida ese
+  id contra el contrato real de Customers sin importar cómo la UI lo
+  recolectó, la misma decisión de alcance proporcional ya documentada en
+  `docs/SECURITY.md` "CRM". Tests: 64 tests unitarios nuevos en `apps/api`
+  (30 de dominio, 33 de aplicación incluyendo el escenario de "exactamente
+  una relación" y el bug de `Opportunity.update()`, 1 de wiring del
+  módulo) — 968 tests unitarios totales en `apps/api` (antes 904). 3
+  escenarios de integración nuevos contra Postgres reales
+  (`crm.integration-spec.ts`): ciclo de vida completo Pipeline→Stages→
+  Lead→Convert→Opportunity→WON→Activity→Summary con precisión decimal
+  real verificada, reutilización real de un `Customer` ya existente por
+  email en una segunda conversión, y rechazo real de un cliente de otra
+  compañía — 44/44 en total (antes 41). 22/22 tests en `@erp/api-client`
+  (antes 21). 53/53 tests en `apps/erp-web` (antes 51). **E2E real nuevo**
+  (`apps/e2e/tests/crm.spec.ts`, Chromium vía Testcontainers): ciclo de
+  vida completo por navegador real — un prospecto real creado y
+  convertido a cliente real, un pipeline real con dos etapas reales
+  (una de ellas ganadora), una oportunidad real vinculada al prospecto
+  convertido movida hasta la etapa ganadora, y una actividad real
+  relacionada con el prospecto, completada — 17/17 Playwright en total
+  (antes 16).
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -1870,12 +2032,12 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — **Fase 7 (Commerce, 7A y 7B) quedó formalmente cerrada en
-la sesión 31** y **Fase 8 (Accounting) quedó formalmente cerrada en la
-sesión 32**, ambas en un solo bloque de trabajo cada una (ver Completed
-arriba y "Hecho — sesión 31"/"Hecho — sesión 32" en `docs/WORK_QUEUE.md`).
-El siguiente bloque no bloqueado es Fase 9 (CRM) según `docs/ROADMAP.md`
-§13, salvo indicación distinta del usuario.
+Ninguno activo — **Fase 8 (Accounting) quedó formalmente cerrada en la
+sesión 32** y **Fase 9 (CRM) quedó formalmente cerrada en la sesión 33**,
+ambas en un solo bloque de trabajo cada una (ver Completed arriba y
+"Hecho — sesión 32"/"Hecho — sesión 33" en `docs/WORK_QUEUE.md`). El
+siguiente bloque no bloqueado es Fase 10 (Manufactura) según
+`docs/ROADMAP.md` §14, salvo indicación distinta del usuario.
 
 ## Pending
 
@@ -1884,19 +2046,20 @@ Ningún ítem de la cola original de Foundation queda pendiente
 `docs/ARCHITECTURE.md` §5.2 queda pendiente, y ningún ítem del alcance de
 Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
 (`docs/ROADMAP.md` §9), Fase 6 (`docs/ROADMAP.md` §10), Fase 7
-(`docs/ROADMAP.md` §11, 7A y 7B completos) ni Fase 8
-(`docs/ROADMAP.md` §12) queda pendiente. También pendiente, sin bloquear
-Fase 9: ratificar ADR-001, ADR-002 y ADR-003 formalmente (ADR-004 a
-ADR-012 ya están ratificados) — sus decisiones ya están implementadas y
-verificadas, solo falta el documento formal. La UI de RBAC (incluida la
-invitación de miembros), el E2E de sesión, la UI de Configuración, la UI
-de Platform Administration (sesión 18), la UI de Apps (sesión 22), la UI
-de Catálogo (sesión 23), la UI de Contactos/Customers/Suppliers (sesión
-24), la UI de Comercial/Taxes/Warehouses/Pricing (sesión 25), la UI de
-Inventario (sesión 26), la UI de Ventas/Pagos (sesión 27), la UI de
-Compras (sesión 29), la UI de POS (sesión 30), la UI de Comercio (sesión
-31) y la UI de Contabilidad (sesión 32) ya están hechas e integradas (ver
-Completed); la UI de Files
+(`docs/ROADMAP.md` §11, 7A y 7B completos), Fase 8 (`docs/ROADMAP.md`
+§12) ni Fase 9 (`docs/ROADMAP.md` §13) queda pendiente. También
+pendiente, sin bloquear Fase 10: ratificar ADR-001, ADR-002 y ADR-003
+formalmente (ADR-004 a ADR-013 ya están ratificados) — sus decisiones ya
+están implementadas y verificadas, solo falta el documento formal. La UI
+de RBAC (incluida la invitación de miembros), el E2E de sesión, la UI de
+Configuración, la UI de Platform Administration (sesión 18), la UI de
+Apps (sesión 22), la UI de Catálogo (sesión 23), la UI de Contactos/
+Customers/Suppliers (sesión 24), la UI de Comercial/Taxes/Warehouses/
+Pricing (sesión 25), la UI de Inventario (sesión 26), la UI de Ventas/
+Pagos (sesión 27), la UI de Compras (sesión 29), la UI de POS (sesión
+30), la UI de Comercio (sesión 31), la UI de Contabilidad (sesión 32) y
+la UI de CRM (sesión 33) ya están hechas e integradas (ver Completed); la
+UI de Files
 (subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
 todavía no se han construido — quedan como mejoras de UX sin dependencia
 de arquitectura, a retomar si el usuario las pide o cuando un módulo de
@@ -1951,7 +2114,15 @@ Sales/Payments/Purchasing/Inventory — la decisión central de esta fase,
 no un descuido —, Balance General/Estado de Resultados formales,
 reapertura de un período fiscal cerrado, workflow de aprobación tipo
 maker-checker para asientos manuales, contabilidad multi-moneda, y
-funcionalidad dedicada de reconciliación bancaria.
+funcionalidad dedicada de reconciliación bancaria. Alcance deliberadamente
+diferido dentro de CRM (no bloquea el cierre de Fase 9, ver
+`docs/DECISIONS.md` ADR-013 y "Known limitations" en `docs/SECURITY.md`
+"CRM"): un consumidor real de eventos de Sales — la decisión central de
+esta fase, no un descuido, ya que ningún módulo de este código base salvo
+Tenants ha publicado jamás un evento real de dominio —, una entidad
+"Team" dedicada más allá de RBAC por compañía + `ownerId`, forecasting/
+pipeline ponderado por probabilidad, scoring/deduplicación de leads, e
+importación masiva.
 
 ## Production Status
 
@@ -2576,3 +2747,30 @@ uso lo llenaba jamás, dejándolo como código muerto permanente — corregido
 antes de compartir la migración. Los datos de prueba de esta sesión
 permanecen en la base, por el mismo motivo `onDelete: Restrict` de
 `audit_entries.user_id` ya documentado en sesiones anteriores.
+
+**Sesión 33 (2026-09-02, CRM — Fase 9, motor completo)**: migración
+`20260902195127_crm` (`leads`, `pipelines`, `pipeline_stages`,
+`opportunities`, `activities`, más los enums nuevos `LeadStatus`/
+`OpportunityStatus`/`ActivityType` y `@@unique([tenantId, id])` nuevo en
+`leads`/`pipelines`/`pipeline_stages`/`opportunities` — cada una consumida
+por FK dentro de esta misma migración) generada vía el mismo workaround
+no-interactivo `prisma migrate diff --from-config-datasource --to-schema
+prisma/schema.prisma --script` ya establecido, aplicada vía `prisma
+migrate deploy` — `prisma migrate status` confirma las 23 migraciones
+aplicadas sin drift. Verificado con el servidor real reconstruido y la
+suite de integración real (`apps/api/test/integration/crm.integration-spec.ts`,
+3 escenarios contra Postgres real): ciclo de vida completo real (pipeline
+real con dos etapas reales → prospecto real → convertido a un `Customer`
+real nuevo vía el contrato público real de Customers → oportunidad real
+vinculada al pipeline/etapa/prospecto/cliente, con precisión decimal real
+confirmada, `"12345.6789"` sin recorte de ceros → movida a la etapa
+ganadora real, confirmando `status: "WON"` y `closedAt` poblado →
+actividad real relacionada con el cliente real → resumen del pipeline
+real confirmando que la oportunidad ya cerrada queda excluida del monto
+abierto, `totalOpenAmount: "0.0000"`) → el escenario de reutilización real
+de un `Customer` ya existente por email en una segunda conversión (sin
+crear un duplicado) → y el escenario de rechazo real de un cliente de
+otra compañía (`CustomerNotFoundError` real, FK-scoped, no solo un filtro
+de aplicación). Los datos de prueba de esta sesión permanecen en la base,
+por el mismo motivo `onDelete: Restrict` de `audit_entries.user_id` ya
+documentado en sesiones anteriores.

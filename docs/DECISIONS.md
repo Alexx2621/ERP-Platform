@@ -15,7 +15,10 @@ ADR-011 (Commerce Checkout Payment/Fulfillment and Idempotency Model V1)
 was ratified once the Commerce module (Phase 7A) was implemented — see
 below. ADR-012 (Accounting Integration Scope V1 — Manual Engine and
 Idempotent Posting Port, No Automatic Cross-Module Postings) was ratified
-once the Accounting module (Phase 8) was implemented — see below.
+once the Accounting module (Phase 8) was implemented — see below. ADR-013
+(CRM Sales-Event Consumption Scope V1 — No Speculative Consumer Ahead of a
+Real Sales-Side Producer) was ratified once the CRM module (Phase 9) was
+implemented — see below.
 
 ---
 
@@ -1217,3 +1220,119 @@ financial statements and potential tax filings, not just a UI screen.
   concurrency, is strictly safer than discovering a race condition only
   once real money-relevant postings depend on it; mirrors ADR-008's own
   precedent exactly.
+
+---
+
+## ADR-013 — CRM Sales-Event Consumption Scope V1 (No Speculative Consumer Ahead of a Real Sales-Side Producer)
+
+**Status:** Accepted (scope: the full, real, tested CRM engine — Lead,
+Pipeline/PipelineStage, Opportunity, Activity, and lead-to-customer
+conversion through the Customers module's own public contract; explicitly
+**not** any handler that consumes a Sales domain event, since no such
+event exists yet)
+
+**Context**
+
+`docs/ROADMAP.md` §13 lists CRM's deliverables as leads/opportunities/
+activities/pipelines, an explicit relationship with Customers that never
+duplicates ownership, consent/privacy, and "Eventos de Sales consumidos de
+forma idempotente" (Sales events consumed idempotently) — a direct echo of
+MASTER_SPEC §11's own example ("OrderPaid puede provocar: ... CRM
+actualizar comportamiento del cliente"). Unlike Accounting's idempotent
+posting port (ADR-012), which is a genuinely generic, reusable mechanism
+worth building ahead of any real caller (the same precedent ADR-008's
+inbox already established for exactly that reason), a Sales-event
+*consumer* is not generic — it is tied to one specific event's payload
+shape. And no module in this codebase has ever published a real business
+domain event through the outbox: `tenancy.tenant.provisioned.v1` (Tenants,
+ADR-004) remains the only real producer to this day; every other
+cross-module interaction in this codebase — Sales→Inventory, POS→Sales/
+Payments, Commerce→Catalog/Customers/Sales/Payments, Purchasing→Inventory
+— is a direct, synchronous use-case call, never an outbox event. Wiring a
+real `sales.order.confirmed.v1` (or similar) producer would require
+extending `ConfirmSalesOrderUseCase`'s persistence boundary — today
+`SalesOrderRepository.save()` has no shared-transaction parameter, so
+appending an outbox message atomically with the order's own status change
+(the same non-negotiable atomicity ADR-004 established for every existing
+producer) would mean changing that repository's interface and both its
+implementations, a real, separate, cross-cutting change to an
+already-shipped, already-tested module (Phase 4).
+
+**Decision**
+
+1. **The full CRM engine is built completely, exactly as `docs/ROADMAP.md`
+   §13 specifies, with nothing simulated.** `Lead` (its own contact fields
+   until real conversion, `consentMarketing`/`consentedAt` for the
+   "Consent/privacy" deliverable), `Pipeline`/`PipelineStage` (real,
+   configurable pipelines — the "pipeline configurable" exit criterion),
+   `Opportunity` (linked to `Customer`/`Lead` without ever duplicating
+   either's ownership), and `Activity` (logged against exactly one of a
+   lead, an opportunity, or a real customer). `ConvertLeadUseCase` is the
+   one real, working answer to "Relación explícita con Party/Customers sin
+   duplicar ownership" — it resolves an existing `Customer` by email
+   (mirroring Commerce's own guest-checkout resolution, `FindCustomerByEmailUseCase`)
+   or creates one fresh through the Customers module's real public
+   contract, never a shadow copy of customer data.
+2. **No handler consumes a Sales domain event in this phase, because no
+   Sales domain event exists to consume.** Building a speculative consumer
+   for an invented event schema — guessing at what fields
+   `sales.order.confirmed.v1` would carry, with no real producer to
+   validate the guess against — would be exactly the premature machinery
+   MASTER_SPEC §59/§93 warns against, and structurally different from
+   ADR-008's inbox precedent: the inbox is generic infrastructure usable by
+   any future consumer of any future event; a handler hard-coded to one
+   unpublished event's assumed shape is not reusable at all if that
+   assumption turns out wrong once a real producer is finally built.
+3. **`Activity.relatedCustomerId` is still real, justified functionality
+   today, independent of any event system** — a staff member can log a
+   call, email, or note directly against a real `Customer` right now,
+   through `POST /api/v1/crm/activities`, with no dependency on Sales
+   publishing anything. The field was not added speculatively for a future
+   event handler; it is a genuinely useful capability on its own.
+4. **`CreateActivityUseCase` is exported from `CrmModule`** even though
+   nothing calls it cross-module yet — the same "export ahead of a
+   documented future consumer" precedent already used throughout this
+   codebase (e.g. `RecordReceiptUseCase` before Purchasing existed,
+   `ConfirmSalesOrderUseCase` before POS/Commerce existed) — so that once a
+   real Sales-side producer is built, wiring the consumer is additive: a
+   new handler in `apps/worker`, no change to CRM itself.
+
+**Consequences**
+
+- A real business using this CRM today gets a complete, useful pipeline
+  and lead-management tool, and can log customer activity by hand — but
+  gets no automatic "a sale happened, log it" behavior. This is a real,
+  visible gap, not a hidden one: `docs/SECURITY.md` "CRM" and
+  `docs/PROJECT_STATE.md` name it explicitly.
+- Wiring the real integration later requires two coordinated changes, not
+  one: (a) extending `SalesOrderRepository.save()` (or an equivalent
+  atomic write path) so `ConfirmSalesOrderUseCase` can append a real
+  outbox message in the same transaction as the order's own status change,
+  and (b) a new `apps/worker` handler consuming it via `consumeIdempotently`
+  (ADR-008) to call `CreateActivityUseCase`. Neither is authorized by this
+  ADR; both remain real future scope.
+- No other module in this codebase gained a new outbox producer either —
+  this decision does not change the "only Tenants publishes a real event"
+  status quo established since ADR-004.
+
+**Alternatives considered**
+
+- **Inventing a plausible `sales.order.confirmed.v1` payload and building
+  a handler against it anyway**, planning to adjust the handler once a
+  real producer exists: rejected — a handler tested only against a
+  self-invented event is not meaningfully verified against anything real,
+  and the adjustment-later plan has no more guarantee of happening than
+  simply building it correctly once, later, against a real producer.
+- **Retrofitting `ConfirmSalesOrderUseCase` to publish a real event in this
+  same phase**, accepting the cross-cutting change to Sales: rejected for
+  this pass — Sales (Phase 4) is an already-shipped, already-tested module
+  with real production-shaped integration tests (concurrent capture races,
+  compensating-transaction reservations); touching its repository
+  interface as a side effect of a CRM roadmap item, rather than as its own
+  deliberately scoped and tested change, is a materially larger risk than
+  this ADR's own scope warrants. A future, dedicated increment — "wire
+  Sales' first real outbox event" — is the right size for that change.
+- **Skipping `Activity.relatedCustomerId` entirely** since no automatic
+  consumer uses it yet: rejected — it is real, independently useful
+  functionality today (logging a call against a customer with no open
+  deal), not scaffolding for a feature that doesn't exist.

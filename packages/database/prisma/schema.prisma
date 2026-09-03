@@ -47,6 +47,9 @@ model User {
   posShiftsClosed          PosShift[]          @relation("PosShiftsClosed")
   posCashMovementsRecorded PosCashMovement[]   @relation("PosCashMovementsRecorded")
   journalEntries           JournalEntry[]
+  ownedLeads               Lead[]
+  ownedOpportunities       Opportunity[]
+  ownedActivities          Activity[]
 
   @@map("users")
 }
@@ -165,6 +168,11 @@ model Tenant {
   fiscalPeriods         FiscalPeriod[]
   journalEntries        JournalEntry[]
   journalEntryLines     JournalEntryLine[]
+  leads                 Lead[]
+  pipelines             Pipeline[]
+  pipelineStages        PipelineStage[]
+  opportunities         Opportunity[]
+  activities            Activity[]
 
   @@map("tenants")
 }
@@ -279,6 +287,10 @@ model Company {
   accounts              Account[]
   fiscalPeriods         FiscalPeriod[]
   journalEntries        JournalEntry[]
+  leads                 Lead[]
+  pipelines             Pipeline[]
+  opportunities         Opportunity[]
+  activities            Activity[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -970,9 +982,12 @@ model Customer {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
-  salesOrders    SalesOrder[]
-  quotes         Quote[]
-  commerceOrders CommerceOrder[]
+  salesOrders       SalesOrder[]
+  quotes            Quote[]
+  commerceOrders    CommerceOrder[]
+  convertedFromLeads Lead[]
+  opportunities     Opportunity[]
+  activities        Activity[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -2360,4 +2375,187 @@ model JournalEntryLine {
   @@index([tenantId, journalEntryId])
   @@index([tenantId, accountId])
   @@map("journal_entry_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9 — CRM (docs/ROADMAP.md §13)
+// ---------------------------------------------------------------------------
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+/// A prospect not yet a real `Customer` (docs/ROADMAP.md §13 — "Relación
+/// explícita con Party/Customers sin duplicar ownership"). Owns its own
+/// contact fields for exactly as long as no `Customer` exists for it;
+/// `convertedCustomerId` is the one-way pointer set the moment
+/// `ConvertLeadUseCase` resolves or creates a real `Customer` — see the
+/// domain entity's own docstring.
+model Lead {
+  id                  String     @id @db.Uuid
+  tenantId            String     @map("tenant_id") @db.Uuid
+  companyId           String     @map("company_id") @db.Uuid
+  name                String     @db.VarChar(200)
+  companyName         String?    @map("company_name") @db.VarChar(200)
+  email               String?    @db.VarChar(200)
+  phone               String?    @db.VarChar(40)
+  source              String?    @db.VarChar(100)
+  status              LeadStatus @default(NEW)
+  ownerId             String     @map("owner_id") @db.Uuid
+  consentMarketing    Boolean    @default(false) @map("consent_marketing")
+  consentedAt         DateTime?  @map("consented_at") @db.Timestamptz(6)
+  convertedCustomerId String?    @map("converted_customer_id") @db.Uuid
+  version             Int        @default(1)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant            Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company           Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  owner             User       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  convertedCustomer Customer?  @relation(fields: [tenantId, convertedCustomerId], references: [tenantId, id], onDelete: Restrict)
+  opportunities     Opportunity[]
+  activities        Activity[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@map("leads")
+}
+
+/// A named, configurable pipeline (docs/ROADMAP.md §13 exit criterion —
+/// "pipeline configurable"). Stages are their own entity (`PipelineStage`),
+/// not a JSON array, so an `Opportunity` can reference one by a stable id.
+model Pipeline {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  code      String           @db.VarChar(50)
+  name      String           @db.VarChar(150)
+  status    MasterDataStatus @default(ACTIVE)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company       Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  stages        PipelineStage[]
+  opportunities Opportunity[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId])
+  @@map("pipelines")
+}
+
+/// One configurable stage of a `Pipeline`. `isWon`/`isLost` are how
+/// `MoveOpportunityStageUseCase` knows to close an `Opportunity` on
+/// arrival — never both true on the same stage (enforced in the domain).
+/// Always appended at the end by `AddPipelineStageUseCase`; reordering is
+/// out of scope for this slice, so `sortOrder` carries no unique
+/// constraint of its own.
+model PipelineStage {
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  pipelineId String   @map("pipeline_id") @db.Uuid
+  name       String   @db.VarChar(100)
+  sortOrder  Int      @map("sort_order")
+  isWon      Boolean  @default(false) @map("is_won")
+  isLost     Boolean  @default(false) @map("is_lost")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  pipeline      Pipeline      @relation(fields: [tenantId, pipelineId], references: [tenantId, id], onDelete: Restrict)
+  opportunities Opportunity[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, pipelineId])
+  @@map("pipeline_stages")
+}
+
+/// A deal in progress. `customerId`/`leadId` are both optional and never
+/// exclusive of each other — see the domain entity's own docstring.
+model Opportunity {
+  id                String            @id @db.Uuid
+  tenantId          String            @map("tenant_id") @db.Uuid
+  companyId         String            @map("company_id") @db.Uuid
+  name              String            @db.VarChar(200)
+  pipelineId        String            @map("pipeline_id") @db.Uuid
+  stageId           String            @map("stage_id") @db.Uuid
+  customerId        String?           @map("customer_id") @db.Uuid
+  leadId            String?           @map("lead_id") @db.Uuid
+  amount            Decimal           @db.Decimal(14, 4)
+  currency          String            @db.VarChar(3)
+  expectedCloseDate DateTime?         @map("expected_close_date") @db.Date
+  status            OpportunityStatus @default(OPEN)
+  ownerId           String            @map("owner_id") @db.Uuid
+  closedAt          DateTime?         @map("closed_at") @db.Timestamptz(6)
+  version           Int               @default(1)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company    Company       @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  pipeline   Pipeline      @relation(fields: [tenantId, pipelineId], references: [tenantId, id], onDelete: Restrict)
+  stage      PipelineStage @relation(fields: [tenantId, stageId], references: [tenantId, id], onDelete: Restrict)
+  customer   Customer?     @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  lead       Lead?         @relation(fields: [tenantId, leadId], references: [tenantId, id], onDelete: Restrict)
+  owner      User          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  activities Activity[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, pipelineId])
+  @@map("opportunities")
+}
+
+/// A logged interaction. Exactly one of `relatedLeadId`/
+/// `relatedOpportunityId`/`relatedCustomerId` is set — enforced in the
+/// domain, see `Activity`'s own docstring for why `relatedCustomerId`
+/// exists (the CRM Sales-event consumer, docs/DECISIONS.md ADR-013).
+model Activity {
+  id                    String       @id @db.Uuid
+  tenantId              String       @map("tenant_id") @db.Uuid
+  companyId             String       @map("company_id") @db.Uuid
+  type                  ActivityType
+  subject               String       @db.VarChar(200)
+  notes                 String?      @db.VarChar(2000)
+  relatedLeadId         String?      @map("related_lead_id") @db.Uuid
+  relatedOpportunityId  String?      @map("related_opportunity_id") @db.Uuid
+  relatedCustomerId     String?      @map("related_customer_id") @db.Uuid
+  ownerId               String       @map("owner_id") @db.Uuid
+  dueAt                 DateTime?    @map("due_at") @db.Timestamptz(6)
+  completedAt           DateTime?    @map("completed_at") @db.Timestamptz(6)
+  createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant              Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company             Company      @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  relatedLead         Lead?        @relation(fields: [tenantId, relatedLeadId], references: [tenantId, id], onDelete: Restrict)
+  relatedOpportunity  Opportunity? @relation(fields: [tenantId, relatedOpportunityId], references: [tenantId, id], onDelete: Restrict)
+  relatedCustomer     Customer?    @relation(fields: [tenantId, relatedCustomerId], references: [tenantId, id], onDelete: Restrict)
+  owner               User         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, companyId])
+  @@index([tenantId, relatedLeadId])
+  @@index([tenantId, relatedOpportunityId])
+  @@index([tenantId, relatedCustomerId])
+  @@map("activities")
 }

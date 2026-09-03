@@ -129,4 +129,12 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
   { key: "accounting.entries.read", description: "View the company's journal entries and their lines." },
   { key: "accounting.entries.manage", description: "Post and reverse journal entries." },
   { key: "accounting.reports.read", description: "View the company's Trial Balance and account ledgers." },
+  { key: "crm.leads.read", description: "View the company's leads." },
+  { key: "crm.leads.manage", description: "Create, update, requalify, and convert leads." },
+  { key: "crm.pipelines.read", description: "View the company's pipelines, stages, and pipeline summaries." },
+  { key: "crm.pipelines.manage", description: "Create pipelines, add stages, and activate/deactivate pipelines." },
+  { key: "crm.opportunities.read", description: "View the company's opportunities." },
+  { key: "crm.opportunities.manage", description: "Open, update, and move opportunities between stages." },
+  { key: "crm.activities.read", description: "View activities logged against leads, opportunities, and customers." },
+  { key: "crm.activities.manage", description: "Log and complete activities." },
 ];

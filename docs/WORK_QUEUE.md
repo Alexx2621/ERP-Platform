@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-02 (sesión 32,
-Fase 8 — Accounting completo en un solo bloque de trabajo, a pedido
-explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-02 (sesión 33,
+Fase 9 — CRM completo en un solo bloque de trabajo, a pedido explícito del
+usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,16 +21,23 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 8 (Accounting) está completa** — ver "Hecho — sesión 32" abajo, en
-un solo bloque de trabajo a pedido explícito del usuario. El siguiente
-trabajo no bloqueado es Fase 9 (CRM) según `docs/ROADMAP.md` §13, salvo
-que el usuario indique otra prioridad. Alcance deliberadamente fuera de
-Fase 8 y diferido (no simulado — decisión central de la fase, ver
-`docs/DECISIONS.md` ADR-012 y "Known limitations" en "Accounting" de
-`docs/SECURITY.md`): contabilización automática desde Sales/Payments/
-Purchasing/Inventory, Balance General/Estado de Resultados formales más
-allá del Balance de Comprobación, reapertura de un período fiscal
-cerrado, workflow de aprobación tipo maker-checker para asientos
+**Fase 9 (CRM) está completa** — ver "Hecho — sesión 33" abajo, en un solo
+bloque de trabajo a pedido explícito del usuario. El siguiente trabajo no
+bloqueado es Fase 10 (Manufactura) según `docs/ROADMAP.md` §14, salvo que
+el usuario indique otra prioridad. Alcance deliberadamente fuera de
+Fase 9 y diferido (no simulado — decisión central de la fase, ver
+`docs/DECISIONS.md` ADR-013 y "Known limitations" en "CRM" de
+`docs/SECURITY.md`): un consumidor real de eventos de Sales (ningún módulo
+de este código base, salvo Tenants, ha publicado jamás un evento real de
+dominio por el outbox), una entidad "Team" dedicada más allá de RBAC por
+compañía + `ownerId`, forecasting/pipeline ponderado por probabilidad,
+scoring/deduplicación de leads, e importación masiva. Alcance
+deliberadamente fuera de Fase 8 y diferido (no simulado — decisión
+central de la fase, ver `docs/DECISIONS.md` ADR-012 y "Known limitations"
+en "Accounting" de `docs/SECURITY.md`): contabilización automática desde
+Sales/Payments/Purchasing/Inventory, Balance General/Estado de Resultados
+formales más allá del Balance de Comprobación, reapertura de un período
+fiscal cerrado, workflow de aprobación tipo maker-checker para asientos
 manuales, contabilidad multi-moneda, y funcionalidad dedicada de
 reconciliación bancaria. Alcance deliberadamente fuera de Fase 7 (7A y 7B,
 ambas completas) y diferido (no simulado, ver
@@ -77,6 +84,84 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 33 (CRM — Fase 9, completa de una vez)
+
+Fase 9 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("Continua con la fase 9"), inmediatamente después de cerrar la
+Fase 8 (ver "Hecho — sesión 32" abajo): Lead, Pipeline/PipelineStage
+configurables, Opportunity, y Activity — los entregables de
+`docs/ROADMAP.md` §13, con una decisión de alcance deliberada y
+documentada en `docs/DECISIONS.md` ADR-013 (nuevo): el motor de CRM se
+construyó completo y se verificó de extremo a extremo contra Postgres
+real, pero ningún handler consume eventos de Sales — ver el detalle
+completo del razonamiento en "Completed" de `docs/PROJECT_STATE.md` y en
+el propio ADR-013.
+
+- **`apps/api/src/modules/crm/`** (módulo nuevo, octavo bloque de negocio
+  del código base y el segundo, tras Sales, con una dependencia real y
+  directa hacia Customers): `Lead`/`Pipeline`/`PipelineStage`/
+  `Opportunity`/`Activity`, mismo layout domain/application/
+  infrastructure/presentation/test-support que el resto de módulos de
+  negocio. Ver el detalle completo de cada entidad, invariante y caso de
+  uso en la entrada "CRM — Fase 9, motor completo" de "Completed" en
+  `docs/PROJECT_STATE.md` — no se repite aquí para no duplicar.
+- **Bug real de dominio encontrado y corregido antes del primer commit,
+  durante la propia escritura de tests**: `Opportunity.update()` mutaba
+  `this.props.name` antes de validar `amount`, dejando un cambio de
+  nombre parcialmente aplicado si la validación de monto fallaba —
+  corregido validando ambos campos antes de mutar cualquiera.
+- 8 permisos nuevos (`crm.leads.read/.manage`, `crm.pipelines.read/
+  .manage`, `crm.opportunities.read/.manage`, `crm.activities.read/
+  .manage`). Sin auditoría nueva en esta sesión más allá de las acciones
+  ya cubiertas por los controladores.
+- Tabla nueva (migración `20260902195127_crm`, **generada y aplicada
+  directamente contra Postgres real** vía el mismo workaround
+  no-interactivo ya establecido, aplicada limpiamente al primer intento).
+- Contrato HTTP nuevo, cuatro controladores (`/api/v1/crm/leads`,
+  `.../pipelines`, `.../opportunities`, `.../activities`).
+- **`@erp/api-client`**: ~20 tipos y 21 métodos nuevos generados desde el
+  spec OpenAPI real, sin bugs de fidelidad de decoradores.
+- **UI** (`apps/erp-web/src/features/crm/`, ruta nueva `/crm`, botón
+  "CRM" en el workspace): pestañas Prospectos/Pipelines/Oportunidades/
+  Actividades. Prospectos, Pipelines y Oportunidades se cargan una sola
+  vez a nivel de página, no por pestaña activa, aplicando proactivamente
+  la misma lección que la propia UI de POS tuvo que corregir
+  reactivamente en la sesión 30 (la pestaña Actividades necesita las
+  mismas listas de Prospectos y Oportunidades para sus selectores de
+  relación independientemente de cuál pestaña esté activa por defecto).
+- Tests: 64 tests unitarios nuevos en `apps/api` (30 de dominio, 33 de
+  aplicación incluyendo el escenario de "exactamente una relación" y el
+  bug de `Opportunity.update()`, 1 de wiring del módulo) — 968 tests
+  unitarios totales en `apps/api` (antes 904). 3 escenarios de
+  integración nuevos contra Postgres reales (`crm.integration-spec.ts`):
+  ciclo de vida completo Pipeline→Stages→Lead→Convert→Opportunity→WON→
+  Activity→Summary con precisión decimal real verificada, reutilización
+  real de un `Customer` ya existente por email en una segunda conversión,
+  y rechazo real de un cliente de otra compañía — 44/44 en total (antes
+  41). 22/22 tests en `@erp/api-client` (antes 21). 53/53 tests en
+  `apps/erp-web` (antes 51). **E2E real nuevo**
+  (`apps/e2e/tests/crm.spec.ts`, Chromium vía Testcontainers): ciclo de
+  vida completo por navegador real — un prospecto real creado y
+  convertido a cliente real, un pipeline real con dos etapas reales (una
+  de ellas ganadora), una oportunidad real vinculada al prospecto
+  convertido movida hasta la etapa ganadora, y una actividad real
+  relacionada con el prospecto, completada — 17/17 Playwright en total
+  (antes 16).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 9
+  paquetes/apps, `pnpm --filter @erp/api test` (968/968), `pnpm --filter
+  @erp/api-client test` (22/22), `pnpm --filter @erp/erp-web test`
+  (53/53), `pnpm --filter @erp/api test:integration` (44/44 contra
+  Postgres real), `pnpm --filter @erp/e2e test:e2e` (17/17 Playwright,
+  corrida contra infraestructura efímera tras detener el servidor
+  persistente del puerto 3000 — mismo protocolo operativo ya documentado
+  en sesiones anteriores para evitar que un proceso persistente
+  intercepte el tráfico del propio arnés E2E — y reiniciados con el build
+  nuevo al terminar; un fallo aislado por timeout en `purchasing.spec.ts`
+  durante la corrida completa se descartó como contención de recursos de
+  esta sesión larga, confirmado con una corrida aislada limpia de ese
+  mismo archivo, mismo patrón ya documentado en sesiones anteriores) —
+  todo verde.
 
 ### Hecho — sesión 32 (Accounting — Fase 8, completa de una vez)
 
@@ -3119,8 +3204,14 @@ mecanismo de posteo idempotente por `(sourceType, sourceId)` construidos
 y verificados contra Postgres real, deliberadamente sin ninguna
 contabilización automática conectada desde Sales/Payments/Purchasing/
 Inventory — la decisión de mayor riesgo evitada explícitamente, no una
-omisión). Pendientes de numerar formalmente cuando corresponda: ADR-001
-(Modular Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy —
-el patrón de `docs/MULTITENANCY.md` §8 ya está verificado tres veces
-contra Postgres real: manual, integration test, y ahora E2E de
-navegador).
+omisión); ADR-013 (CRM Sales-Event Consumption Scope V1 — implementado y
+ratificado en sesión 33, motor de CRM completo construido y verificado
+contra Postgres real, deliberadamente sin ningún handler que consuma
+eventos de Sales — ningún módulo de este código base, salvo Tenants, ha
+publicado jamás un evento real de dominio por el outbox, y un consumidor
+especulativo contra un schema de evento inventado habría sido la misma
+maquinaria prematura que MASTER_SPEC §59/§93 advierte evitar).
+Pendientes de numerar formalmente cuando corresponda: ADR-001 (Modular
+Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el
+patrón de `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra
+Postgres real: manual, integration test, y ahora E2E de navegador).
