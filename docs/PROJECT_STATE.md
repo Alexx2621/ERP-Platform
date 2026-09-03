@@ -3361,4 +3361,14 @@ así que la petición real que el test necesitaba observar nunca se
 disparaba), y la pantalla restaurada tras re-habilitar "sales". Los
 datos de prueba de esta sesión permanecen en la base, por el mismo
 motivo `onDelete: Restrict` de `audit_entries.user_id` ya documentado en
-sesiones anteriores.
+sesiones anteriores. **Verificación adicional, la más contundente de
+esta fase**: al reiniciar `apps/api` real con el build final contra la
+base de desarrollo persistente (acumulada desde la sesión 1), el log
+real confirmó `App catalog seeded (15 definitions)` seguido de
+`Tenant app enablement sync: 31 of 31 active tenant(s) had new apps
+enabled` — los 31 tenants reales acumulados a lo largo de toda esta
+sesión de desarrollo recibieron el backfill real sin que ninguno
+perdiera acceso a los módulos de negocio que ya estaba usando, la prueba
+definitiva de que ADR-015 preserva el comportamiento previo de la
+plataforma exactamente como se diseñó, no solo en un escenario sintético
+de 2 tenants de prueba.
