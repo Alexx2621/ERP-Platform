@@ -4,9 +4,10 @@ Format: Title, Status, Context, Decision, Consequences, Alternatives considered.
 
 Numbering follows `docs/ROADMAP.md` §4 (Fase 0 entregables). Only ADRs that have
 actually been written appear below — this is not a placeholder index. ADR-001
-(Modular Monolith), ADR-002 (PostgreSQL/Prisma) and ADR-003 (Multi-Tenancy) are
-still pending; they belong to whoever ratifies the broader Architecture V1
-proposal, not to a single module task. ADR-005 (Plugin Architecture V1 mínimo)
+(Modular Monolith), ADR-002 (PostgreSQL/Prisma) and ADR-003 (Multi-Tenancy) were
+ratified retroactively in session 36 (2026-09-03), formalizing decisions that
+had already been implemented and verified since the project's first commit —
+see below. ADR-005 (Plugin Architecture V1 mínimo)
 was ratified once the App Registry mechanism was implemented — see below.
 ADR-009 (Payment Gateway Adapters V1) was ratified once Payments (Phase 4B)
 was implemented — see below. ADR-010 (POS Terminal Idempotency Scope V1)
@@ -25,6 +26,330 @@ below. ADR-015 (App Registry Enablement Enforcement V1 — Real Backend
 Gating for the 15 Business Modules, Auto-Enabled Catalog at Provisioning)
 was ratified once `AppEnablementGuard` was wired to every business
 controller (Phase 11) — see below.
+
+---
+
+## ADR-001 — Modular Monolith as the V1 Deployment and Code Architecture
+
+**Status:** Accepted (retroactively ratified in session 36 — the decision has
+been implemented and verified continuously since the first commit; this
+entry formalizes it as a numbered ADR, per `docs/ROADMAP.md` §4's Fase 0
+deliverable list, without changing anything about what has already been
+built)
+
+**Context**
+
+MASTER_SPEC §3 mandates starting with a Modular Monolith, not
+microservices, while keeping each module decoupled enough to extract later
+if a real reason appears. `docs/ARCHITECTURE.md` §1-§6 and §15-§17 already
+specify this in full detail as the target V1 architecture, and it has been
+the actual, unbroken shape of every module built across 36 sessions
+(Foundation through Phase 11) — but no standalone numbered ADR existed to
+record it, since it was tracked as part of the broader Architecture V1
+proposal rather than a single module's decision. This entry closes that
+formal gap.
+
+**Decision**
+
+1. **Single deployable process family**: `apps/api` (HTTP) and
+   `apps/worker` (background/outbox dispatch) share the same module
+   catalog and package boundaries, split only because the outbox
+   dispatcher needed independently tunable scaling (ADR-004's amendment,
+   session 13) — not because any business module needed its own
+   deployment.
+2. **Every business capability lives as a bounded context** under
+   `apps/api/src/modules/*` (15 real modules as of Phase 11: catalog,
+   customers, suppliers, taxes, warehouses, pricing, inventory, sales,
+   payments, purchasing, pos, commerce, accounting, crm, manufacturing) or
+   `apps/api/src/core/*` for Platform Core capabilities (tenancy,
+   identity, access control, audit, events, files, notifications, app
+   registry, configuration).
+3. **Each module owns its own domain/application/infrastructure/
+   presentation layers and its own database tables**; cross-module access
+   happens exclusively through a module's exported public contract
+   (`index.ts`), never through another module's repository or Prisma
+   model directly (`docs/ARCHITECTURE.md` §6). Enforced by convention and
+   manual review every session, not yet by an automated CI gate — see
+   "Consequences" below.
+4. **No microservices, no Kafka, no Kubernetes, no CQRS-as-a-default were
+   introduced** (MASTER_SPEC §52/§53), and every ADR from 009 through 015
+   reaffirmed this discipline per-domain rather than only at the top
+   level.
+5. **Extraction criteria are pre-registered** (`docs/ARCHITECTURE.md`
+   §15) rather than left to ad hoc judgment: a materially different
+   scaling/availability profile, independent team ownership, regulatory
+   isolation, acceptable operational cost, and metrics showing the
+   monolith is the real limiting factor — all must coincide, not just
+   one. Phase 12 (Scale) reuses this same criterion, evaluated and closed
+   without evidence in session 36.
+
+**Consequences**
+
+- Every module built so far (Foundation's 10 Platform Core capabilities
+  plus 15 business modules) has shipped inside this single deployable
+  shape with zero cross-module table access ever found across 36 sessions
+  of review — the strongest practical evidence the pattern holds under
+  real, cumulative pressure, not just in theory.
+- A formal architecture-fitness-function CI check (`docs/ARCHITECTURE.md`
+  §16: "no imports from another module's internals") still does not
+  exist — it has been enforced by manual review and module-wiring tests
+  (`*.module.spec.ts`) only. This remains accepted technical debt, not
+  blocking, per the Foundation closure review (`docs/PROJECT_STATE.md`,
+  "Architecture Review").
+- Extracting any module into its own service later (evidence-gated per
+  Phase 12's own discipline) is additive: the module boundary, its own
+  tables, and its own public contract already exist; only the deployment
+  and transport layer would change.
+
+**Alternatives considered**
+
+- **Microservices from day one**: rejected per MASTER_SPEC §3/§52/§53
+  explicitly — no team, traffic, or operational need existed to justify
+  the distributed-systems cost (network partitions, eventual consistency,
+  deployment complexity) this early.
+- **A single undifferentiated codebase with no module boundaries** ("just
+  one big NestJS app"): rejected — it would have made every later
+  phase's "no cross-module table access" guarantee unverifiable and would
+  have blocked any future extraction path entirely.
+- **CQRS as the default pattern for every module**: rejected per
+  MASTER_SPEC §78 — applied only where it would add real value (none has
+  needed it yet), never adopted as a blanket pattern.
+
+---
+
+## ADR-002 — PostgreSQL as the Sole System of Record, Prisma as the ORM Boundary
+
+**Status:** Accepted (retroactively ratified in session 36 — implemented
+and verified against real PostgreSQL since the first migration; this entry
+formalizes it as a numbered ADR)
+
+**Context**
+
+MASTER_SPEC §4 names PostgreSQL as the primary database and explicitly
+rules out MongoDB/Firebase for operational data (inventory, sales,
+financial records), and Prisma as the ORM while requiring business logic
+to never depend on it directly (Controller → Use Case → Domain →
+Repository Interface → Prisma Repository → PostgreSQL,
+`docs/ARCHITECTURE.md` §6). This has been the only database and ORM used
+since the very first migration (session 1) and has held through 24+ real
+migrations across every phase — but, like ADR-001, it was never given its
+own numbered entry.
+
+**Decision**
+
+1. **PostgreSQL 16 is the single system of record** for every module — no
+   NoSQL store was introduced anywhere in the codebase; Redis
+   (`apps/api/src/shared/redis`) is used strictly for cache, rate
+   limiting, locks, and BullMQ-style job transport, never as a source of
+   truth (MASTER_SPEC §6), honored without exception across 15 business
+   modules.
+2. **Prisma is confined to the infrastructure layer.** Domain code never
+   imports `@prisma/client` or `Prisma.*` types — verified repeatedly:
+   Sales', Inventory's, POS's, Commerce's, Accounting's, CRM's, and
+   Manufacturing's own `domain/decimal.ts` modules were each built with
+   hand-rolled `BigInt` arithmetic specifically so the domain layer never
+   needs `Prisma.Decimal`. Repositories are the only place Prisma calls
+   happen; a module's application layer depends only on its own
+   repository interface.
+3. **`@prisma/adapter-pg` driver adapter + the `prisma-client` generator**
+   (not the classic `@prisma/client` output) were chosen at bootstrap and
+   never revisited, keeping the generated client's connection handling
+   explicit and swappable rather than implicit.
+4. **Money and quantities are `numeric(precision, scale)` in the database
+   and canonical decimal strings in the domain — never JavaScript
+   `number`/`float`.** Verified end-to-end, not just declared: every
+   module with monetary or quantity fields round-trips through Postgres
+   with exact precision, confirmed against real `psql` output across
+   multiple sessions' smoke tests — including session 23's Catalog
+   decimal-truncation bug, found and fixed specifically because a
+   `.toString()` call silently dropped trailing zeros, the exact class of
+   float-precision bug this rule exists to prevent.
+5. **UUIDv7 primary keys everywhere**, generated at the application layer
+   (`newId()` in `packages/database/src/ids.ts`, not a Prisma-level
+   `@default`), `timestamptz(6)` in UTC for every instant, `snake_case`
+   for tables/columns and `PascalCase`/`camelCase` for TypeScript — held
+   consistently across all 24+ migrations with zero exceptions found in
+   review.
+6. **Migrations are forward-only and always generated against a real,
+   running PostgreSQL instance** — never hand-written or diffed against
+   an offline schema file alone. A repeatable, documented workaround
+   (`prisma migrate diff --from-config-datasource --to-schema
+   prisma/schema.prisma --script`, followed by `prisma migrate deploy`)
+   was developed starting session 26 specifically because `prisma migrate
+   dev --create-only` fails in this project's non-interactive shell
+   environment when it needs to show a data-loss warning prompt — this
+   workaround is now the standard technique for every schema change in
+   this codebase, not an improvisation repeated ad hoc.
+7. **JSONB is used only where the schema itself justifies it**
+   (`AuditEntry.previousValues`/`newValues`, `SettingValue.value`,
+   `AppConfiguration.value`, `ProductVariant.attributes`,
+   `Notification.data`) — never as a general-purpose escape hatch for
+   modeling relational data, per MASTER_SPEC §57.
+
+**Consequences**
+
+- Every future module's persistence work follows the same, already-proven
+  path: define the Prisma schema, generate a real migration against a
+  live database, write a thin repository implementing the module's own
+  domain-defined interface. No new infrastructure decision is needed per
+  module.
+- The `prisma migrate diff --script` workaround is now load-bearing
+  tribal knowledge for this specific environment; if the shell
+  environment ever changes to support interactive prompts, `prisma
+  migrate dev` could be revisited, but there is no pressure to do so
+  today.
+- A single shared PostgreSQL cluster is a single point of contention
+  across all 15 business modules; Phase 12 (Scale, evaluated and closed
+  without evidence in session 36) already names read replicas and table
+  partitioning as the concrete responses if this ever becomes a real
+  bottleneck — this ADR does not preempt that decision, only records why
+  the starting point was correct for V1's actual scale.
+
+**Alternatives considered**
+
+- **MongoDB or another document store** for flexible/evolving schemas:
+  rejected per MASTER_SPEC §4 explicitly — inventory, sales, and
+  financial data need relational integrity (foreign keys, transactions,
+  constraints) a document store does not enforce natively, and this
+  project's Decimal-precision discipline (point 4 above) would have been
+  far harder to guarantee without `numeric` column types.
+- **TypeORM or a hand-rolled query builder** instead of Prisma: rejected
+  — Prisma's generated types keep the repository layer's contract with
+  the schema mechanically in sync, which mattered more with 24+
+  migrations across 15 independently-owned modules than the marginal
+  flexibility a lower-level query builder would have offered.
+- **Row Level Security as the primary tenant-isolation mechanism** at the
+  database layer: deferred, not rejected outright — see ADR-003 for the
+  full reasoning, since it is a multi-tenancy decision, not strictly a
+  database/ORM one.
+
+---
+
+## ADR-003 — Multi-Tenancy: Shared Database, `tenant_id` Discrimination, Composite-FK Isolation
+
+**Status:** Accepted (retroactively ratified in session 36 — the model
+described in `docs/MULTITENANCY.md` has been implemented and verified
+three separate ways against real PostgreSQL — manual smoke test,
+integration test, and browser E2E — since session 22, and has held across
+every one of the 15 business modules built since; this entry formalizes it
+as a numbered ADR)
+
+**Context**
+
+`docs/MULTITENANCY.md` §1 already specifies the full V1 decision in
+detail: one shared PostgreSQL database and schema, `tenant_id`-based
+discrimination, and isolation enforced in layers (resolved backend
+context, scoped use cases/policies, scoped repositories with no
+"unscoped" methods for tenant-owned data, tenant-preserving keys/uniques/
+FKs, automated cross-tenant tests, RLS only as optional defense-in-depth
+after a spike proves it safe). Like ADR-001/002, this was tracked as part
+of the broader Architecture V1 proposal rather than given its own numbered
+entry, despite being arguably the single most security-critical decision
+in this codebase — every business module built since (Catalog through
+Manufacturing/App Registry) depends on it holding.
+
+**Decision**
+
+1. **One shared PostgreSQL database and schema for all tenants** — no
+   database-per-tenant or schema-per-tenant in V1 (`docs/MULTITENANCY.md`
+   §1). This avoids paying migration, connection-pooling, and
+   operational-observability costs for a physical-isolation guarantee no
+   real customer has required yet; the architecture keeps a documented
+   future path (connection routing to dedicated tenants) without
+   promising transparent migration to it.
+2. **The composite-FK pattern is the structural backbone of isolation**,
+   not an application-level convention alone: every tenant-owned table
+   declares `PRIMARY KEY (id)` plus `UNIQUE (tenant_id, id)`, and every
+   child table references its parent via `FOREIGN KEY (tenant_id,
+   parent_id) REFERENCES parent (tenant_id, id)` — making a cross-tenant
+   reference a constraint violation Postgres itself rejects, not merely a
+   bug an application-level filter could fail to catch. First proven for
+   RBAC in session 5, this pattern has been replicated without exception
+   in every one of the 15 business modules since (`customers`,
+   `suppliers`, `taxes`, `leads`, `pipelines`, `opportunities`,
+   `bill_of_materials`, `production_orders`, and every other table with a
+   real cross-module or intra-module FK).
+3. **`tenant_id` is never accepted from a request body or client-supplied
+   claim.** It is always derived from an authenticated
+   `TenantExecutionContext` resolved server-side from a verified session,
+   mirroring `docs/MULTITENANCY.md` §2's invariant ("Ningún identificador
+   recibido del cliente concede acceso por sí mismo") and
+   `docs/ARCHITECTURE.md` §7's request-flow diagram.
+4. **Repositories for tenant-owned data never expose an unscoped read/
+   write method.** Every module's repository interface requires tenant
+   (and, where relevant, company) scope as an argument or as part of an
+   already-scoped construction — verified negatively across every
+   module's integration test suite via the "two-tenant isolation test"
+   pattern established in Foundation and required by
+   `docs/MULTITENANCY.md` §13.
+5. **Row Level Security remains deliberately deferred**, exactly as
+   `docs/MULTITENANCY.md` §8.1 specifies: application-enforced scoping
+   plus database constraints is treated as sufficient for V1, and RLS is
+   reconsidered only as additional defense-in-depth after a dedicated
+   spike proves it interacts safely with Prisma's connection pooling,
+   PgBouncer, migrations, and worker processes. No such spike has been
+   run — and none of the 36 sessions of real module development has
+   identified a cross-tenant leak that application scoping plus
+   composite-FK isolation failed to catch.
+6. **Cross-tenant isolation is a required, not optional, test for every
+   tenant-owned module** — every business module's integration test suite
+   (Catalog through Manufacturing/App Registry) includes at least one
+   real, two-tenant test confirming a cross-tenant read/write is
+   rejected, per `docs/MULTITENANCY.md` §13; upheld without exception
+   since session 5.
+
+**Consequences**
+
+- Every future module's schema design inherits a fixed, already-proven
+  pattern (composite PK/FK, tenant-scoped repository, required
+  cross-tenant test) rather than needing to re-derive tenant isolation
+  from first principles — this has measurably held: zero cross-tenant
+  data leaks have been found in 36 sessions of development and review
+  across 15 real business modules.
+- Because isolation is enforced at both the application layer and the
+  database constraint layer, a single missed `WHERE tenant_id = ...`
+  filter in application code is not, by itself, sufficient to leak data
+  across tenants for any relationship expressed through the composite-FK
+  pattern — though it remains sufficient to leak data for a query with no
+  FK relationship at all (a raw, unscoped `SELECT` against a tenant-owned
+  table with no join), which is why point 4 (no unscoped repository
+  method) and point 6 (required cross-tenant tests) exist as independent
+  layers, not substitutes for each other.
+- RLS being deferred means a raw SQL query written outside the repository
+  layer (`docs/MULTITENANCY.md` §7: "Raw SQL queda encapsulado,
+  parametrizado, revisado") is the one place this model still relies on
+  code review rather than a database-enforced guarantee — an accepted,
+  documented gap, not a hidden one.
+- Organization/Branch/Location/Warehouse hierarchy decisions explicitly
+  deferred by `docs/MULTITENANCY.md` §14 (sharing Products/Customers
+  across companies, arbitrarily deep organization trees, moving a record
+  between companies, merging tenants, database-per-tenant, cross-tenant
+  corporate-group access) remain deferred by this ADR too — none have
+  been implemented, and each still requires its own future ADR before
+  being built.
+
+**Alternatives considered**
+
+- **Database-per-tenant or schema-per-tenant**: rejected for V1 per
+  `docs/MULTITENANCY.md` §1 — the migration/pooling/operational cost of
+  per-tenant physical isolation is not justified before a real customer
+  requires it (see point 1 above); the architecture keeps a documented
+  future path without pretending today's model can transparently become
+  that one.
+- **Row Level Security as the primary (not merely additional) isolation
+  mechanism** from V1: rejected — `docs/MULTITENANCY.md` §8.1 lists
+  concrete, real risks (session-variable leakage across a pooled
+  connection, migration/worker context mismatches, owner/bypass-role
+  behavior, added Prisma debugging complexity) that have not been
+  validated by a spike; adopting it as the primary control without that
+  validation would have been exactly the kind of premature, unverified
+  security dependency this codebase has avoided everywhere else.
+- **Trusting a client-supplied `tenant_id` for convenience** (e.g.
+  accepting it in a request body for public/webhook endpoints): rejected
+  outright per `docs/MULTITENANCY.md` §2/§6.3 — every real public surface
+  built so far (Commerce's storefront checkout, Phase 7A) resolves tenant
+  context from a verified, server-side mapping (`storefrontCode` →
+  tenant) instead, never from client input directly.
 
 ---
 

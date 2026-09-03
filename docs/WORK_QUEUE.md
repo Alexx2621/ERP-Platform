@@ -6,10 +6,12 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-03 (sesión 36,
+permanente por agente. Última actualización técnica: 2026-09-03 (sesión 36:
 Fase 12 — Scale evaluada explícitamente y cerrada formalmente sin
-implementar ninguna iniciativa, por falta de evidencia real, a pedido
-explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+implementar ninguna iniciativa, por falta de evidencia real; y ADR-001,
+ADR-002 y ADR-003 ratificados formalmente, cerrando el último ítem de
+mantenimiento pendiente — ambos a pedido explícito del usuario). Modelo
+operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -31,12 +33,15 @@ ADR independientes, y `docs/PROJECT_STATE.md` ("Production Status") sigue
 registrando "Not deployed" — sin tráfico real no hay evidencia posible que
 satisfaga ese gate. Construir cualquiera de esas iniciativas hoy habría
 sido exactamente la sobrearquitectura que MASTER_SPEC §52/§53/§59/§93
-advierte evitar. Salvo que el usuario aporte evidencia real de necesidad
-de escalar algo específico o indique otra prioridad, el trabajo de
-mantenimiento razonable a continuar es ratificar formalmente
-ADR-001/002/003 (Modular Monolith, PostgreSQL/Prisma, Multi-Tenancy — sus
-decisiones ya están implementadas y verificadas repetidamente, solo falta
-el documento formal). Alcance deliberadamente fuera de Fase 11 y diferido (no
+advierte evitar. **ADR-001/002/003 quedaron ratificados formalmente en la
+misma sesión 36** — ver "Hecho — sesión 36 (ADR-001/002/003 ratificados
+formalmente)" abajo — cerrando el último ítem de mantenimiento pendiente
+desde el cierre de Foundation; los 15 ADR de este código base (001-015)
+están todos ratificados, ninguno pendiente. Sin ítem de mantenimiento
+restante conocido: salvo que el usuario aporte evidencia real de
+necesidad de escalar algo específico (Fase 12) o indique otra prioridad,
+no hay un siguiente bloque de trabajo no bloqueado identificado en este
+momento. Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
 SDK" separado de `@erp/api-client`, rangos SemVer/certificación de
@@ -161,6 +166,35 @@ vez de construir cualquier iniciativa de forma especulativa.
   la Fase 11 (sesión 35); no hay nada que actualizar ahí.
 - Sin validación de lint/typecheck/test/build aplicable — no se tocó
   ningún archivo de código, solo documentación.
+
+### Hecho — sesión 36 (ADR-001/002/003 ratificados formalmente)
+
+A pedido explícito del usuario ("Continua con lo siguiente"), inmediatamente
+después de cerrar Fase 12 sin evidencia. Cierra el último ítem de
+mantenimiento pendiente desde la "Revisión de cierre de Foundation"
+(sesión 22): ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma) y
+ADR-003 (Multi-Tenancy) estaban implementados y verificados desde el
+primer commit, pero seguían sin su propio documento numerado.
+
+- **`docs/DECISIONS.md`**: los tres ADR redactados e insertados antes de
+  ADR-004, mismo formato Status/Context/Decision/Consequences/Alternatives
+  que el resto — ver el detalle completo de cada uno en
+  `docs/DECISIONS.md`. Ninguno introduce una decisión nueva; cada uno
+  documenta y cita evidencia ya real: ADR-001 el patrón de bounded
+  contexts sin una sola violación de acceso cross-module encontrada en 36
+  sesiones; ADR-002 el driver adapter `@prisma/adapter-pg`, `numeric`/
+  Decimal sin excepciones en 24+ migraciones, y la técnica no interactiva
+  `prisma migrate diff --script` (sesión 26) como estándar reutilizado
+  desde entonces; ADR-003 el patrón composite-FK `(tenant_id, id)`
+  probado desde RBAC (sesión 5) y replicado en los 15 módulos de negocio,
+  con RLS documentado como deliberadamente diferido, sin spike todavía.
+  Header del archivo actualizado: los 15 ADR (001-015) quedan todos
+  ratificados.
+- **`docs/PROJECT_STATE.md`**: nueva entrada en "## Completed", "## In
+  Progress" y "## Pending" actualizadas para reflejar que no queda ningún
+  ADR pendiente de numeración formal.
+- Sin cambios de código, migración ni tests — trabajo puramente de
+  documentación sobre decisiones ya implementadas y verificadas.
 
 ### Hecho — sesión 35 (Plugin Platform — Fase 11, alcance proporcional)
 
@@ -3509,8 +3543,10 @@ preservando el comportamiento previo de la plataforma; deliberadamente
 sin un Plugin SDK separado, sin rangos SemVer, sin un marketplace
 visualmente distinto de la pantalla "Apps" ya existente, y sin ningún
 modelo de confianza real para terceros más allá del spike ya documentado
-en `docs/PLUGINS.md` §16). Pendientes de numerar formalmente cuando
-corresponda: ADR-001 (Modular Monolith), ADR-002 (PostgreSQL/Prisma),
-ADR-003 (Multi-Tenancy — el patrón de `docs/MULTITENANCY.md` §8 ya está
-verificado tres veces contra Postgres real: manual, integration test, y
-ahora E2E de navegador).
+en `docs/PLUGINS.md` §16); ADR-001 (Modular Monolith), ADR-002
+(PostgreSQL/Prisma) y ADR-003 (Multi-Tenancy — el patrón de
+`docs/MULTITENANCY.md` §8 ya está verificado tres veces contra Postgres
+real: manual, integration test, y E2E de navegador) — ratificados
+formalmente en `docs/DECISIONS.md` en la sesión 36, cerrando el último
+ítem de mantenimiento pendiente. Los 15 ADR de este código base (001-015)
+están todos ratificados; ninguno queda pendiente de numeración formal.

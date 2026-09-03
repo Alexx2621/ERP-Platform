@@ -2501,6 +2501,42 @@ fallida por `EADDRINUSE`/`already in use`, confirmar con una petición HTTP
 directa si el puerto está realmente ocupado, no solo confiar en el estado
 reportado por el sistema operativo en ese instante.
 
+### Ratificación formal de ADR-001, ADR-002 y ADR-003 (sesión 36, 2026-09-03)
+
+A pedido explícito del usuario ("Continua con lo siguiente"), inmediatamente
+después de cerrar formalmente la Fase 12 sin evidencia. Cierra el último
+ítem de mantenimiento pendiente registrado desde la propia "Revisión de
+cierre de Foundation" (sesión 22): ADR-001 (Modular Monolith), ADR-002
+(PostgreSQL/Prisma) y ADR-003 (Multi-Tenancy) estaban implementados y
+verificados repetidamente desde el primer commit, pero nunca tuvieron su
+propio documento ADR numerado — solo se referenciaban como "pendientes de
+numeración formal" en `docs/DECISIONS.md`. Los tres se redactaron en
+`docs/DECISIONS.md`, insertados antes de ADR-004 en orden numérico, con el
+mismo formato Status/Context/Decision/Consequences/Alternatives considered
+que el resto de los ADR de este código base. Ninguno introduce una
+decisión nueva: cada uno documenta y cita evidencia real ya verificada,
+no reimplementa nada — sin cambios de código, sin migración, sin tests
+nuevos. ADR-001 cita `docs/ARCHITECTURE.md` §1-§6/§15-§17 y el hecho
+verificado de que ninguna violación de "un módulo no consulta tablas de
+otro" se ha encontrado en 36 sesiones de revisión sobre 15 módulos de
+negocio reales. ADR-002 cita MASTER_SPEC §4 y `docs/ARCHITECTURE.md` §8,
+y confirma con grep directo contra el código real (no de memoria) que los
+IDs son UUIDv7 generados por `newId()` en `packages/database/src/ids.ts`
+(no un `@default` de Prisma), y que la técnica no interactiva
+`prisma migrate diff --from-config-datasource --to-schema ... --script`
+(desarrollada en sesión 26) es la técnica estándar reutilizada en cada
+migración desde entonces. ADR-003 cita `docs/MULTITENANCY.md` completo
+(releído íntegro en esta sesión) y el patrón composite-FK
+`(tenant_id, id)`/`(tenant_id, parent_id)` probado por primera vez en RBAC
+(sesión 5) y replicado sin excepción en los 15 módulos de negocio
+posteriores, documentando explícitamente que RLS sigue diferido sin que
+ningún spike lo haya validado todavía (`docs/MULTITENANCY.md` §8.1) — un
+hueco aceptado y documentado, no oculto. `docs/DECISIONS.md`'s header
+actualizado para reflejar que los 15 ADR (001-015) están todos
+ratificados, ninguno pendiente. `docs/PROJECT_STATE.md` y
+`docs/WORK_QUEUE.md` actualizados para cerrar la referencia a este ítem de
+mantenimiento en sus respectivas secciones "Pending"/"Próximo".
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -2511,10 +2547,19 @@ arriba y "Hecho — sesión 34"/"Hecho — sesión 35" en `docs/WORK_QUEUE.md`).
 directo del usuario ("continua con la fase 12"), y formalmente cerrada sin
 implementar ninguna iniciativa** — ver "Revisión de Fase 12 (Scale) — sin
 evidencia" más abajo para el detalle completo y las señales concretas que
-activarían cada iniciativa. El siguiente trabajo no bloqueado es
-mantenimiento de rutina (ratificar ADR-001/002/003 formalmente), salvo que
-el usuario aporte evidencia real de necesidad de escalar algo específico o
-indique otra prioridad.
+activarían cada iniciativa. **En la misma sesión 36, a pedido explícito del
+usuario ("Continua con lo siguiente"), ADR-001 (Modular Monolith), ADR-002
+(PostgreSQL/Prisma) y ADR-003 (Multi-Tenancy) quedaron ratificados
+formalmente en `docs/DECISIONS.md`** — el último ítem de mantenimiento
+pendiente documentado en la revisión de cierre de Foundation (sesión 22).
+Ninguno de los tres introduce una decisión nueva: cada uno documenta,
+formaliza y cita evidencia real ya verificada repetidamente a lo largo de
+36 sesiones (patrón composite-FK probado desde RBAC en sesión 5 y
+replicado en los 15 módulos de negocio, `numeric`/Decimal sin excepciones
+en 24+ migraciones, cero fugas cross-tenant encontradas en revisión). Sin
+trabajo en curso — salvo indicación distinta del usuario, el siguiente
+trabajo real depende de evidencia concreta de necesidad de escalar (Fase
+12) o de una nueva prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 
@@ -2597,10 +2642,10 @@ Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
 (`docs/ROADMAP.md` §11, 7A y 7B completos), Fase 8 (`docs/ROADMAP.md`
 §12), Fase 9 (`docs/ROADMAP.md` §13), Fase 10 (`docs/ROADMAP.md` §14) ni
 Fase 11 (`docs/ROADMAP.md` §15, a alcance proporcional según ADR-015)
-queda pendiente. También pendiente, sin bloquear ningún trabajo futuro:
-ratificar ADR-001, ADR-002 y ADR-003 formalmente (ADR-004 a ADR-015 ya
-están ratificados) — sus decisiones ya están implementadas y verificadas,
-solo falta el documento formal. La UI de RBAC (incluida la invitación de
+queda pendiente. ADR-001, ADR-002 y ADR-003 quedaron ratificados
+formalmente en la sesión 36 (`docs/DECISIONS.md`) — los 15 ADR de este
+código base (ADR-001 a ADR-015) están todos ratificados, ninguno pendiente
+de numeración formal. La UI de RBAC (incluida la invitación de
 miembros), el E2E de sesión, la UI de Configuración, la UI de Platform
 Administration (sesión 18), la UI de Apps (sesión 22, ahora con las 15
 apps reales desde la sesión 35), la UI de Catálogo (sesión 23), la UI de
