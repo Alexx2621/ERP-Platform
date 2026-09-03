@@ -478,6 +478,38 @@ export interface ListActivitiesFilter {
   relatedCustomerId?: string;
 }
 
+export type BillOfMaterialStatus = components["schemas"]["BillOfMaterialResponseDto"]["status"];
+export type BillOfMaterialResponse = components["schemas"]["BillOfMaterialResponseDto"];
+export type CreateBillOfMaterialComponentInput = components["schemas"]["CreateBillOfMaterialComponentDto"];
+export type CreateBillOfMaterialInput = components["schemas"]["CreateBillOfMaterialDto"];
+export type BillOfMaterialComponentResponse = components["schemas"]["BillOfMaterialComponentResponseDto"];
+export type SetBillOfMaterialStatusInput = components["schemas"]["SetBillOfMaterialStatusDto"];
+
+export type ProductionOrderStatus = components["schemas"]["ProductionOrderResponseDto"]["status"];
+export type ProductionOrderResponse = components["schemas"]["ProductionOrderResponseDto"];
+export type CreateProductionOrderInput = components["schemas"]["CreateProductionOrderDto"];
+export type ProductionOrderMaterialResponse = components["schemas"]["ProductionOrderMaterialResponseDto"];
+export type IssueProductionOrderMaterialInput = components["schemas"]["IssueProductionOrderMaterialDto"];
+export type ProductionOrderMaterialMovementType = components["schemas"]["ProductionOrderMaterialMovementResponseDto"]["type"];
+export type ProductionOrderMaterialMovementResponse = components["schemas"]["ProductionOrderMaterialMovementResponseDto"];
+export type ReturnProductionOrderMaterialInput = components["schemas"]["ReturnProductionOrderMaterialDto"];
+export type ProductionOrderFinishedGoodsReceiptResponse = components["schemas"]["ProductionOrderFinishedGoodsReceiptResponseDto"];
+export type RecordFinishedGoodsInput = components["schemas"]["RecordFinishedGoodsDto"];
+export type ProductionOrderOperationResponse = components["schemas"]["ProductionOrderOperationResponseDto"];
+export type AddProductionOrderOperationInput = components["schemas"]["AddProductionOrderOperationDto"];
+
+export interface ListBillsOfMaterialFilter {
+  productId?: string;
+  status?: BillOfMaterialStatus;
+  limit?: number;
+}
+
+export interface ListProductionOrdersFilter {
+  status?: ProductionOrderStatus;
+  billOfMaterialId?: string;
+  limit?: number;
+}
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

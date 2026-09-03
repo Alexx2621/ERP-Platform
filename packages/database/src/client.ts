@@ -73,6 +73,13 @@ export type {
   PipelineStage,
   Opportunity,
   Activity,
+  BillOfMaterial,
+  BillOfMaterialComponent,
+  ProductionOrder,
+  ProductionOrderMaterial,
+  ProductionOrderMaterialMovement,
+  ProductionOrderOperation,
+  ProductionOrderFinishedGoodsReceipt,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -110,6 +117,8 @@ export {
   LeadStatus,
   OpportunityStatus,
   ActivityType,
+  ProductionOrderStatus,
+  ProductionOrderMaterialMovementType,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

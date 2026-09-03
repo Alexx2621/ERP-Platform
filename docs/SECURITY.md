@@ -1733,3 +1733,124 @@ of `CustomersModule`.
   already documented for `Opportunity.customerId` at creation. The backend
   itself always validates the id against Customers' real, company-scoped
   lookup regardless of how the UI collected it.
+
+## Manufacturing (Phase 10, 2026-09-03)
+
+Scope: `apps/api/src/modules/manufacturing` — `BillOfMaterial`/
+`BillOfMaterialComponent`, `ProductionOrder`/`ProductionOrderMaterial`/
+`ProductionOrderMaterialMovement`/`ProductionOrderOperation`/
+`ProductionOrderFinishedGoodsReceipt`. Eighth business module of this
+codebase, with three direct, cycle-free dependencies — Catalog, Warehouses,
+Inventory — and, deliberately, none on Sales, Purchasing, POS, Commerce,
+Accounting or CRM. Every real quantity that moves (material issued/
+returned, finished goods received) posts through Inventory's own real
+ledger via `RecordIssueUseCase`/`RecordReturnUseCase`/`RecordReceiptUseCase`
+(`referenceType: "PRODUCTION_ORDER"`, extending
+`InventoryMovementReferenceType`) — this module never mutates a balance
+directly.
+
+### Assets
+
+- `manufacturing.boms.read`/`.manage`, `manufacturing.orders.read`/
+  `.manage` — 4 new permissions, company-scoped like every other business
+  module (`requireCompanyId`). No maker-checker/approval workflow for
+  creating a BOM (unlike Purchasing's `purchasing.orders.approve` — see
+  Known limitations).
+- `BillOfMaterial.version` — immutable once created (`CreateBillOfMaterialUseCase`
+  sets `version = existingCount(product) + 1`); revising a recipe means
+  creating a new `BillOfMaterial` row, never editing an existing one's
+  components. `BillOfMaterialComponent` rows are likewise never mutated
+  after creation, only ever read.
+- `ResolveManufacturingProductTargetUseCase` — the single choke point every
+  BOM component and every production order's finished good passes through,
+  requiring `Product.trackInventory === true` (rejecting with
+  `ProductNotInventoryTrackedError` otherwise) and that the product belongs
+  to the caller's own company. Deliberately reuses `trackInventory` — the
+  one `Product` flag genuinely enforced elsewhere in this codebase — rather
+  than inventing a new `manufacturable` flag: `sellable`/`purchasable`
+  already exist on `Product` as MASTER_SPEC §19 metadata but are stored and
+  never checked by any module (verified by inspection before this
+  decision), and a third, equally dead flag would have been exactly the
+  kind of unenforced metadata this codebase has avoided everywhere else
+  (see `docs/DECISIONS.md` ADR-014).
+- `ProductionOrder.status` — `DRAFT -> CONFIRMED -> CLOSED`, `CANCELLED`
+  reachable only from `DRAFT`/`CONFIRMED` (mirrors `PurchaseOrder` exactly).
+  Closing does **not** require full completion of either the material plan
+  or the finished-goods quantity — partial completion is real,
+  intentional manufacturing behavior, not a state the domain infers
+  automatically (see the entity's own docstring). `CancelProductionOrderUseCase`
+  additionally rejects cancelling an order that already has at least one
+  real material movement or finished-goods receipt
+  (`ProductionOrderHasActivityError`) — the same "don't leave orphaned
+  ledger activity behind a cancelled document" invariant
+  `PurchaseOrderHasReceiptsError` already established for Purchasing.
+- Material requirements are **snapshotted, not re-derived.**
+  `CreateProductionOrderUseCase` copies each `BillOfMaterialComponent`'s
+  `quantityPerUnit` scaled by `quantityPlanned`
+  (`multiplyDecimal(component.quantityPerUnit, order.quantityPlanned)`)
+  into its own `ProductionOrderMaterial` row at creation time — a later
+  edit to the BOM (a new version) never silently changes an order already
+  in progress.
+- Genuinely partial issue/return/finished-goods receipt, verified against
+  real Postgres across multiple calls — `IssueProductionOrderMaterialUseCase`/
+  `ReturnProductionOrderMaterialUseCase` validate each request against a
+  running sum over all prior `ProductionOrderMaterialMovement` rows for
+  that material (issued minus returned), never a stored counter that could
+  drift; `RecordFinishedGoodsUseCase` validates the same way against
+  `quantityPlanned` summed over all prior
+  `ProductionOrderFinishedGoodsReceipt` rows. Mirrors Purchasing's
+  `CreatePurchaseReceiptUseCase`/`CreatePurchaseReturnUseCase` pattern
+  exactly, since Inventory's own `ReleaseReservationUseCase` only supports
+  releasing a reservation's *entire* quantity — incompatible with genuine
+  partial material consumption, which is why this module never uses
+  Inventory's reservation mechanism at all.
+- `GetProductionOrderUseCase` — `quantityCompleted` is summed fresh from
+  the real finished-goods-receipt ledger on every call, never a stored
+  column, the same "read the ledger, don't trust a drifting counter"
+  philosophy `InventoryBalance`/Accounting's Trial Balance/CRM's pipeline
+  summary already established.
+
+### Threats considered and controls
+
+| Threat | Control |
+| --- | --- |
+| A BOM component (or the finished good itself) references a product from another company, letting one company's recipe leak into or corrupt another's | `ResolveManufacturingProductTargetUseCase` re-validates every referenced product id as real and company-owned before `CreateBillOfMaterialUseCase`/`CreateProductionOrderUseCase` create anything — verified against real Postgres with a genuine cross-company product rejected via its real FK-backed lookup. |
+| A BOM component references a product that isn't inventory-tracked, making its consumption unrecordable by Inventory's own ledger | `ResolveManufacturingProductTargetUseCase` rejects with `ProductNotInventoryTrackedError` before the BOM/order is ever created — mirrors `docs/SECURITY.md`'s existing Inventory/Sales/Purchasing controls for the same flag. |
+| A BOM lists its own finished good as one of its components (a self-referencing recipe) | `CreateBillOfMaterialUseCase` rejects any component whose `componentProductId` equals the BOM's own `productId`. |
+| A production order is created against a BOM that has been deactivated, silently building against a recipe no longer trusted | `CreateProductionOrderUseCase` requires `billOfMaterial.status === "ACTIVE"`, rejecting with `BillOfMaterialNotActiveError` otherwise. |
+| Material is issued or returned beyond the order's snapshotted requirement, corrupting the material plan or fabricating stock out of nowhere | `IssueProductionOrderMaterialUseCase`/`ReturnProductionOrderMaterialUseCase` validate against the running-sum ledger check above; the real, load-bearing safety net under genuine *concurrency* is Inventory's own `onHand >= reserved` balance invariant (`SELECT ... FOR UPDATE`), verified with 7 genuinely concurrent 2-unit issue requests against 10 real units of stock, confirming exactly 5 succeed and 2 are rejected with `InsufficientInventoryError`, final balance never negative. |
+| Finished goods are recorded beyond the order's `quantityPlanned` | `RecordFinishedGoodsUseCase` rejects with `ProductionOrderFinishedGoodsReceiptExceedsPlannedQuantityError` once the running sum of prior receipts plus the new request would exceed `quantityPlanned`. |
+| An order with real material movements or finished-goods receipts already posted is cancelled, leaving orphaned Inventory ledger activity with no surviving order to explain it | `CancelProductionOrderUseCase` checks both `ProductionOrderMaterialMovementRepository`/`ProductionOrderFinishedGoodsReceiptRepository` for any real row before allowing the transition, rejecting with `ProductionOrderHasActivityError` — verified against real Postgres. |
+| A production order is created against a warehouse from another company (or one that doesn't exist) | `CreateProductionOrderUseCase` resolves `warehouseId` via Warehouses' real, company-scoped `GetWarehouseUseCase`, rejecting with `WarehouseNotFoundError` otherwise. |
+
+### Known limitations (accepted for this slice, not silently ignored)
+
+- **No cost calculation anywhere.** No `estimatedCost` on `BillOfMaterial`,
+  no `actualCost`/`totalMaterialCost` on `ProductionOrder` — `docs/ROADMAP.md`
+  §14 itself gates this behind "Costing model aprobado antes de calcular
+  costos", and no costing model has ever been approved for this codebase.
+  See `docs/DECISIONS.md` ADR-014 for the full reasoning: even a "simple"
+  standard-cost estimate would silently encode an unapproved valuation
+  policy, and would have nowhere correct to post given Accounting's own
+  deliberate lack of automatic integration (ADR-012).
+- **No lot/serial/expiration traceability.** Inherits Inventory's own
+  pre-existing gap (Phase 3) rather than building an inconsistent,
+  Manufacturing-only partial version of it — `docs/ROADMAP.md` §14 itself
+  makes this conditional ("si el mercado lo requiere"), not an
+  unconditional deliverable.
+- **No automatic Accounting integration.** Consistent with every other
+  module today (ADR-012) — a production order's real material/finished-
+  goods activity never posts a journal entry automatically.
+- **No BOM approval/maker-checker workflow.** Unlike Purchasing's separate
+  `.approve` permission, any user with `manufacturing.boms.manage` can
+  create and immediately activate a BOM — `docs/ROADMAP.md` §14 does not
+  ask for segregation of duties on BOM authoring the way §9 did for
+  purchase order approval.
+- **No reopening a closed production order**, and no partial
+  cancellation/void of a single material movement — mirrors
+  `FiscalPeriod`'s and `PurchaseOrder`'s own "terminal state stays
+  terminal" precedent.
+- **No routing/work-center model.** `ProductionOrderOperation` is a simple
+  named step list (name, `completedAt`, `sortOrder`) — no time tracking, no
+  work-center/resource/labor assignment, no dependency ordering between
+  operations, and completing one is a one-way action with no undo.

@@ -18,7 +18,10 @@ Idempotent Posting Port, No Automatic Cross-Module Postings) was ratified
 once the Accounting module (Phase 8) was implemented — see below. ADR-013
 (CRM Sales-Event Consumption Scope V1 — No Speculative Consumer Ahead of a
 Real Sales-Side Producer) was ratified once the CRM module (Phase 9) was
-implemented — see below.
+implemented — see below. ADR-014 (Manufacturing Costing and Traceability
+Scope V1 — No Cost Calculation Ahead of an Approved Costing Model) was
+ratified once the Manufacturing module (Phase 10) was implemented — see
+below.
 
 ---
 
@@ -1336,3 +1339,142 @@ already-shipped, already-tested module (Phase 4).
   consumer uses it yet: rejected — it is real, independently useful
   functionality today (logging a call against a customer with no open
   deal), not scaffolding for a feature that doesn't exist.
+
+---
+
+## ADR-014 — Manufacturing Costing and Traceability Scope V1 (No Cost Calculation Ahead of an Approved Costing Model)
+
+**Status:** Accepted (scope: the full, real, tested Manufacturing engine —
+Bill of Materials with versioning, Production Orders with material
+requirements/operations/issue/return/finished-goods receipt, all posted
+through Inventory's real ledger; explicitly **not** any computed cost
+field, and explicitly **not** lot/serial traceability)
+
+**Context**
+
+`docs/ROADMAP.md` §14 lists Manufacturing's deliverables as BOM with
+versioning/validity, Production Orders/operations/material requirements,
+issue/consume/return/finished-goods through the Inventory ledger, and then
+two deliberately conditional items in the same list: "Costing model
+aprobado antes de calcular costos" (a costing model *approved* before any
+cost is calculated — the roadmap itself gates this, it does not simply ask
+for a costing engine) and "Lot/serial traceability si el mercado lo
+requiere" (only if the market requires it — not an unconditional
+requirement). No costing model has been approved anywhere in this
+codebase's history: Accounting (Phase 8, ADR-012) explicitly deferred all
+automatic postings and never established a chart-of-accounts convention
+for inventory/COGS accounts; Catalog's `Product.baseCost`/
+`ProductVariant.cost` are simple, uncontextualized decimal fields with no
+stated valuation method (standard, actual, FIFO, weighted-average) behind
+them. Lot/serial tracking has the same status: Inventory (Phase 3) already
+deferred it explicitly (`docs/SECURITY.md` "Inventory" Known limitations),
+and nothing built since has changed that.
+
+**Decision**
+
+1. **The full Manufacturing engine is built completely, exactly as
+   `docs/ROADMAP.md` §14's unconditional items specify, with nothing
+   simulated.** `BillOfMaterial`/`BillOfMaterialComponent` (versioned,
+   immutable once created — a revision is a new `version` row, never an
+   edit), `ProductionOrder` (`DRAFT -> CONFIRMED -> CLOSED`, `CANCELLED`
+   only from `DRAFT`/`CONFIRMED` and only before any real material
+   movement or finished-goods receipt exists),
+   `ProductionOrderMaterial` (requirements snapshotted from the BOM at
+   creation, scaled by `quantityPlanned` — never re-derived from a BOM
+   that might change later), `ProductionOrderMaterialMovement`
+   (real `ISSUE`/`RETURN` events, each posting a genuine Inventory
+   ledger movement via `RecordIssueUseCase`/`RecordReturnUseCase`,
+   `referenceType: "PRODUCTION_ORDER"`), `ProductionOrderOperation`
+   (simple named process steps), and
+   `ProductionOrderFinishedGoodsReceipt` (genuinely partial receipts of
+   the finished good, each posting a real `RecordReceiptUseCase` call).
+   Every quantity that moves — issued, returned, received — moves through
+   Inventory's real ledger; nothing in this module ever mutates a balance
+   directly, satisfying `docs/ROADMAP.md` §14's exit criterion ("ninguna
+   producción altera stock sin ledger") literally, not approximately.
+2. **No cost field is calculated anywhere in this module.** `BillOfMaterial`
+   carries no `estimatedCost`; `ProductionOrder` carries no
+   `actualCost`/`totalMaterialCost`; no use case sums
+   `Product.baseCost`/`ProductVariant.cost` across a BOM's components.
+   Doing so — even a "simple" standard-cost estimate — would require
+   answering questions this codebase has no basis to answer: is `baseCost`
+   itself a defensible input for a manufacturing cost (it was designed for
+   Catalog's own margin display, MASTER_SPEC §19, not costing), does the
+   estimate include labor/overhead, and — most importantly — is there
+   anywhere real for that number to go once calculated (Accounting has no
+   automatic-posting mechanism connected to *any* module yet, ADR-012).
+   Calculating a cost that then has nowhere correct to post, or that
+   silently encodes an unapproved valuation policy, would be a materially
+   worse "simulation" than any other gap already accepted in this
+   codebase (MASTER_SPEC §90) — the same reasoning ADR-012 already applied
+   to Accounting's own integration scope, inherited here directly because
+   `docs/ROADMAP.md` §14 names the precondition explicitly ("aprobado
+   antes de calcular").
+3. **No lot/serial/expiration traceability.** `ProductionOrderMaterialMovement`/
+   `ProductionOrderFinishedGoodsReceipt` carry a plain quantity, the same
+   granularity Inventory's own ledger already provides — no lot or serial
+   number is captured anywhere in Manufacturing, inheriting Inventory's
+   own pre-existing gap (Phase 3) rather than building a parallel,
+   inconsistent tracking mechanism on top of a ledger that doesn't support
+   it. `docs/ROADMAP.md` §14's own phrasing ("si el mercado lo requiere")
+   makes this a real, conditional deliverable this codebase has no
+   evidence yet requires — the same discretion already exercised for
+   Inventory itself.
+4. **Manufacturing's finished good and every BOM component must have
+   `Product.trackInventory === true`**, validated by
+   `ResolveManufacturingProductTargetUseCase` — mirroring exactly how
+   Inventory itself gates every real movement on this flag
+   (`ProductInventoryNotTrackedError`). No new `Product.manufacturable`
+   flag was added: `sellable`/`purchasable` already exist on `Product`
+   as MASTER_SPEC §19 metadata but are never actually enforced anywhere
+   in this codebase (verified by inspection — neither Sales nor
+   Purchasing gates on them); adding a third, equally-unenforced
+   `manufacturable` flag would be exactly the kind of dead metadata
+   MASTER_SPEC §59/§93 warns against. `trackInventory` is the one flag on
+   `Product` that is genuinely, structurally enforced, so it is the one
+   Manufacturing reuses.
+
+**Consequences**
+
+- A real business using Manufacturing today gets a complete, genuinely
+  ledger-backed production workflow — BOM, orders, material consumption,
+  returns, finished goods — but gets no cost visibility into what a
+  production run actually cost. This is a real, visible gap, not a hidden
+  one: `docs/SECURITY.md` "Manufacturing" and `docs/PROJECT_STATE.md` name
+  it explicitly.
+- Adding costing later is additive, not a rework: `BillOfMaterialComponent`
+  already carries `quantityPerUnit`, and `ProductionOrderMaterialMovement`
+  already carries exact issued/returned quantities — a future costing
+  engine reads from data that already exists, once a real valuation model
+  and a real Accounting integration point are both approved.
+- No lot/serial traceability exists anywhere in this codebase yet,
+  Manufacturing included — a future, dedicated increment to Inventory
+  (adding lot/serial to the ledger itself) is the correct place to build
+  it once, rather than each consuming module inventing its own partial
+  version.
+
+**Alternatives considered**
+
+- **Calculating a "standard cost" estimate from `Product.baseCost`/
+  `ProductVariant.cost` summed across BOM components**, presented as
+  informational-only with no Accounting posting: rejected — even framed
+  as "just an estimate", it would silently encode a valuation policy
+  (which cost field, at what point in time, ignoring labor/overhead) that
+  `docs/ROADMAP.md` §14 explicitly says needs approval first; a number
+  that looks like real costing but rests on an unapproved, arbitrary
+  choice is worse than no number at all, since it invites being trusted.
+- **Building lot/serial tracking scoped only to Manufacturing** (e.g. a
+  `lotNumber` string on `ProductionOrderFinishedGoodsReceipt` alone,
+  without touching Inventory's own ledger): rejected — it would let a
+  finished good be "lot-tracked" only for the one movement type
+  Manufacturing itself creates, while every other Inventory movement
+  (sales issue, purchase receipt, transfer) for that same product remains
+  untracked — a fragmented, inconsistent traceability story worse than
+  having none, and a real integrity gap dressed up as a feature.
+- **Deferring Manufacturing entirely until a costing model exists**:
+  rejected — the ledger-backed production workflow (BOM, orders,
+  materials, operations, finished goods) is real, independently valuable
+  functionality `docs/ROADMAP.md` §14 asks for regardless of costing, the
+  same reasoning ADR-009 used to ship `CASH`/`BANK_TRANSFER` payments now
+  rather than wait for a credentialed gateway, and ADR-012 used to ship
+  Accounting's manual engine now rather than wait for automatic postings.

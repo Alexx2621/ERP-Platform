@@ -1602,6 +1602,155 @@ describe("ApiClient", () => {
     }
   });
 
+  it("uses the documented Manufacturing endpoints", async () => {
+    const bom = {
+      id: "bom-1",
+      productId: "product-1",
+      code: "BOM-CHAIR",
+      name: "Silla de madera",
+      version: 1,
+      status: "ACTIVE",
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+    };
+    const component = {
+      id: "component-1",
+      billOfMaterialId: "bom-1",
+      componentProductId: "product-2",
+      componentVariantId: null,
+      quantityPerUnit: "2.0000",
+      createdAt: "2026-09-03T00:00:00.000Z",
+    };
+    const order = {
+      id: "order-1",
+      billOfMaterialId: "bom-1",
+      productId: "product-1",
+      warehouseId: "warehouse-1",
+      quantityPlanned: "10.0000",
+      quantityCompleted: "0.0000",
+      status: "DRAFT",
+      version: 1,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+      confirmedAt: null,
+      closedAt: null,
+      cancelledAt: null,
+    };
+    const material = {
+      id: "material-1",
+      productionOrderId: "order-1",
+      componentProductId: "product-2",
+      componentVariantId: null,
+      quantityRequired: "20.0000",
+      quantityIssuedNet: "0.0000",
+      createdAt: "2026-09-03T00:00:00.000Z",
+    };
+    const movement = {
+      id: "movement-1",
+      productionOrderMaterialId: "material-1",
+      type: "ISSUE",
+      quantity: "5.0000",
+      createdAt: "2026-09-03T00:00:00.000Z",
+    };
+    const finishedGoodsReceipt = {
+      id: "receipt-1",
+      productionOrderId: "order-1",
+      quantity: "10.0000",
+      createdAt: "2026-09-03T00:00:00.000Z",
+    };
+    const operation = {
+      id: "operation-1",
+      productionOrderId: "order-1",
+      name: "Corte",
+      sortOrder: 0,
+      completedAt: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+    };
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([bom]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(bom), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(bom), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([component]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...bom, status: "INACTIVE" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([order]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(order), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([material]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CONFIRMED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CLOSED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...order, status: "CANCELLED" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(movement), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...movement, type: "RETURN" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([finishedGoodsReceipt]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(finishedGoodsReceipt), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([operation]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(operation), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...operation, completedAt: "2026-09-03T01:00:00.000Z" }), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await client.listBillsOfMaterial("access-token", "grupo-aurora", "company-1", { status: "ACTIVE" });
+    await client.createBillOfMaterial("access-token", "grupo-aurora", "company-1", {
+      productId: "product-1",
+      code: "BOM-CHAIR",
+      name: "Silla de madera",
+      components: [{ componentProductId: "product-2", quantityPerUnit: "2.0000" }],
+    });
+    await client.getBillOfMaterial("access-token", "grupo-aurora", "company-1", "bom-1");
+    await client.listBillOfMaterialComponents("access-token", "grupo-aurora", "company-1", "bom-1");
+    await client.setBillOfMaterialStatus("access-token", "grupo-aurora", "company-1", "bom-1", { status: "INACTIVE" });
+    await client.listProductionOrders("access-token", "grupo-aurora", "company-1", { status: "DRAFT" });
+    await client.createProductionOrder("access-token", "grupo-aurora", "company-1", {
+      billOfMaterialId: "bom-1",
+      warehouseId: "warehouse-1",
+      quantityPlanned: "10.0000",
+    });
+    await client.getProductionOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.listProductionOrderMaterials("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.confirmProductionOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.closeProductionOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.cancelProductionOrder("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.issueProductionOrderMaterial("access-token", "grupo-aurora", "company-1", "order-1", {
+      productionOrderMaterialId: "material-1",
+      quantity: "5.0000",
+    });
+    await client.returnProductionOrderMaterial("access-token", "grupo-aurora", "company-1", "order-1", {
+      productionOrderMaterialId: "material-1",
+      quantity: "2.0000",
+    });
+    await client.listProductionOrderFinishedGoodsReceipts("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.recordFinishedGoods("access-token", "grupo-aurora", "company-1", "order-1", { quantity: "10.0000" });
+    await client.listProductionOrderOperations("access-token", "grupo-aurora", "company-1", "order-1");
+    await client.addProductionOrderOperation("access-token", "grupo-aurora", "company-1", "order-1", { name: "Corte" });
+    await client.completeProductionOrderOperation("access-token", "grupo-aurora", "company-1", "order-1", "operation-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/manufacturing/bills-of-material?status=ACTIVE", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/manufacturing/bills-of-material", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/manufacturing/bills-of-material/bom-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/v1/manufacturing/bills-of-material/bom-1/components", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/manufacturing/bills-of-material/bom-1/status", expect.objectContaining({ method: "PUT" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/manufacturing/orders?status=DRAFT", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/manufacturing/orders", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/v1/manufacturing/orders/order-1", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/v1/manufacturing/orders/order-1/materials", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/v1/manufacturing/orders/order-1/confirm", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/v1/manufacturing/orders/order-1/close", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/v1/manufacturing/orders/order-1/cancel", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(13, "/api/v1/manufacturing/orders/order-1/materials/issue", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(14, "/api/v1/manufacturing/orders/order-1/materials/return", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(15, "/api/v1/manufacturing/orders/order-1/finished-goods-receipts", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(16, "/api/v1/manufacturing/orders/order-1/finished-goods-receipts", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(17, "/api/v1/manufacturing/orders/order-1/operations", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(18, "/api/v1/manufacturing/orders/order-1/operations", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(19, "/api/v1/manufacturing/orders/order-1/operations/operation-1/complete", expect.objectContaining({ method: "POST" }));
+    for (const call of fetchMock.mock.calls) {
+      const headers = new Headers(call[1]?.headers);
+      expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+      expect(headers.get("X-Company-Id")).toBe("company-1");
+    }
+  });
+
   it("preserves the backend error envelope", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

@@ -6,9 +6,9 @@ Cola única del ERP. Reemplaza el modelo histórico
 Responsable: **Claude, propietario único del desarrollo del ERP**. La cola
 abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
-permanente por agente. Última actualización técnica: 2026-09-02 (sesión 33,
-Fase 9 — CRM completo en un solo bloque de trabajo, a pedido explícito del
-usuario). Modelo operativo actualizado: 2026-08-27.
+permanente por agente. Última actualización técnica: 2026-09-03 (sesión 34,
+Fase 10 — Manufactura completa en un solo bloque de trabajo, a pedido
+explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -21,11 +21,23 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
-**Fase 9 (CRM) está completa** — ver "Hecho — sesión 33" abajo, en un solo
-bloque de trabajo a pedido explícito del usuario. El siguiente trabajo no
-bloqueado es Fase 10 (Manufactura) según `docs/ROADMAP.md` §14, salvo que
-el usuario indique otra prioridad. Alcance deliberadamente fuera de
-Fase 9 y diferido (no simulado — decisión central de la fase, ver
+**Fase 10 (Manufactura) está completa** — ver "Hecho — sesión 34" abajo,
+en un solo bloque de trabajo a pedido explícito del usuario. El siguiente
+trabajo no bloqueado es Fase 11 (Plugin Platform) según
+`docs/ROADMAP.md` §15, salvo que el usuario indique otra prioridad.
+Alcance deliberadamente fuera de Fase 10 y diferido (no simulado —
+decisión central de la fase, ver `docs/DECISIONS.md` ADR-014 y "Known
+limitations" en "Manufacturing" de `docs/SECURITY.md`): cálculo de costos
+en cualquier forma (condicionado explícitamente por `docs/ROADMAP.md` §14
+a "un modelo de costeo aprobado antes de calcular costos", nunca
+aprobado en este código base), trazabilidad de lote/serie/vencimiento
+(heredando el mismo hueco ya documentado de Inventory en vez de construir
+una versión parcial e inconsistente), integración contable automática
+(consistente con ADR-012), workflow de aprobación tipo maker-checker para
+crear una BOM, reapertura de una orden de producción cerrada, y un modelo
+de work centers/ruteo más allá de una lista simple de pasos nombrados.
+Alcance deliberadamente fuera de Fase 9 y diferido (no simulado — decisión
+central de la fase, ver
 `docs/DECISIONS.md` ADR-013 y "Known limitations" en "CRM" de
 `docs/SECURITY.md`): un consumidor real de eventos de Sales (ningún módulo
 de este código base, salvo Tenants, ha publicado jamás un evento real de
@@ -84,6 +96,121 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 34 (Manufacturing — Fase 10, completa de una vez)
+
+Fase 10 completa en un solo bloque de trabajo, a pedido explícito del
+usuario ("Continua con la fase 10 en una sola sesión"), inmediatamente
+después de cerrar la Fase 9 (ver "Hecho — sesión 33" abajo): Bill of
+Materials versionado, Production Orders con requerimientos de material
+snapshoteados, operaciones simples, y emisión/devolución/recepción de
+producto terminado genuinamente parciales a través del ledger real de
+Inventory — los entregables de `docs/ROADMAP.md` §14, con una decisión de
+alcance deliberada y documentada en `docs/DECISIONS.md` ADR-014 (nuevo):
+el motor se construyó completo y se verificó de extremo a extremo contra
+Postgres real, pero ningún costo se calcula en ningún lugar del módulo —
+ver el detalle completo del razonamiento en "Completed" de
+`docs/PROJECT_STATE.md` y en el propio ADR-014.
+
+- **`apps/api/src/modules/manufacturing/`** (módulo nuevo, noveno bloque
+  de negocio del código base, y el segundo — tras Accounting — sin
+  ninguna dependencia hacia, ni desde, ningún otro módulo de negocio salvo
+  sus propias tres dependencias directas): `BillOfMaterial`/
+  `BillOfMaterialComponent`/`ProductionOrder`/`ProductionOrderMaterial`/
+  `ProductionOrderMaterialMovement`/`ProductionOrderOperation`/
+  `ProductionOrderFinishedGoodsReceipt`, mismo layout domain/application/
+  infrastructure/presentation/test-support que el resto de módulos de
+  negocio. Ver el detalle completo de cada entidad, invariante y caso de
+  uso en la entrada "PHASE 10 — Manufacturing" de `## Current Phase` en
+  `docs/PROJECT_STATE.md` — no se repite aquí para no duplicar.
+- **Emisión/devolución/recepción genuinamente parciales**, validadas
+  contra una suma corriente sobre el propio ledger de este módulo (nunca
+  un contador guardado), mismo patrón ya establecido por
+  `CreatePurchaseReceiptUseCase`/`CreatePurchaseReturnUseCase` de
+  Purchasing — necesario porque `ReleaseReservationUseCase` de Inventory
+  solo soporta liberar la cantidad completa de una reserva, incompatible
+  con consumo de material genuinamente parcial.
+- **Bug real de UI encontrado y corregido durante la propia escritura del
+  test de `apps/erp-web`, antes de cualquier commit**: `ProductSelectFields`
+  marcaba su `<select>` como `required` de forma incondicional, rompiendo
+  el envío del formulario externo una vez el mini-formulario de "agregar
+  componente" limpiaba sus propios campos a `""` tras cada clic —
+  corregido con un prop `required` opcional (`true` por defecto, `false`
+  para el mini-formulario de agregar componente).
+- 4 permisos nuevos (`manufacturing.boms.read`/`.manage`,
+  `manufacturing.orders.read`/`.manage`). Auditoría real en las 8 acciones
+  de escritura (`manufacturing.bill_of_material.created`/`.status_changed`,
+  `manufacturing.order.created`/`.confirmed`/`.closed`/`.cancelled`,
+  `manufacturing.material.issued`/`.returned`,
+  `manufacturing.finished_goods.received`,
+  `manufacturing.operation.added`/`.completed`).
+- Tabla nueva (migración `20260903032203_manufacturing`, **generada y
+  aplicada directamente contra Postgres real** vía el mismo workaround
+  no-interactivo ya establecido, combinando siete tablas nuevas, dos enums
+  nuevos, y la extensión de `InventoryMovementReferenceType` con
+  `PRODUCTION_ORDER`, aplicada limpiamente al primer intento).
+- Contrato HTTP nuevo, dos controladores
+  (`/api/v1/manufacturing/bills-of-material`, `.../orders`, 20 rutas en
+  total incluyendo materiales/operaciones/recepciones anidadas bajo una
+  orden).
+- **`@erp/api-client`**: ~18 tipos y 19 métodos nuevos generados desde el
+  spec OpenAPI real, sin bugs de fidelidad de decoradores.
+- **UI** (`apps/erp-web/src/features/manufacturing/`, ruta nueva
+  `/manufacturing`, botón "Manufactura" en el workspace): pestañas Listas
+  de materiales/Órdenes de producción, ambas cargadas una sola vez a nivel
+  de página junto con productos/bodegas, aplicando proactivamente la
+  misma lección que la propia UI de POS tuvo que corregir reactivamente
+  en la sesión 30.
+- **Dos bugs reales de colisión de selector encontrados y corregidos
+  durante la propia escritura del E2E**, mismo patrón ya documentado en
+  sesiones anteriores de este proyecto (`Tabs` nunca desmonta paneles
+  inactivos, y `page.getByText()`, a diferencia de `page.getByRole()`, no
+  respeta el atributo `hidden` al resolver coincidencias): el estado
+  vacío "Todavía no hay listas de materiales" coincidía como substring
+  con el aviso de la pestaña de Órdenes montada en paralelo — corregido
+  con `{ exact: true }`; y una búsqueda de texto por el nombre del
+  componente dentro del modal de creación de BOM coincidía con las tres
+  apariciones de ese texto (las dos `<option>` de los selectores de
+  producto terminado/componente, más el ítem de la lista de borrador) —
+  corregido escopando la aserción a
+  `getByRole("listitem").filter({ hasText })`.
+- Tests: 64 tests unitarios nuevos en `apps/api` (33 de dominio, 30 de
+  aplicación, 1 de wiring del módulo) — 1036 tests unitarios totales en
+  `apps/api` (antes 968). Suite de integración con 3 escenarios reales
+  nuevos contra Postgres (`manufacturing.integration-spec.ts`): ciclo de
+  vida completo BOM→ProductionOrder→Confirm→emisión/devolución
+  parciales→recepción de producto terminado parcial→Close con precisión
+  decimal real verificada (`2.5 × 4 = 10.0000`), rechazo real de un
+  componente de otra compañía, y el escenario de concurrencia genuina de
+  7 emisiones simultáneas contra 10 unidades reales de existencia
+  (exactamente 5 éxitos, 2 rechazos con `InsufficientInventoryError` real
+  de Inventory) — 47/47 en total (antes 44). 23/23 tests en
+  `@erp/api-client` (antes 22). 55/55 tests en `apps/erp-web` (antes 53).
+  **E2E real nuevo** (`apps/e2e/tests/manufacturing.spec.ts`, Chromium vía
+  Testcontainers): ciclo de vida completo por navegador real — dos
+  productos reales (terminado y componente) y una bodega real, recepción
+  real de stock del componente, una BOM real con un componente real, una
+  orden de producción real → confirmación real → emisión parcial real (8
+  de 20 requeridos) → devolución parcial real (2 de vuelta) → saldo del
+  componente real verificado (44.0000) → recepción parcial real de
+  producto terminado (3 de 10 planificadas) → cierre real de la orden con
+  completitud parcial → saldo del producto terminado real verificado
+  (3.0000) — 18/18 Playwright en total (antes 17).
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en los 9
+  paquetes/apps, `pnpm --filter @erp/api test` (1036/1036), `pnpm
+  --filter @erp/api-client test` (23/23), `pnpm --filter @erp/erp-web
+  test` (55/55, verificado limpio en corrida aislada tras que la corrida
+  concurrente completa del monorepo mostrara fallos aislados por timeout
+  en `pos-page.spec.tsx`/`roles-permissions-page.spec.tsx` y en
+  `@erp/storefront` — contención de recursos de esta sesión larga, mismo
+  patrón ya documentado en sesiones anteriores, descartado con corridas
+  aisladas limpias por paquete: `@erp/storefront` 23/23, `@erp/events`
+  27/27, `@erp/notifications` 33/33, `@erp/worker` 6/6), `pnpm --filter
+  @erp/api test:integration` (47/47 contra Postgres real), `pnpm --filter
+  @erp/e2e run test:e2e` (18/18 Playwright, corrida contra infraestructura
+  efímera real tras reiniciar Docker Desktop, detenido silenciosamente
+  entre bloques de esta sesión — mismo patrón operativo ya documentado en
+  sesiones anteriores) — todo verde.
 
 ### Hecho — sesión 33 (CRM — Fase 9, completa de una vez)
 
@@ -3210,7 +3337,15 @@ contra Postgres real, deliberadamente sin ningún handler que consuma
 eventos de Sales — ningún módulo de este código base, salvo Tenants, ha
 publicado jamás un evento real de dominio por el outbox, y un consumidor
 especulativo contra un schema de evento inventado habría sido la misma
-maquinaria prematura que MASTER_SPEC §59/§93 advierte evitar).
+maquinaria prematura que MASTER_SPEC §59/§93 advierte evitar); ADR-014
+(Manufacturing Costing and Traceability Scope V1 — implementado y
+ratificado en sesión 34, motor de Manufactura completo construido y
+verificado contra Postgres real, deliberadamente sin ningún cálculo de
+costo en ningún lugar del módulo — `docs/ROADMAP.md` §14 condiciona
+explícitamente el costeo a "un modelo de costeo aprobado antes de
+calcular costos", nunca aprobado en este código base — ni trazabilidad de
+lote/serie, heredando en cambio el mismo hueco ya documentado de
+Inventory en vez de construir una versión parcial e inconsistente).
 Pendientes de numerar formalmente cuando corresponda: ADR-001 (Modular
 Monolith), ADR-002 (PostgreSQL/Prisma), ADR-003 (Multi-Tenancy — el
 patrón de `docs/MULTITENANCY.md` §8 ya está verificado tres veces contra

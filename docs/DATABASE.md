@@ -1741,3 +1741,104 @@ new tables and three new enums (`LeadStatus`, `OpportunityStatus`,
 same migration — `opportunities.lead_id`, `activities.related_*`). No
 extension to any table owned by another module was needed beyond the FKs
 into `customers`/`users`, both pre-existing tables.
+
+## Manufacturing tables (Phase 10, 2026-09-03)
+
+Scope: `docs/ROADMAP.md` §14 — BOM with versioning, Production Orders with
+material requirements/operations/finished goods, all posted through
+Inventory's real ledger. `apps/api/src/modules/manufacturing`. Three direct,
+cycle-free dependencies (Catalog, Warehouses, Inventory); no dependency on,
+or from, Sales/Purchasing/POS/Commerce/Accounting/CRM.
+
+### `bill_of_materials`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `company_id` | `uuid` | |
+| `product_id` | `uuid` | → `products(tenantId, id)`, `ON DELETE RESTRICT`. The finished good; validated via `ResolveManufacturingProductTargetUseCase` (must be `trackInventory: true` and company-owned). |
+| `code` | `varchar(50)` | `@@unique([tenantId, companyId, code])`. |
+| `name` | `varchar(150)` | |
+| `version` | `int` | Default `1`, auto-assigned by `CreateBillOfMaterialUseCase` as `existingCount(product) + 1` — never user-supplied. `@@unique([tenantId, companyId, productId, version])`. Immutable once created; a revision is a new row, never an edit. |
+| `status` | `MasterDataStatus` | `ACTIVE` / `INACTIVE`, reused shared enum. Only `ACTIVE` BOMs can be used by `CreateProductionOrderUseCase`. |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+
+### `bill_of_material_components`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `bill_of_material_id` | `uuid` | `bill_of_material_id` → `bill_of_materials(tenantId, id)`, `ON DELETE CASCADE` — the one true parent-owns-child relation in this module. |
+| `component_product_id` / `component_variant_id` | `uuid` / `uuid?` | → `products(tenantId, id)` (relation `BomComponentProduct`) / `product_variants(tenantId, id)`, both `ON DELETE RESTRICT`. Validated the same way as the finished good — must be `trackInventory: true`, company-owned, and cannot equal the BOM's own `product_id` (no self-referencing recipe). |
+| `quantity_per_unit` | `numeric(14,4)` | Amount required to produce exactly one unit of the BOM's finished good; scaled by `quantityPlanned` when snapshotted into `production_order_materials`. |
+| `created_at` | `timestamptz(6)` | Created together with its parent, never mutated afterward — no `updated_at`. |
+
+### `production_orders`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | `@@unique([tenantId, id])` — this table's first real FK consumer is its own children below. |
+| `tenant_id` / `company_id` | `uuid` | |
+| `bill_of_material_id` | `uuid` | → `bill_of_materials(tenantId, id)`, `ON DELETE RESTRICT`. |
+| `product_id` | `uuid` | → `products(tenantId, id)`, `ON DELETE RESTRICT`. Denormalized from the BOM at creation for convenient querying, never re-derived afterward. |
+| `warehouse_id` | `uuid` | → `warehouses(tenantId, id)`, `ON DELETE RESTRICT`. Resolved via Warehouses' real `GetWarehouseUseCase`. |
+| `quantity_planned` | `numeric(14,4)` | Positive, validated via the module's own dependency-free BigInt decimal arithmetic (`manufacturing/domain/decimal.ts`). |
+| `status` | `ProductionOrderStatus` | `DRAFT` / `CONFIRMED` / `CLOSED` / `CANCELLED`. `DRAFT -> CONFIRMED -> CLOSED`; `CANCELLED` only from `DRAFT`/`CONFIRMED`, and only if no real material movement or finished-goods receipt exists yet (`ProductionOrderHasActivityError`). No stored `quantity_completed` column — always summed fresh from `production_order_finished_goods_receipts`. |
+| `version` | `int` | |
+| `created_at` / `updated_at` | `timestamptz(6)` | |
+| `confirmed_at` / `closed_at` / `cancelled_at` | `timestamptz(6)?` each | Set once, on the matching transition. |
+
+### `production_order_materials`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | `@@unique([tenantId, id])` — consumed by `production_order_material_movements` below. |
+| `tenant_id` / `production_order_id` | `uuid` | `production_order_id` → `production_orders(tenantId, id)`, `ON DELETE CASCADE`. |
+| `component_product_id` / `component_variant_id` | `uuid` / `uuid?` | → `products(tenantId, id)` (relation `ProductionOrderMaterialProduct`) / `product_variants(tenantId, id)`, both `ON DELETE RESTRICT`. |
+| `quantity_required` | `numeric(14,4)` | Snapshotted once, at order-creation time, from `bill_of_material_components.quantity_per_unit × quantity_planned` — never re-derived from the BOM afterward. No stored "issued"/"returned" columns; every use case sums the real ledger below instead. |
+| `created_at` | `timestamptz(6)` | |
+
+### `production_order_material_movements`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `production_order_material_id` | `uuid` | `production_order_material_id` → `production_order_materials(tenantId, id)`, `ON DELETE CASCADE`. |
+| `type` | `ProductionOrderMaterialMovementType` | `ISSUE` / `RETURN` — the direction is carried by `type`, not by a signed `quantity` (mirrors `InventoryMovement`'s own typed-ledger shape, not its signed-quantity convention). |
+| `quantity` | `numeric(14,4)` | Always positive regardless of `type`. Each row is created in the same call that posts the matching real Inventory ledger movement (`referenceType: "PRODUCTION_ORDER"`) via `RecordIssueUseCase`/`RecordReturnUseCase`. |
+| `created_at` | `timestamptz(6)` | Append-only — no update/delete. |
+
+### `production_order_operations`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `production_order_id` | `uuid` | `production_order_id` → `production_orders(tenantId, id)`, `ON DELETE CASCADE`. |
+| `name` | `varchar(150)` | Free text — a simple named process step, no work-center/routing model. |
+| `sort_order` | `int` | Always appended at the end (`existingOperations.length`) — no reorder use case, no unique constraint on this column, same "always append" precedent as `pipeline_stages.sort_order`. |
+| `completed_at` | `timestamptz(6)?` | Set once by `CompleteProductionOrderOperationUseCase`; no way to un-complete. |
+| `created_at` | `timestamptz(6)` | |
+
+### `production_order_finished_goods_receipts`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `tenant_id` / `production_order_id` | `uuid` | `production_order_id` → `production_orders(tenantId, id)`, `ON DELETE CASCADE`. |
+| `quantity` | `numeric(14,4)` | Validated against `quantity_planned` minus the running sum of prior receipts — genuinely partial across multiple calls, same pattern as `purchase_receipt_lines`. |
+| `created_at` | `timestamptz(6)` | Append-only. Each row is created in the same call that posts the matching real Inventory `RECEIPT` movement (`referenceType: "PRODUCTION_ORDER"`) via `RecordReceiptUseCase`. |
+
+### Migration
+
+`packages/database/prisma/migrations/20260903032203_manufacturing/` — same
+non-interactive `prisma migrate diff --script` workaround already
+established, applied cleanly to real Postgres on the first attempt: seven
+new tables and two new enums (`ProductionOrderStatus`,
+`ProductionOrderMaterialMovementType`), plus `InventoryMovementReferenceType`
+extended with `PRODUCTION_ORDER` and `@@unique([tenantId, id])` added to
+`bill_of_materials` and `production_orders` (each a real FK consumer within
+this same migration). No extension to any table owned by another module
+was needed beyond the FKs into `products`/`product_variants`/`warehouses`,
+all pre-existing tables — the first migration of a business module since
+Accounting (Phase 8) to touch no table it doesn't itself own, beyond
+`inventory_movements`' own `InventoryMovementReferenceType` enum.

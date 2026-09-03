@@ -81,6 +81,7 @@ import { PosRegistersController, PosShiftsController, PosSalesController, PosRet
 import { StorefrontsController, StorefrontPublicController, ListPublishedProductsUseCase } from "./modules/commerce";
 import { AccountsController, FiscalPeriodsController, JournalEntriesController, AccountingReportsController, CreateJournalEntryUseCase } from "./modules/accounting";
 import { LeadsController, PipelinesController, OpportunitiesController, ActivitiesController, CreateActivityUseCase } from "./modules/crm";
+import { BillsOfMaterialController, ProductionOrdersController, GetProductionOrderUseCase } from "./modules/manufacturing";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -190,6 +191,9 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(OpportunitiesController)).toBeInstanceOf(OpportunitiesController);
     expect(moduleRef.get(ActivitiesController)).toBeInstanceOf(ActivitiesController);
     expect(moduleRef.get(CreateActivityUseCase)).toBeInstanceOf(CreateActivityUseCase);
+    expect(moduleRef.get(BillsOfMaterialController)).toBeInstanceOf(BillsOfMaterialController);
+    expect(moduleRef.get(ProductionOrdersController)).toBeInstanceOf(ProductionOrdersController);
+    expect(moduleRef.get(GetProductionOrderUseCase)).toBeInstanceOf(GetProductionOrderUseCase);
 
     await moduleRef.close();
   });

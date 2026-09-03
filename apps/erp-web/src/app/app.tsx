@@ -20,6 +20,7 @@ import { PosPage } from "../features/pos/pos-page";
 import { CommercePage } from "../features/commerce/commerce-page";
 import { AccountingPage } from "../features/accounting/accounting-page";
 import { CrmPage } from "../features/crm/crm-page";
+import { ManufacturingPage } from "../features/manufacturing/manufacturing-page";
 import { PlatformAdminPage } from "../features/platform-admin/platform-admin-page";
 
 interface WorkspaceSelection extends TenantSummary {
@@ -56,7 +57,8 @@ export function App() {
         path === "/pos" ||
         path === "/commerce" ||
         path === "/accounting" ||
-        path === "/crm") &&
+        path === "/crm" ||
+        path === "/manufacturing") &&
       !selection
     ) {
       navigate("/tenants", true);
@@ -132,6 +134,10 @@ export function App() {
 
   if (path === "/crm" && selection) {
     return <CrmPage selection={selection} navigate={navigate} />;
+  }
+
+  if (path === "/manufacturing" && selection) {
+    return <ManufacturingPage selection={selection} navigate={navigate} />;
   }
 
   if (path === "/platform-admin" && session.user.isPlatformAdmin) {

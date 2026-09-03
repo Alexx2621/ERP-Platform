@@ -1,6 +1,50 @@
 # Project State
 
-Última actualización: 2026-09-02 (sesión 33), tras implementar el módulo
+Última actualización: 2026-09-03 (sesión 34), tras implementar el módulo
+de Manufactura (Fase 10) completo — Bill of Materials versionado e
+inmutable, Production Orders con requerimientos de material snapshoteados
+desde la receta, emisión/devolución genuinamente parcial de material,
+operaciones (pasos simples del proceso) y recepción genuinamente parcial
+de producto terminado, todo posteado a través del ledger real de
+Inventory — a pedido explícito del usuario ("Continua con la fase 10 en
+una sola sesión"), inmediatamente después de cerrar la Fase 9. Ver
+"PHASE 10 — Manufacturing" en `## Current Phase` y "Hecho — sesión 34" en
+`docs/WORK_QUEUE.md` para el detalle completo, incluyendo la decisión de
+alcance deliberada y documentada en `docs/DECISIONS.md` ADR-014 (nuevo):
+el motor completo se construyó y se verificó de extremo a extremo contra
+Postgres real (incluyendo emisión/devolución/recepción genuinamente
+parciales a través de múltiples llamadas, y una carrera de 7 emisiones
+genuinamente concurrentes contra 10 unidades reales de existencia), pero
+**ningún costo se calcula en ningún lugar del módulo** — `docs/ROADMAP.md`
+§14 condiciona explícitamente el costeo a "un modelo de costeo aprobado
+antes de calcular costos", y ningún modelo de costeo se ha aprobado jamás
+para este código base; calcular un costo aunque fuera "simple" habría
+codificado en silencio una política de valuación no aprobada, y no habría
+tenido dónde postear correctamente dado que Accounting (Fase 8, ADR-012)
+sigue deliberadamente sin ninguna integración automática. Tampoco se
+construyó trazabilidad de lote/serie — `docs/ROADMAP.md` §14 la condiciona
+igualmente a "si el mercado lo requiere", y hacerlo habría significado
+construir una versión parcial e inconsistente encima del propio hueco ya
+documentado de Inventory (Fase 3) en vez de resolverlo una sola vez donde
+realmente pertenece. Noveno módulo de negocio del código base con
+dependencias directas y sin ciclos hacia Catalog, Warehouses e Inventory,
+y el segundo (tras Accounting) sin ninguna dependencia hacia, ni desde,
+Sales/Purchasing/POS/Commerce/CRM. **Bug real de UI encontrado y
+corregido durante la propia escritura del test de `apps/erp-web`, antes
+de cualquier commit**: `ProductSelectFields` (componente compartido entre
+el selector del producto terminado y el selector de "agregar componente")
+marcaba su `<select>` como `required` de forma incondicional; el
+mini-formulario de "agregar componente" limpia sus propios campos a `""`
+después de cada clic en "Agregar componente" para permitir agregar el
+siguiente — dejando un campo `required` vacío en el DOM que el propio
+navegador (y jsdom, fielmente) bloquea en silencio al enviar el formulario
+externo, sin lanzar ninguna excepción ni disparar jamás el `onSubmit` —
+corregido con un prop `required` opcional (`true` por defecto, `false`
+para el mini-formulario de agregar componente), el mismo patrón que
+Purchasing/CRM ya usaban correctamente para sus propios campos de
+"agregar línea"/"agregar etapa" sin `required`.
+
+Actualización previa: 2026-09-02 (sesión 33), tras implementar el módulo
 de CRM (Fase 9) completo — Lead (con conversión real a `Customer` vía el
 contrato público de Customers), Pipeline/PipelineStage configurables,
 Opportunity (con transición `OPEN → WON | LOST` terminal), y Activity
@@ -163,6 +207,140 @@ participar en una tarea aislada con asignación explícita, alcance cerrado y
 revisión de Claude; no selecciona trabajo del ERP de forma autónoma.
 
 ## Current Phase
+
+PHASE 10 — Manufacturing, **iniciada y formalmente cerrada el 2026-09-03
+(sesión 34, en un solo bloque de trabajo)**, a pedido explícito del
+usuario ("Continua con la fase 10 en una sola sesión"), inmediatamente
+después de cerrar la Fase 9: `BillOfMaterial`/`BillOfMaterialComponent`
+(receta versionada e inmutable — `version` auto-asignado por
+`CreateBillOfMaterialUseCase` como `existingCount(product) + 1`, nunca
+provisto por el llamador; revisar una receta significa crear una fila
+nueva, nunca editar componentes ya existentes), `ProductionOrder`
+(`DRAFT → CONFIRMED → CLOSED`, `CANCELLED` alcanzable solo desde
+`DRAFT`/`CONFIRMED` y nunca si ya existe actividad real —
+`ProductionOrderHasActivityError`, mismo patrón que
+`PurchaseOrderHasReceiptsError` de Purchasing), `ProductionOrderMaterial`
+(requerimiento snapshoteado una sola vez desde el componente de la BOM,
+escalado por `quantityPlanned` — nunca re-derivado de la BOM después, así
+que una revisión posterior de la receta nunca altera en silencio una orden
+ya creada), `ProductionOrderMaterialMovement` (ledger tipado `ISSUE`/
+`RETURN`, siempre positivo — la dirección la lleva `type`, no el signo,
+mismo patrón de ledger tipado que `InventoryMovement` pero sin su
+convención de cantidad con signo), `ProductionOrderOperation` (pasos
+simples del proceso, siempre agregados al final, sin work centers ni
+ruteo), y `ProductionOrderFinishedGoodsReceipt` (recepción genuinamente
+parcial de producto terminado) — `apps/api/src/modules/manufacturing`.
+**Emisión, devolución y recepción de producto terminado genuinamente
+parciales a través de múltiples llamadas**, validadas contra una suma
+corriente sobre el propio ledger de este módulo (nunca un contador
+guardado que pudiera desincronizarse), mismo patrón ya establecido por
+`CreatePurchaseReceiptUseCase`/`CreatePurchaseReturnUseCase` de
+Purchasing — necesario porque `ReleaseReservationUseCase` de Inventory
+solo soporta liberar la cantidad *completa* de una reserva, incompatible
+con consumo de material genuinamente parcial; por eso este módulo nunca
+usa el mecanismo de reservas de Inventory en absoluto. Cada emisión/
+devolución/recepción real postea de inmediato el movimiento real
+correspondiente en el ledger real de Inventory
+(`RecordIssueUseCase`/`RecordReturnUseCase`/`RecordReceiptUseCase`,
+`referenceType: "PRODUCTION_ORDER"`, valor nuevo agregado a
+`InventoryMovementReferenceType`) — este módulo nunca muta un saldo
+directamente. **`GetProductionOrderUseCase`** calcula `quantityCompleted`
+sumando en cada llamada las filas reales de
+`ProductionOrderFinishedGoodsReceipt` — nunca una columna guardada, la
+misma filosofía "leer el ledger, nunca un contador que pueda desviarse"
+ya establecida por `InventoryBalance`/el Balance de Comprobación de
+Accounting/el resumen de pipeline de CRM. `ResolveManufacturingProductTargetUseCase`
+exige `Product.trackInventory === true` tanto para el producto terminado
+como para cada componente — reutilizando deliberadamente el único flag de
+`Product` genuinamente exigido en otro lugar del código base, en vez de
+inventar un flag `manufacturable` nuevo: `sellable`/`purchasable` ya
+existen en `Product` como metadata de MASTER_SPEC §19 pero, verificado por
+inspección antes de tomar esta decisión, ningún módulo los exige jamás —
+un tercer flag igualmente muerto habría sido exactamente el tipo de
+metadata sin cumplir que este código base ha evitado en todos lados (ver
+`docs/DECISIONS.md` ADR-014). **Noveno módulo de negocio del código base**,
+con tres dependencias directas y sin ciclos (Catalog, Warehouses,
+Inventory), y el segundo (tras Accounting) sin ninguna dependencia hacia,
+ni desde, ningún otro módulo de negocio salvo esas tres. El exit criteria
+de `docs/ROADMAP.md` §14 ("ninguna producción altera stock sin ledger") se
+cumple literalmente, no de forma aproximada — verificado con 7 solicitudes
+de emisión de material genuinamente concurrentes contra 10 unidades reales
+de existencia, confirmando exactamente 5 éxitos y 2 rechazos con
+`InsufficientInventoryError` real de Inventory, saldo final nunca
+negativo — la salvaguarda real bajo concurrencia genuina es la propia
+invariante de saldo de Inventory (`onHand >= reserved`, bajo
+`SELECT ... FOR UPDATE`), no la suma corriente de este módulo, que por
+diseño tiene una ventana de carrera bajo concurrencia genuina y depende de
+Inventory como la red de seguridad real. **Bug real de UI encontrado y
+corregido durante la propia escritura de tests de `apps/erp-web`, antes de
+cualquier commit** (detallado en la entrada de "Completed" más abajo):
+`ProductSelectFields` marcaba su `<select>` como `required` de forma
+incondicional, rompiendo el envío del formulario externo cuando el
+mini-formulario de "agregar componente" limpia sus propios campos a `""`
+tras cada clic — corregido con un prop `required` opcional. 4 permisos
+nuevos (`manufacturing.boms.read`/`.manage`,
+`manufacturing.orders.read`/`.manage`), auditoría real en las 8 acciones
+de escritura de los dos controladores
+(`manufacturing.bill_of_material.created`/`.status_changed`,
+`manufacturing.order.created`/`.confirmed`/`.closed`/`.cancelled`,
+`manufacturing.material.issued`/`.returned`,
+`manufacturing.finished_goods.received`,
+`manufacturing.operation.added`/`.completed`). Tabla nueva (migración
+`20260903032203_manufacturing`, **generada y aplicada directamente contra
+Postgres real** vía el mismo workaround no-interactivo ya establecido,
+combinando siete tablas nuevas, dos enums nuevos, y la extensión de
+`InventoryMovementReferenceType` con `PRODUCTION_ORDER`, aplicada
+limpiamente al primer intento). Contrato HTTP nuevo, dos controladores
+(`/api/v1/manufacturing/bills-of-material`, `.../orders`, con 20 rutas en
+total incluyendo materiales/operaciones/recepciones anidadas bajo una
+orden). **`@erp/api-client`**: ~18 tipos y 19 métodos nuevos generados
+desde el spec OpenAPI real, sin bugs de fidelidad de decoradores — todos
+los DTOs llevaron `type:`/`nullable:` explícitos desde el inicio. **UI**
+(`apps/erp-web/src/features/manufacturing/`, ruta nueva `/manufacturing`,
+botón "Manufactura" en el workspace): pestañas Listas de materiales/
+Órdenes de producción, ambas cargadas una sola vez a nivel de página junto
+con productos/bodegas — aplicando proactivamente la misma lección que la
+propia UI de POS tuvo que corregir reactivamente en la sesión 30. El
+detalle de una orden confirmada incluye secciones de Materiales
+(emitir/devolver), Operaciones (agregar/completar), y Producto terminado
+(registrar recepción parcial), todas dentro del mismo modal. **Dos bugs
+reales de colisión de selector encontrados y corregidos durante la propia
+escritura del E2E, mismo patrón ya documentado en sesiones anteriores de
+este proyecto** (`Tabs` nunca desmonta paneles inactivos, y
+`page.getByText()`, a diferencia de `page.getByRole()`, no respeta el
+atributo `hidden` al resolver coincidencias): el estado vacío "Todavía no
+hay listas de materiales" coincidía como substring con el aviso "Todavía
+no hay listas de materiales activas..." de la pestaña de Órdenes (montada
+en paralelo) — corregido con `{ exact: true }`; y una búsqueda de texto
+por el nombre del componente dentro del modal de creación de BOM
+coincidía con las tres apariciones de ese texto (las dos opciones `
+<option>` de los selectores de producto terminado/componente, más el
+ítem de la lista de borrador) — corregido escopando la aserción a
+`getByRole("listitem").filter({ hasText })` en vez de una búsqueda de
+texto libre en todo el diálogo. Tests: 64 tests unitarios nuevos en
+`apps/api` (33 de dominio, 30 de aplicación incluyendo el escenario de
+emisión/devolución/recepción genuinamente parciales y el rechazo de
+cancelación con actividad real, 1 de wiring del módulo) — 1036 tests
+unitarios totales en `apps/api` (antes 968). 3 escenarios de integración
+nuevos contra Postgres reales
+(`manufacturing.integration-spec.ts`): ciclo de vida completo BOM→
+ProductionOrder→Confirm→emisión/devolución parciales→recepción de
+producto terminado parcial→Close con precisión decimal real verificada
+(`2.5 × 4 = 10.0000`), rechazo real de un componente de otra compañía, y
+el escenario de concurrencia genuina de 7 emisiones simultáneas — 47/47
+en total (antes 44). 23/23 tests en `@erp/api-client` (antes 22). 55/55
+tests en `apps/erp-web` (antes 53). **E2E real nuevo**
+(`apps/e2e/tests/manufacturing.spec.ts`, Chromium vía Testcontainers):
+ciclo de vida completo por navegador real — dos productos reales
+(terminado y componente) y una bodega reales, recepción real de stock del
+componente, una BOM real con un componente real, una orden de producción
+real → confirmación real → emisión parcial real (8 de 20 requeridos) →
+devolución parcial real (2 de vuelta) → saldo del componente real
+verificado (44.0000 = 50 recibidas − 8 emitidas + 2 devueltas) →
+recepción parcial real de producto terminado (3 de 10 planificadas) →
+cierre real de la orden con completitud parcial (comportamiento
+intencional, no bloqueado) → saldo del producto terminado real verificado
+(3.0000) — 18/18 Playwright en total (antes 17).
 
 PHASE 9 — CRM, **iniciada y formalmente cerrada el 2026-09-02 (sesión 33,
 en un solo bloque de trabajo)**, a pedido explícito del usuario ("Continua
@@ -1976,6 +2154,109 @@ bloqueen.
   convertido movida hasta la etapa ganadora, y una actividad real
   relacionada con el prospecto, completada — 17/17 Playwright en total
   (antes 16).
+- **Manufacturing — Fase 10, motor completo** (`apps/api/src/modules/
+  manufacturing`, Claude, sesión 34, en un solo bloque de trabajo, ADR-014):
+  `BillOfMaterial`/`BillOfMaterialComponent` (receta versionada e inmutable
+  — `version` auto-asignado como `existingCount(product) + 1`, nunca
+  provisto por el llamador; revisar una receta crea una fila nueva, nunca
+  edita componentes existentes), `ProductionOrder` (`DRAFT → CONFIRMED →
+  CLOSED`, `CANCELLED` solo desde `DRAFT`/`CONFIRMED` y nunca con
+  actividad real ya existente — `ProductionOrderHasActivityError`, mismo
+  patrón que `PurchaseOrderHasReceiptsError`), `ProductionOrderMaterial`
+  (requerimiento snapshoteado una sola vez desde la BOM, escalado por
+  `quantityPlanned`), `ProductionOrderMaterialMovement` (ledger tipado
+  `ISSUE`/`RETURN`, siempre positivo — la dirección la lleva `type`, no el
+  signo), `ProductionOrderOperation` (pasos simples del proceso, siempre
+  agregados al final), y `ProductionOrderFinishedGoodsReceipt` (recepción
+  genuinamente parcial de producto terminado). Ver el detalle completo de
+  cada entidad, invariante y caso de uso en la entrada "PHASE 10 —
+  Manufacturing" de `## Current Phase` arriba — no se repite aquí para no
+  duplicar.
+  - **Emisión/devolución/recepción genuinamente parciales a través de
+    múltiples llamadas**, validadas contra una suma corriente sobre el
+    propio ledger de este módulo — mismo patrón ya establecido por
+    `CreatePurchaseReceiptUseCase`/`CreatePurchaseReturnUseCase` de
+    Purchasing, necesario porque `ReleaseReservationUseCase` de Inventory
+    solo soporta liberar la cantidad completa de una reserva. Cada
+    movimiento real postea de inmediato el movimiento correspondiente en
+    el ledger real de Inventory (`RecordIssueUseCase`/`RecordReturnUseCase`/
+    `RecordReceiptUseCase`, `referenceType: "PRODUCTION_ORDER"`, valor
+    nuevo agregado a `InventoryMovementReferenceType`).
+  - **Bug real de UI encontrado y corregido durante la propia escritura
+    del test de `apps/erp-web`, antes de cualquier commit**:
+    `ProductSelectFields` (compartido entre el selector del producto
+    terminado y el mini-formulario de "agregar componente") marcaba su
+    `<select>` como `required` de forma incondicional; el mini-formulario
+    limpia sus propios campos a `""` tras cada clic en "Agregar
+    componente" para permitir agregar el siguiente, dejando un campo
+    `required` vacío en el DOM que el navegador (y jsdom, fielmente)
+    bloquea en silencio al enviar el formulario externo — sin lanzar
+    ninguna excepción ni disparar jamás `onSubmit`, síntoma que costó una
+    ronda de depuración dirigida (confirmar con `screen.debug()` que el
+    estado del componente de borrador sí se agregaba correctamente, y con
+    un `console.log` temporal en el propio `onSubmit` que nunca se
+    imprimía) antes de aislar la causa raíz real: HTML5 constraint
+    validation nativa, no un bug de React. Corregido con un prop
+    `required` opcional (`true` por defecto, `false` para el
+    mini-formulario de agregar componente) — el mismo patrón que
+    Purchasing/CRM ya usaban correctamente para sus propios campos de
+    "agregar línea"/"agregar etapa" sin `required`.
+  - 4 permisos nuevos (`manufacturing.boms.read`/`.manage`,
+    `manufacturing.orders.read`/`.manage`), auditoría real en las 8
+    acciones de escritura. Tabla nueva (migración
+    `20260903032203_manufacturing`, **generada y aplicada directamente
+    contra Postgres real** vía el mismo workaround no-interactivo ya
+    establecido, combinando siete tablas nuevas, dos enums nuevos, y la
+    extensión de `InventoryMovementReferenceType` con `PRODUCTION_ORDER`,
+    aplicada limpiamente al primer intento). Contrato HTTP nuevo, dos
+    controladores (`/api/v1/manufacturing/bills-of-material`, `.../orders`,
+    20 rutas en total).
+  - **`@erp/api-client`**: ~18 tipos y 19 métodos nuevos generados desde
+    el spec OpenAPI real, sin bugs de fidelidad de decoradores. **UI**
+    (`apps/erp-web/src/features/manufacturing/`, ruta nueva
+    `/manufacturing`, botón "Manufactura" en el workspace): pestañas
+    Listas de materiales/Órdenes de producción, ambas cargadas una sola
+    vez a nivel de página junto con productos/bodegas, aplicando
+    proactivamente la lección que la propia UI de POS tuvo que corregir
+    reactivamente en la sesión 30.
+  - **Dos bugs reales de colisión de selector encontrados y corregidos
+    durante la propia escritura del E2E**, mismo patrón ya documentado en
+    sesiones anteriores (`Tabs` nunca desmonta paneles inactivos, y
+    `page.getByText()`, a diferencia de `page.getByRole()`, no respeta el
+    atributo `hidden` al resolver coincidencias): el estado vacío "Todavía
+    no hay listas de materiales" coincidía como substring con el aviso de
+    la pestaña de Órdenes montada en paralelo — corregido con
+    `{ exact: true }`; y una búsqueda de texto por el nombre del
+    componente dentro del modal de creación de BOM coincidía con las tres
+    apariciones de ese texto (las dos `<option>` de los selectores de
+    producto terminado/componente, más el ítem de la lista de borrador) —
+    corregido escopando la aserción a
+    `getByRole("listitem").filter({ hasText })`.
+  - Tests: 64 tests unitarios nuevos en `apps/api` (33 de dominio, 30 de
+    aplicación, 1 de wiring del módulo) — 1036 tests unitarios totales en
+    `apps/api` (antes 968). 3 escenarios de integración nuevos contra
+    Postgres reales (`manufacturing.integration-spec.ts`): ciclo de vida
+    completo BOM→ProductionOrder→Confirm→emisión/devolución parciales→
+    recepción de producto terminado parcial→Close con precisión decimal
+    real verificada (`2.5 × 4 = 10.0000`), rechazo real de un componente
+    de otra compañía, y el escenario de concurrencia genuina de 7
+    emisiones simultáneas contra 10 unidades reales de existencia
+    (exactamente 5 éxitos, 2 rechazos con `InsufficientInventoryError`
+    real de Inventory, saldo final nunca negativo) — 47/47 en total (antes
+    44). 23/23 tests en `@erp/api-client` (antes 22). 55/55 tests en
+    `apps/erp-web` (antes 53). **E2E real nuevo**
+    (`apps/e2e/tests/manufacturing.spec.ts`, Chromium vía Testcontainers):
+    ciclo de vida completo por navegador real — dos productos reales
+    (terminado y componente) y una bodega reales, recepción real de stock
+    del componente, una BOM real con un componente real, una orden de
+    producción real → confirmación real → emisión parcial real (8 de 20
+    requeridos) → devolución parcial real (2 de vuelta) → saldo del
+    componente real verificado (44.0000 = 50 recibidas − 8 emitidas + 2
+    devueltas) → recepción parcial real de producto terminado (3 de 10
+    planificadas) → cierre real de la orden con completitud parcial
+    (comportamiento intencional, no bloqueado) → saldo del producto
+    terminado real verificado (3.0000) — 18/18 Playwright en total (antes
+    17).
 
 ### Corregido en la auditoría de integración (sesión 1, 2026-08-26)
 
@@ -2032,12 +2313,12 @@ reportado por el sistema operativo en ese instante.
 
 ## In Progress
 
-Ninguno activo — **Fase 8 (Accounting) quedó formalmente cerrada en la
-sesión 32** y **Fase 9 (CRM) quedó formalmente cerrada en la sesión 33**,
+Ninguno activo — **Fase 9 (CRM) quedó formalmente cerrada en la sesión 33**
+y **Fase 10 (Manufactura) quedó formalmente cerrada en la sesión 34**,
 ambas en un solo bloque de trabajo cada una (ver Completed arriba y
-"Hecho — sesión 32"/"Hecho — sesión 33" en `docs/WORK_QUEUE.md`). El
-siguiente bloque no bloqueado es Fase 10 (Manufactura) según
-`docs/ROADMAP.md` §14, salvo indicación distinta del usuario.
+"Hecho — sesión 33"/"Hecho — sesión 34" en `docs/WORK_QUEUE.md`). El
+siguiente bloque no bloqueado es Fase 11 (Plugin Platform) según
+`docs/ROADMAP.md` §15, salvo indicación distinta del usuario.
 
 ## Pending
 
@@ -2047,19 +2328,19 @@ Ningún ítem de la cola original de Foundation queda pendiente
 Fase 3 (`docs/ROADMAP.md` §7), Fase 4 (`docs/ROADMAP.md` §8), Fase 5
 (`docs/ROADMAP.md` §9), Fase 6 (`docs/ROADMAP.md` §10), Fase 7
 (`docs/ROADMAP.md` §11, 7A y 7B completos), Fase 8 (`docs/ROADMAP.md`
-§12) ni Fase 9 (`docs/ROADMAP.md` §13) queda pendiente. También
-pendiente, sin bloquear Fase 10: ratificar ADR-001, ADR-002 y ADR-003
-formalmente (ADR-004 a ADR-013 ya están ratificados) — sus decisiones ya
-están implementadas y verificadas, solo falta el documento formal. La UI
-de RBAC (incluida la invitación de miembros), el E2E de sesión, la UI de
-Configuración, la UI de Platform Administration (sesión 18), la UI de
-Apps (sesión 22), la UI de Catálogo (sesión 23), la UI de Contactos/
-Customers/Suppliers (sesión 24), la UI de Comercial/Taxes/Warehouses/
-Pricing (sesión 25), la UI de Inventario (sesión 26), la UI de Ventas/
-Pagos (sesión 27), la UI de Compras (sesión 29), la UI de POS (sesión
-30), la UI de Comercio (sesión 31), la UI de Contabilidad (sesión 32) y
-la UI de CRM (sesión 33) ya están hechas e integradas (ver Completed); la
-UI de Files
+§12), Fase 9 (`docs/ROADMAP.md` §13) ni Fase 10 (`docs/ROADMAP.md` §14)
+queda pendiente. También pendiente, sin bloquear Fase 11: ratificar
+ADR-001, ADR-002 y ADR-003 formalmente (ADR-004 a ADR-014 ya están
+ratificados) — sus decisiones ya están implementadas y verificadas, solo
+falta el documento formal. La UI de RBAC (incluida la invitación de
+miembros), el E2E de sesión, la UI de Configuración, la UI de Platform
+Administration (sesión 18), la UI de Apps (sesión 22), la UI de Catálogo
+(sesión 23), la UI de Contactos/Customers/Suppliers (sesión 24), la UI de
+Comercial/Taxes/Warehouses/Pricing (sesión 25), la UI de Inventario
+(sesión 26), la UI de Ventas/Pagos (sesión 27), la UI de Compras (sesión
+29), la UI de POS (sesión 30), la UI de Comercio (sesión 31), la UI de
+Contabilidad (sesión 32), la UI de CRM (sesión 33) y la UI de Manufactura
+(sesión 34) ya están hechas e integradas (ver Completed); la UI de Files
 (subida/listado/descarga) y de Notifications (bandeja/badge de no leídas)
 todavía no se han construido — quedan como mejoras de UX sin dependencia
 de arquitectura, a retomar si el usuario las pide o cuando un módulo de
@@ -2122,7 +2403,19 @@ esta fase, no un descuido, ya que ningún módulo de este código base salvo
 Tenants ha publicado jamás un evento real de dominio —, una entidad
 "Team" dedicada más allá de RBAC por compañía + `ownerId`, forecasting/
 pipeline ponderado por probabilidad, scoring/deduplicación de leads, e
-importación masiva.
+importación masiva. Alcance deliberadamente diferido dentro de
+Manufacturing (no bloquea el cierre de Fase 10, ver `docs/DECISIONS.md`
+ADR-014 y "Known limitations" en `docs/SECURITY.md` "Manufacturing"):
+cálculo de costos en cualquier forma — la decisión central de esta fase,
+condicionada explícitamente por `docs/ROADMAP.md` §14 a "un modelo de
+costeo aprobado antes de calcular costos", que nunca se ha aprobado en
+este código base —, trazabilidad de lote/serie/vencimiento (heredando el
+mismo hueco ya documentado de Inventory, Fase 3, en vez de construir una
+versión parcial e inconsistente solo para Manufacturing), integración
+contable automática (consistente con ADR-012 de Accounting), workflow de
+aprobación tipo maker-checker para crear una BOM, reapertura de una orden
+de producción cerrada, y un modelo de work centers/ruteo más allá de una
+lista simple de pasos nombrados.
 
 ## Production Status
 
@@ -2774,3 +3067,58 @@ otra compañía (`CustomerNotFoundError` real, FK-scoped, no solo un filtro
 de aplicación). Los datos de prueba de esta sesión permanecen en la base,
 por el mismo motivo `onDelete: Restrict` de `audit_entries.user_id` ya
 documentado en sesiones anteriores.
+
+**Sesión 34 (2026-09-03, Manufacturing — Fase 10, motor completo)**:
+migración `20260903032203_manufacturing` (`bill_of_materials`,
+`bill_of_material_components`, `production_orders`,
+`production_order_materials`, `production_order_material_movements`,
+`production_order_operations`, `production_order_finished_goods_receipts`,
+más los enums nuevos `ProductionOrderStatus`/
+`ProductionOrderMaterialMovementType`, la extensión de
+`InventoryMovementReferenceType` con `PRODUCTION_ORDER`, y
+`@@unique([tenantId, id])` nuevo en `bill_of_materials`/`production_orders`
+— cada una consumida por FK dentro de esta misma migración) generada vía
+el mismo workaround no-interactivo `prisma migrate diff
+--from-config-datasource --to-schema prisma/schema.prisma --script` ya
+establecido, aplicada vía `prisma migrate deploy` — `prisma migrate
+status` confirma las 24 migraciones aplicadas sin drift. **Nota
+operativa real durante esta sesión**: Docker Desktop se había detenido
+antes de poder correr el arnés E2E (`Error: Could not find a working
+container runtime strategy`, mismo patrón ya documentado en sesiones
+anteriores) — reiniciado exitosamente vía la herramienta de PowerShell
+directamente (`Start-Process "$env:LOCALAPPDATA\Programs\DockerDesktop\Docker
+Desktop.exe"`), el daemon quedó listo en 5 segundos. Verificado con la
+suite de integración real
+(`apps/api/test/integration/manufacturing.integration-spec.ts`, 3
+escenarios contra Postgres real): ciclo de vida completo real (BOM real
+con un componente real → orden de producción real con requerimiento
+snapshoteado con precisión decimal real confirmada, `"10.0000"` = `2.5 ×
+4`, sin recorte de ceros → confirmación real → emisión parcial real →
+devolución parcial real → recepción parcial real de producto terminado →
+intento de cancelar rechazado real con actividad ya existente → cierre
+real), rechazo real de un componente de otra compañía
+(`ProductNotFoundError` real, FK-scoped), y el escenario de concurrencia
+genuina de 7 solicitudes de emisión de material simultáneas contra 10
+unidades reales de existencia, confirmando exactamente 5 éxitos y 2
+rechazos con `InsufficientInventoryError` real de Inventory — la
+salvaguarda real bajo concurrencia genuina, no la suma corriente propia
+de este módulo. **Bug real de fixture encontrado y corregido antes del
+primer commit, por el propio test de integración**: `buildFixture()`
+creaba inicialmente `otherCompanyProduct` reutilizando la unidad de
+medida de la compañía principal (`unit.id`) en vez de una unidad propia
+de `otherCompany`, causando `ProductUnitOfMeasureNotFoundError` real en
+los 3 escenarios del archivo — corregido agregando una
+`otherCompanyUnit` real y separada, mismo patrón ya establecido por
+Purchasing. Verificado también con el servidor real reconstruido y el
+E2E real de Playwright (`apps/e2e/tests/manufacturing.spec.ts`, corrida
+limpia contra infraestructura efímera): dos productos reales (terminado
+y componente) y una bodega real, recepción real de 50 unidades del
+componente, BOM real, orden de producción real de 10 unidades
+planificadas (requiriendo 20 del componente) → confirmación real →
+emisión parcial real (8 de 20) → devolución parcial real (2 de vuelta) →
+saldo del componente confirmado en `44.0000` por HTTP real (50 − 8 + 2)
+→ recepción parcial real de producto terminado (3 de 10) → cierre real
+con completitud parcial → saldo del producto terminado confirmado en
+`3.0000` por HTTP real. Los datos de prueba de esta sesión permanecen en
+la base, por el mismo motivo `onDelete: Restrict` de
+`audit_entries.user_id` ya documentado en sesiones anteriores.

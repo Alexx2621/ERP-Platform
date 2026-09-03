@@ -6,6 +6,7 @@ import type {
   AddCartLineInput,
   AddPipelineStageInput,
   AddPriceListItemInput,
+  AddProductionOrderOperationInput,
   AddProductVariantInput,
   AddPurchaseOrderLineInput,
   AddQuoteLineInput,
@@ -17,6 +18,8 @@ import type {
   ApiErrorEnvelope,
   AuditEntryResponse,
   AuthenticatedUser,
+  BillOfMaterialComponentResponse,
+  BillOfMaterialResponse,
   BrandResponse,
   CapturePaymentInput,
   CartResponse,
@@ -29,6 +32,7 @@ import type {
   ConvertQuoteInput,
   CreateAccountInput,
   CreateActivityInput,
+  CreateBillOfMaterialInput,
   CreateBrandInput,
   CreateCategoryInput,
   CreateCustomerInput,
@@ -41,6 +45,7 @@ import type {
   CreatePosReturnInput,
   CreatePriceListInput,
   CreateProductInput,
+  CreateProductionOrderInput,
   CreatePurchaseOrderInput,
   CreatePurchaseReceiptInput,
   CreatePurchaseReturnInput,
@@ -64,11 +69,13 @@ import type {
   InventoryReservationResponse,
   InventoryTransferResponse,
   InviteMembershipInput,
+  IssueProductionOrderMaterialInput,
   JournalEntryLineResponse,
   JournalEntryResponse,
   LeadResponse,
   ListAccountsFilter,
   ListActivitiesFilter,
+  ListBillsOfMaterialFilter,
   ListInventoryBalancesFilter,
   ListInventoryMovementsFilter,
   ListCommerceOrdersFilter,
@@ -82,6 +89,7 @@ import type {
   ListPosReturnsFilter,
   ListPosSalesFilter,
   ListPosShiftsFilter,
+  ListProductionOrdersFilter,
   ListPurchaseOrdersFilter,
   ListPurchaseReceiptsFilter,
   ListPurchaseReturnsFilter,
@@ -113,6 +121,11 @@ import type {
   PosShiftResponse,
   PriceListItemResponse,
   PriceListResponse,
+  ProductionOrderFinishedGoodsReceiptResponse,
+  ProductionOrderMaterialMovementResponse,
+  ProductionOrderMaterialResponse,
+  ProductionOrderOperationResponse,
+  ProductionOrderResponse,
   ProductResponse,
   ProductVariantResponse,
   ProvisionTenantInput,
@@ -129,9 +142,11 @@ import type {
   QuoteLineResponse,
   QuoteResponse,
   RecordCashMovementInput,
+  RecordFinishedGoodsInput,
   RecordIssueInput,
   RecordReceiptInput,
   RegisterInput,
+  ReturnProductionOrderMaterialInput,
   ReverseJournalEntryInput,
   RingUpSaleInput,
   RoleAssignmentResponse,
@@ -142,6 +157,7 @@ import type {
   SalesReturnResponse,
   SetAccountStatusInput,
   SetAppConfigurationInput,
+  SetBillOfMaterialStatusInput,
   SetCustomerStatusInput,
   SetLeadConsentInput,
   SetLeadStatusInput,
@@ -2714,6 +2730,280 @@ export class ApiClient {
       tenantSlug,
       companyId,
     });
+  }
+
+  // --- Manufacturing ---
+
+  async listBillsOfMaterial(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListBillsOfMaterialFilter = {},
+    signal?: AbortSignal,
+  ): Promise<BillOfMaterialResponse[]> {
+    return this.request<BillOfMaterialResponse[]>(`/manufacturing/bills-of-material${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createBillOfMaterial(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateBillOfMaterialInput,
+  ): Promise<BillOfMaterialResponse> {
+    return this.request<BillOfMaterialResponse>("/manufacturing/bills-of-material", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async getBillOfMaterial(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    billOfMaterialId: string,
+    signal?: AbortSignal,
+  ): Promise<BillOfMaterialResponse> {
+    return this.request<BillOfMaterialResponse>(`/manufacturing/bills-of-material/${encodeURIComponent(billOfMaterialId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listBillOfMaterialComponents(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    billOfMaterialId: string,
+    signal?: AbortSignal,
+  ): Promise<BillOfMaterialComponentResponse[]> {
+    return this.request<BillOfMaterialComponentResponse[]>(
+      `/manufacturing/bills-of-material/${encodeURIComponent(billOfMaterialId)}/components`,
+      { accessToken, tenantSlug, companyId, signal },
+    );
+  }
+
+  async setBillOfMaterialStatus(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    billOfMaterialId: string,
+    input: SetBillOfMaterialStatusInput,
+  ): Promise<BillOfMaterialResponse> {
+    return this.request<BillOfMaterialResponse>(`/manufacturing/bills-of-material/${encodeURIComponent(billOfMaterialId)}/status`, {
+      method: "PUT",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listProductionOrders(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: ListProductionOrdersFilter = {},
+    signal?: AbortSignal,
+  ): Promise<ProductionOrderResponse[]> {
+    return this.request<ProductionOrderResponse[]>(`/manufacturing/orders${this.buildQuery(filter)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async createProductionOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    input: CreateProductionOrderInput,
+  ): Promise<ProductionOrderResponse> {
+    return this.request<ProductionOrderResponse>("/manufacturing/orders", { method: "POST", accessToken, tenantSlug, companyId, body: input });
+  }
+
+  async getProductionOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductionOrderResponse> {
+    return this.request<ProductionOrderResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listProductionOrderMaterials(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductionOrderMaterialResponse[]> {
+    return this.request<ProductionOrderMaterialResponse[]>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/materials`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async confirmProductionOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+  ): Promise<ProductionOrderResponse> {
+    return this.request<ProductionOrderResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/confirm`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async closeProductionOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+  ): Promise<ProductionOrderResponse> {
+    return this.request<ProductionOrderResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/close`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async cancelProductionOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+  ): Promise<ProductionOrderResponse> {
+    return this.request<ProductionOrderResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/cancel`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+    });
+  }
+
+  async issueProductionOrderMaterial(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    input: IssueProductionOrderMaterialInput,
+  ): Promise<ProductionOrderMaterialMovementResponse> {
+    return this.request<ProductionOrderMaterialMovementResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/materials/issue`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async returnProductionOrderMaterial(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    input: ReturnProductionOrderMaterialInput,
+  ): Promise<ProductionOrderMaterialMovementResponse> {
+    return this.request<ProductionOrderMaterialMovementResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/materials/return`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async listProductionOrderFinishedGoodsReceipts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductionOrderFinishedGoodsReceiptResponse[]> {
+    return this.request<ProductionOrderFinishedGoodsReceiptResponse[]>(
+      `/manufacturing/orders/${encodeURIComponent(productionOrderId)}/finished-goods-receipts`,
+      { accessToken, tenantSlug, companyId, signal },
+    );
+  }
+
+  async recordFinishedGoods(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    input: RecordFinishedGoodsInput,
+  ): Promise<ProductionOrderFinishedGoodsReceiptResponse> {
+    return this.request<ProductionOrderFinishedGoodsReceiptResponse>(
+      `/manufacturing/orders/${encodeURIComponent(productionOrderId)}/finished-goods-receipts`,
+      { method: "POST", accessToken, tenantSlug, companyId, body: input },
+    );
+  }
+
+  async listProductionOrderOperations(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<ProductionOrderOperationResponse[]> {
+    return this.request<ProductionOrderOperationResponse[]>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/operations`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async addProductionOrderOperation(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    input: AddProductionOrderOperationInput,
+  ): Promise<ProductionOrderOperationResponse> {
+    return this.request<ProductionOrderOperationResponse>(`/manufacturing/orders/${encodeURIComponent(productionOrderId)}/operations`, {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      companyId,
+      body: input,
+    });
+  }
+
+  async completeProductionOrderOperation(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    productionOrderId: string,
+    operationId: string,
+  ): Promise<ProductionOrderOperationResponse> {
+    return this.request<ProductionOrderOperationResponse>(
+      `/manufacturing/orders/${encodeURIComponent(productionOrderId)}/operations/${encodeURIComponent(operationId)}/complete`,
+      { method: "POST", accessToken, tenantSlug, companyId },
+    );
   }
 
   /** Builds a `?key=value&...` query string from a flat filter object, skipping undefined/empty values. */

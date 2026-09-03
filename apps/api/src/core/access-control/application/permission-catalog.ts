@@ -137,4 +137,11 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
   { key: "crm.opportunities.manage", description: "Open, update, and move opportunities between stages." },
   { key: "crm.activities.read", description: "View activities logged against leads, opportunities, and customers." },
   { key: "crm.activities.manage", description: "Log and complete activities." },
+  { key: "manufacturing.boms.read", description: "View the company's bills of material and their components." },
+  { key: "manufacturing.boms.manage", description: "Create bills of material and activate/deactivate them." },
+  { key: "manufacturing.orders.read", description: "View the company's production orders, materials, operations, and finished-goods receipts." },
+  {
+    key: "manufacturing.orders.manage",
+    description: "Create, confirm, close, and cancel production orders; issue/return materials; record finished goods; manage operations.",
+  },
 ];

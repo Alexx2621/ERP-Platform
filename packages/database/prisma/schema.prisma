@@ -113,66 +113,73 @@ model Tenant {
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  memberships           Membership[]
-  organizations         Organization[]
-  companies             Company[]
-  roles                 Role[]
-  roleAssignments       RoleAssignment[]
-  settingValues         SettingValue[]
-  auditEntries          AuditEntry[]
-  outboxMessages        OutboxMessage[]
-  fileObjects           FileObject[]
-  notifications         Notification[]
-  inboxMessages         InboxMessage[]
-  tenantApps            TenantApp[]
-  unitsOfMeasure        UnitOfMeasure[]
-  categories            Category[]
-  brands                Brand[]
-  products              Product[]
-  productVariants       ProductVariant[]
-  customers             Customer[]
-  suppliers             Supplier[]
-  taxes                 Tax[]
-  warehouses            Warehouse[]
-  priceLists            PriceList[]
-  priceListItems        PriceListItem[]
-  inventoryMovements    InventoryMovement[]
-  inventoryBalances     InventoryBalance[]
-  inventoryTransfers    InventoryTransfer[]
-  inventoryReservations InventoryReservation[]
-  quotes                Quote[]
-  quoteLines            QuoteLine[]
-  salesOrders           SalesOrder[]
-  salesOrderLines       SalesOrderLine[]
-  salesReturns          SalesReturn[]
-  salesReturnLines      SalesReturnLine[]
-  payments              Payment[]
-  purchaseOrders        PurchaseOrder[]
-  purchaseOrderLines    PurchaseOrderLine[]
-  purchaseReceipts      PurchaseReceipt[]
-  purchaseReceiptLines  PurchaseReceiptLine[]
-  purchaseReturns       PurchaseReturn[]
-  purchaseReturnLines   PurchaseReturnLine[]
-  supplierInvoices      SupplierInvoice[]
-  posRegisters          PosRegister[]
-  posShifts             PosShift[]
-  posCashMovements      PosCashMovement[]
-  posSales              PosSale[]
-  posReturns            PosReturn[]
-  storefronts           Storefront[]
-  storefrontProducts    StorefrontProduct[]
-  carts                 Cart[]
-  cartLines             CartLine[]
-  commerceOrders        CommerceOrder[]
-  accounts              Account[]
-  fiscalPeriods         FiscalPeriod[]
-  journalEntries        JournalEntry[]
-  journalEntryLines     JournalEntryLine[]
-  leads                 Lead[]
-  pipelines             Pipeline[]
-  pipelineStages        PipelineStage[]
-  opportunities         Opportunity[]
-  activities            Activity[]
+  memberships                          Membership[]
+  organizations                        Organization[]
+  companies                            Company[]
+  roles                                Role[]
+  roleAssignments                      RoleAssignment[]
+  settingValues                        SettingValue[]
+  auditEntries                         AuditEntry[]
+  outboxMessages                       OutboxMessage[]
+  fileObjects                          FileObject[]
+  notifications                        Notification[]
+  inboxMessages                        InboxMessage[]
+  tenantApps                           TenantApp[]
+  unitsOfMeasure                       UnitOfMeasure[]
+  categories                           Category[]
+  brands                               Brand[]
+  products                             Product[]
+  productVariants                      ProductVariant[]
+  customers                            Customer[]
+  suppliers                            Supplier[]
+  taxes                                Tax[]
+  warehouses                           Warehouse[]
+  priceLists                           PriceList[]
+  priceListItems                       PriceListItem[]
+  inventoryMovements                   InventoryMovement[]
+  inventoryBalances                    InventoryBalance[]
+  inventoryTransfers                   InventoryTransfer[]
+  inventoryReservations                InventoryReservation[]
+  quotes                               Quote[]
+  quoteLines                           QuoteLine[]
+  salesOrders                          SalesOrder[]
+  salesOrderLines                      SalesOrderLine[]
+  salesReturns                         SalesReturn[]
+  salesReturnLines                     SalesReturnLine[]
+  payments                             Payment[]
+  purchaseOrders                       PurchaseOrder[]
+  purchaseOrderLines                   PurchaseOrderLine[]
+  purchaseReceipts                     PurchaseReceipt[]
+  purchaseReceiptLines                 PurchaseReceiptLine[]
+  purchaseReturns                      PurchaseReturn[]
+  purchaseReturnLines                  PurchaseReturnLine[]
+  supplierInvoices                     SupplierInvoice[]
+  posRegisters                         PosRegister[]
+  posShifts                            PosShift[]
+  posCashMovements                     PosCashMovement[]
+  posSales                             PosSale[]
+  posReturns                           PosReturn[]
+  storefronts                          Storefront[]
+  storefrontProducts                   StorefrontProduct[]
+  carts                                Cart[]
+  cartLines                            CartLine[]
+  commerceOrders                       CommerceOrder[]
+  accounts                             Account[]
+  fiscalPeriods                        FiscalPeriod[]
+  journalEntries                       JournalEntry[]
+  journalEntryLines                    JournalEntryLine[]
+  leads                                Lead[]
+  pipelines                            Pipeline[]
+  pipelineStages                       PipelineStage[]
+  opportunities                        Opportunity[]
+  activities                           Activity[]
+  billOfMaterials                      BillOfMaterial[]
+  billOfMaterialComponents             BillOfMaterialComponent[]
+  productionOrders                     ProductionOrder[]
+  productionOrderMaterials             ProductionOrderMaterial[]
+  productionOrderMaterialMovements     ProductionOrderMaterialMovement[]
+  productionOrderOperations            ProductionOrderOperation[]
+  productionOrderFinishedGoodsReceipts ProductionOrderFinishedGoodsReceipt[]
 
   @@map("tenants")
 }
@@ -291,6 +298,8 @@ model Company {
   pipelines             Pipeline[]
   opportunities         Opportunity[]
   activities            Activity[]
+  billOfMaterials       BillOfMaterial[]
+  productionOrders      ProductionOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -882,22 +891,26 @@ model Product {
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company               Company                @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  category              Category?              @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
-  brand                 Brand?                 @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
-  unitOfMeasure         UnitOfMeasure          @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
-  variants              ProductVariant[]
-  priceListItems        PriceListItem[]
-  inventoryMovements    InventoryMovement[]
-  inventoryBalances     InventoryBalance[]
-  inventoryTransfers    InventoryTransfer[]
-  inventoryReservations InventoryReservation[]
-  salesOrderLines       SalesOrderLine[]
-  quoteLines            QuoteLine[]
-  purchaseOrderLines    PurchaseOrderLine[]
-  storefrontProducts    StorefrontProduct[]
-  cartLines             CartLine[]
+  tenant                              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                             Company                   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  category                            Category?                 @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  brand                               Brand?                    @relation(fields: [tenantId, brandId], references: [tenantId, id], onDelete: Restrict)
+  unitOfMeasure                       UnitOfMeasure             @relation(fields: [tenantId, unitOfMeasureId], references: [tenantId, id], onDelete: Restrict)
+  variants                            ProductVariant[]
+  priceListItems                      PriceListItem[]
+  inventoryMovements                  InventoryMovement[]
+  inventoryBalances                   InventoryBalance[]
+  inventoryTransfers                  InventoryTransfer[]
+  inventoryReservations               InventoryReservation[]
+  salesOrderLines                     SalesOrderLine[]
+  quoteLines                          QuoteLine[]
+  purchaseOrderLines                  PurchaseOrderLine[]
+  storefrontProducts                  StorefrontProduct[]
+  cartLines                           CartLine[]
+  billOfMaterials                     BillOfMaterial[]
+  billOfMaterialComponentsAsComponent BillOfMaterialComponent[] @relation("BomComponentProduct")
+  productionOrders                    ProductionOrder[]
+  productionOrderMaterialsAsComponent ProductionOrderMaterial[] @relation("ProductionOrderMaterialProduct")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -930,14 +943,16 @@ model ProductVariant {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
 
-  inventoryMovements    InventoryMovement[]
-  inventoryBalances     InventoryBalance[]
-  inventoryTransfers    InventoryTransfer[]
-  inventoryReservations InventoryReservation[]
-  salesOrderLines       SalesOrderLine[]
-  quoteLines            QuoteLine[]
-  purchaseOrderLines    PurchaseOrderLine[]
-  cartLines             CartLine[]
+  inventoryMovements                  InventoryMovement[]
+  inventoryBalances                   InventoryBalance[]
+  inventoryTransfers                  InventoryTransfer[]
+  inventoryReservations               InventoryReservation[]
+  salesOrderLines                     SalesOrderLine[]
+  quoteLines                          QuoteLine[]
+  purchaseOrderLines                  PurchaseOrderLine[]
+  cartLines                           CartLine[]
+  billOfMaterialComponentsAsComponent BillOfMaterialComponent[]
+  productionOrderMaterialsAsComponent ProductionOrderMaterial[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, sku])
@@ -982,12 +997,12 @@ model Customer {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
 
-  salesOrders       SalesOrder[]
-  quotes            Quote[]
-  commerceOrders    CommerceOrder[]
+  salesOrders        SalesOrder[]
+  quotes             Quote[]
+  commerceOrders     CommerceOrder[]
   convertedFromLeads Lead[]
-  opportunities     Opportunity[]
-  activities        Activity[]
+  opportunities      Opportunity[]
+  activities         Activity[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1090,6 +1105,7 @@ model Warehouse {
   purchaseOrderLines     PurchaseOrderLine[]
   posRegisters           PosRegister[]
   storefronts            Storefront[]
+  productionOrders       ProductionOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1185,6 +1201,7 @@ enum InventoryMovementReferenceType {
   SALES_RETURN
   PURCHASE_ORDER
   PURCHASE_RETURN
+  PRODUCTION_ORDER
 }
 
 /// Append-only ledger — the single source of truth for every balance change
@@ -2427,10 +2444,10 @@ model Lead {
   createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant            Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company           Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  owner             User       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  convertedCustomer Customer?  @relation(fields: [tenantId, convertedCustomerId], references: [tenantId, id], onDelete: Restrict)
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company           Company       @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  owner             User          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  convertedCustomer Customer?     @relation(fields: [tenantId, convertedCustomerId], references: [tenantId, id], onDelete: Restrict)
   opportunities     Opportunity[]
   activities        Activity[]
 
@@ -2531,31 +2548,244 @@ model Opportunity {
 /// domain, see `Activity`'s own docstring for why `relatedCustomerId`
 /// exists (the CRM Sales-event consumer, docs/DECISIONS.md ADR-013).
 model Activity {
-  id                    String       @id @db.Uuid
-  tenantId              String       @map("tenant_id") @db.Uuid
-  companyId             String       @map("company_id") @db.Uuid
-  type                  ActivityType
-  subject               String       @db.VarChar(200)
-  notes                 String?      @db.VarChar(2000)
-  relatedLeadId         String?      @map("related_lead_id") @db.Uuid
-  relatedOpportunityId  String?      @map("related_opportunity_id") @db.Uuid
-  relatedCustomerId     String?      @map("related_customer_id") @db.Uuid
-  ownerId               String       @map("owner_id") @db.Uuid
-  dueAt                 DateTime?    @map("due_at") @db.Timestamptz(6)
-  completedAt           DateTime?    @map("completed_at") @db.Timestamptz(6)
-  createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String       @id @db.Uuid
+  tenantId             String       @map("tenant_id") @db.Uuid
+  companyId            String       @map("company_id") @db.Uuid
+  type                 ActivityType
+  subject              String       @db.VarChar(200)
+  notes                String?      @db.VarChar(2000)
+  relatedLeadId        String?      @map("related_lead_id") @db.Uuid
+  relatedOpportunityId String?      @map("related_opportunity_id") @db.Uuid
+  relatedCustomerId    String?      @map("related_customer_id") @db.Uuid
+  ownerId              String       @map("owner_id") @db.Uuid
+  dueAt                DateTime?    @map("due_at") @db.Timestamptz(6)
+  completedAt          DateTime?    @map("completed_at") @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant              Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company             Company      @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
-  relatedLead         Lead?        @relation(fields: [tenantId, relatedLeadId], references: [tenantId, id], onDelete: Restrict)
-  relatedOpportunity  Opportunity? @relation(fields: [tenantId, relatedOpportunityId], references: [tenantId, id], onDelete: Restrict)
-  relatedCustomer     Customer?    @relation(fields: [tenantId, relatedCustomerId], references: [tenantId, id], onDelete: Restrict)
-  owner               User         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company            Company      @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  relatedLead        Lead?        @relation(fields: [tenantId, relatedLeadId], references: [tenantId, id], onDelete: Restrict)
+  relatedOpportunity Opportunity? @relation(fields: [tenantId, relatedOpportunityId], references: [tenantId, id], onDelete: Restrict)
+  relatedCustomer    Customer?    @relation(fields: [tenantId, relatedCustomerId], references: [tenantId, id], onDelete: Restrict)
+  owner              User         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, companyId])
   @@index([tenantId, relatedLeadId])
   @@index([tenantId, relatedOpportunityId])
   @@index([tenantId, relatedCustomerId])
   @@map("activities")
+}
+
+enum ProductionOrderStatus {
+  DRAFT
+  CONFIRMED
+  CLOSED
+  CANCELLED
+}
+
+enum ProductionOrderMaterialMovementType {
+  ISSUE
+  RETURN
+}
+
+/// A versioned recipe (docs/ROADMAP.md §14 — "Bill of Materials con
+/// versionado/vigencia"). `version` is auto-assigned by
+/// `CreateBillOfMaterialUseCase` (existing-count + 1 for the same
+/// `productId`), never user-supplied — a new version is a brand-new,
+/// immutable row; components are never edited in place once created (see
+/// `BillOfMaterialComponent`'s own docstring). No costing fields exist
+/// here at all — docs/DECISIONS.md ADR-014 defers calculating costs until
+/// a real costing model is approved (docs/ROADMAP.md §14: "Costing model
+/// aprobado antes de calcular costos").
+model BillOfMaterial {
+  id        String           @id @db.Uuid
+  tenantId  String           @map("tenant_id") @db.Uuid
+  companyId String           @map("company_id") @db.Uuid
+  productId String           @map("product_id") @db.Uuid
+  code      String           @db.VarChar(50)
+  name      String           @db.VarChar(150)
+  version   Int              @default(1)
+  status    MasterDataStatus @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company          Company                   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  product          Product                   @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  components       BillOfMaterialComponent[]
+  productionOrders ProductionOrder[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, productId, version])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId, status])
+  @@map("bill_of_materials")
+}
+
+/// One required component of a `BillOfMaterial`, always created together
+/// with its parent by `CreateBillOfMaterialUseCase` and never mutated or
+/// added to afterward — a BOM is a recipe snapshot, not a document with
+/// draft/edit lines; revising it means creating a new `version`.
+/// `quantityPerUnit` is the amount required to produce exactly one unit of
+/// the BOM's own `productId` — `CreateProductionOrderUseCase` multiplies
+/// this by the order's `quantityPlanned` when snapshotting
+/// `ProductionOrderMaterial` rows.
+model BillOfMaterialComponent {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  billOfMaterialId   String   @map("bill_of_material_id") @db.Uuid
+  componentProductId String   @map("component_product_id") @db.Uuid
+  componentVariantId String?  @map("component_variant_id") @db.Uuid
+  quantityPerUnit    Decimal  @map("quantity_per_unit") @db.Decimal(14, 4)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  billOfMaterial   BillOfMaterial  @relation(fields: [tenantId, billOfMaterialId], references: [tenantId, id], onDelete: Cascade)
+  componentProduct Product         @relation("BomComponentProduct", fields: [tenantId, componentProductId], references: [tenantId, id], onDelete: Restrict)
+  componentVariant ProductVariant? @relation(fields: [tenantId, componentVariantId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, billOfMaterialId])
+  @@map("bill_of_material_components")
+}
+
+/// `DRAFT -> CONFIRMED -> CLOSED`, `CANCELLED` reachable only from
+/// `DRAFT`/`CONFIRMED` and rejected once any real material movement or
+/// finished-goods receipt exists (`ProductionOrderHasActivityError`,
+/// enforced in the use case — same shape as
+/// `PurchaseOrderHasReceiptsError`). `billOfMaterialId`/`productId` are
+/// resolved once at creation; `productId` is denormalized from the BOM
+/// purely for convenient querying, never re-derived. No stored
+/// "quantityCompleted" column — `GetProductionOrderUseCase` sums real
+/// `ProductionOrderFinishedGoodsReceipt` rows fresh on every read, the
+/// same "ledger read, never a drifting counter" philosophy
+/// `InventoryBalance`/Accounting's Trial Balance already established.
+model ProductionOrder {
+  id               String                @id @db.Uuid
+  tenantId         String                @map("tenant_id") @db.Uuid
+  companyId        String                @map("company_id") @db.Uuid
+  billOfMaterialId String                @map("bill_of_material_id") @db.Uuid
+  productId        String                @map("product_id") @db.Uuid
+  warehouseId      String                @map("warehouse_id") @db.Uuid
+  quantityPlanned  Decimal               @map("quantity_planned") @db.Decimal(14, 4)
+  status           ProductionOrderStatus @default(DRAFT)
+  version          Int                   @default(1)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  confirmedAt      DateTime?             @map("confirmed_at") @db.Timestamptz(6)
+  closedAt         DateTime?             @map("closed_at") @db.Timestamptz(6)
+  cancelledAt      DateTime?             @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant                Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                               @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+  billOfMaterial        BillOfMaterial                        @relation(fields: [tenantId, billOfMaterialId], references: [tenantId, id], onDelete: Restrict)
+  product               Product                               @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  warehouse             Warehouse                             @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict)
+  materials             ProductionOrderMaterial[]
+  operations            ProductionOrderOperation[]
+  finishedGoodsReceipts ProductionOrderFinishedGoodsReceipt[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, status])
+  @@map("production_orders")
+}
+
+/// A material requirement, snapshotted from `BillOfMaterialComponent` once
+/// at `CreateProductionOrderUseCase` time — never re-derived from the BOM
+/// afterward, so a later BOM revision never silently changes an
+/// already-created order's requirements. No stored "quantityIssued"/
+/// "quantityReturned" columns — every use case validates against the
+/// running sum of real `ProductionOrderMaterialMovement` rows, the same
+/// "sum the ledger, never a counter that can desync" pattern
+/// `PurchaseReceiptLine`/`SalesReturnLine` already established.
+model ProductionOrderMaterial {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  productionOrderId  String   @map("production_order_id") @db.Uuid
+  componentProductId String   @map("component_product_id") @db.Uuid
+  componentVariantId String?  @map("component_variant_id") @db.Uuid
+  quantityRequired   Decimal  @map("quantity_required") @db.Decimal(14, 4)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productionOrder  ProductionOrder                   @relation(fields: [tenantId, productionOrderId], references: [tenantId, id], onDelete: Cascade)
+  componentProduct Product                           @relation("ProductionOrderMaterialProduct", fields: [tenantId, componentProductId], references: [tenantId, id], onDelete: Restrict)
+  componentVariant ProductVariant?                   @relation(fields: [tenantId, componentVariantId], references: [tenantId, id], onDelete: Restrict)
+  movements        ProductionOrderMaterialMovement[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, productionOrderId])
+  @@map("production_order_materials")
+}
+
+/// Every real ISSUE (consumption from the warehouse) or RETURN (unused
+/// material restored to stock) event against one `ProductionOrderMaterial`
+/// — append-only, `quantity` always positive regardless of `type` (the
+/// direction is carried by `type`, mirroring `InventoryMovement`'s own
+/// typed-ledger shape rather than a signed-quantity convention). Each row
+/// is created by `IssueProductionOrderMaterialUseCase`/
+/// `ReturnProductionOrderMaterialUseCase` in the same call that posts the
+/// real Inventory ledger movement (`referenceType: "PRODUCTION_ORDER"`)
+/// — this table is Manufacturing's own read boundary for "how much of this
+/// material has been issued/returned so far", never a re-query of
+/// Inventory's ledger directly (docs/ARCHITECTURE.md §6: a module owns its
+/// own application-layer validation over another module's public contract).
+model ProductionOrderMaterialMovement {
+  id                        String                              @id @db.Uuid
+  tenantId                  String                              @map("tenant_id") @db.Uuid
+  productionOrderMaterialId String                              @map("production_order_material_id") @db.Uuid
+  type                      ProductionOrderMaterialMovementType
+  quantity                  Decimal                             @db.Decimal(14, 4)
+  createdAt                 DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant                  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productionOrderMaterial ProductionOrderMaterial @relation(fields: [tenantId, productionOrderMaterialId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, productionOrderMaterialId])
+  @@map("production_order_material_movements")
+}
+
+/// A simple named process step (docs/ROADMAP.md §14 — "Production Orders,
+/// operations y material requirements"). Deliberately minimal: no work
+/// centers, no routing, no time tracking — just an ordered checklist a
+/// production order can carry, always appended at the end
+/// (`AddProductionOrderOperationUseCase`, same "always append, no reorder"
+/// precedent as `PipelineStage.sortOrder`). `completedAt` is set once by
+/// `CompleteProductionOrderOperationUseCase`; there is no way to un-complete
+/// one.
+model ProductionOrderOperation {
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  productionOrderId String    @map("production_order_id") @db.Uuid
+  name              String    @db.VarChar(150)
+  sortOrder         Int       @map("sort_order")
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productionOrder ProductionOrder @relation(fields: [tenantId, productionOrderId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, productionOrderId])
+  @@map("production_order_operations")
+}
+
+/// Every real receipt of finished goods into the order's warehouse —
+/// append-only, genuinely partial across multiple calls (the same
+/// "recepción parcial" pattern `PurchaseReceiptLine` already established
+/// for Purchasing), validated against `quantityPlanned` minus the running
+/// sum of prior receipts. `RecordFinishedGoodsUseCase` posts the matching
+/// real `RECEIPT` Inventory movement (`referenceType: "PRODUCTION_ORDER"`)
+/// in the same call.
+model ProductionOrderFinishedGoodsReceipt {
+  id                String   @id @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  productionOrderId String   @map("production_order_id") @db.Uuid
+  quantity          Decimal  @db.Decimal(14, 4)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  productionOrder ProductionOrder @relation(fields: [tenantId, productionOrderId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, productionOrderId])
+  @@map("production_order_finished_goods_receipts")
 }

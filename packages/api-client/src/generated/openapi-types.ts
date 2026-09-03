@@ -2668,6 +2668,265 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/bills-of-material": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bills of material for the active company. */
+        get: operations["BillsOfMaterialController_list"];
+        put?: never;
+        /** Create a new, immutable bill of material version with its components. */
+        post: operations["BillsOfMaterialController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/bills-of-material/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a bill of material by id. */
+        get: operations["BillsOfMaterialController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/bills-of-material/{id}/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a bill of material's components. */
+        get: operations["BillsOfMaterialController_listBillOfMaterialComponents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/bills-of-material/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate or deactivate a bill of material. */
+        put: operations["BillsOfMaterialController_setBillOfMaterialStatus"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List production orders for the active company. */
+        get: operations["ProductionOrdersController_list"];
+        put?: never;
+        /** Create a DRAFT production order, snapshotting its BOM's components as material requirements. */
+        post: operations["ProductionOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a production order by id, including its computed completed quantity. */
+        get: operations["ProductionOrdersController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a production order's material requirements, with net issued quantity. */
+        get: operations["ProductionOrdersController_listOrderMaterials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a DRAFT production order, moving it to CONFIRMED. */
+        post: operations["ProductionOrdersController_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a CONFIRMED order — does not require every material to be fully consumed or all finished goods received. */
+        post: operations["ProductionOrdersController_close"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a DRAFT or CONFIRMED order — rejected if any material movement or finished-goods receipt already exists for it. */
+        post: operations["ProductionOrdersController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/materials/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue (consume) a real quantity of a material from the order's warehouse — genuinely partial across multiple calls. */
+        post: operations["ProductionOrdersController_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/materials/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return unused, previously-issued material back to stock. */
+        post: operations["ProductionOrdersController_returnMaterialToStock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/finished-goods-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a production order's finished-goods receipts. */
+        get: operations["ProductionOrdersController_listFinishedGoodsReceipts"];
+        put?: never;
+        /** Record a real, genuinely partial receipt of finished goods into the order's warehouse. */
+        post: operations["ProductionOrdersController_recordFinishedGoodsReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a production order's operations. */
+        get: operations["ProductionOrdersController_listOrderOperations"];
+        put?: never;
+        /** Add a named process step to a DRAFT or CONFIRMED order, always appended at the end. */
+        post: operations["ProductionOrdersController_addOrderOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/operations/{operationId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an operation completed — one-way, no un-completing. */
+        post: operations["ProductionOrdersController_completeOrderOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4552,6 +4811,131 @@ export interface components {
             dueAt?: string;
             /** @description Defaults to the caller. */
             ownerId?: string;
+        };
+        BillOfMaterialResponseDto: {
+            id: string;
+            productId: string;
+            code: string;
+            name: string;
+            version: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateBillOfMaterialComponentDto: {
+            componentProductId: string;
+            componentVariantId?: string;
+            /** @example 2.0000 */
+            quantityPerUnit: string;
+        };
+        CreateBillOfMaterialDto: {
+            productId: string;
+            code: string;
+            name: string;
+            components: components["schemas"]["CreateBillOfMaterialComponentDto"][];
+        };
+        BillOfMaterialComponentResponseDto: {
+            id: string;
+            billOfMaterialId: string;
+            componentProductId: string;
+            componentVariantId: string | null;
+            /** @example 2.0000 */
+            quantityPerUnit: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SetBillOfMaterialStatusDto: {
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+        };
+        ProductionOrderResponseDto: {
+            id: string;
+            billOfMaterialId: string;
+            productId: string;
+            warehouseId: string;
+            /** @example 10.0000 */
+            quantityPlanned: string;
+            /** @example 0.0000 */
+            quantityCompleted: string;
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "CLOSED" | "CANCELLED";
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            confirmedAt: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        CreateProductionOrderDto: {
+            billOfMaterialId: string;
+            warehouseId: string;
+            /** @example 10.0000 */
+            quantityPlanned: string;
+        };
+        ProductionOrderMaterialResponseDto: {
+            id: string;
+            productionOrderId: string;
+            componentProductId: string;
+            componentVariantId: string | null;
+            /** @example 20.0000 */
+            quantityRequired: string;
+            /** @example 5.0000 */
+            quantityIssuedNet: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        IssueProductionOrderMaterialDto: {
+            productionOrderMaterialId: string;
+            /** @example 5.0000 */
+            quantity: string;
+        };
+        ProductionOrderMaterialMovementResponseDto: {
+            id: string;
+            productionOrderMaterialId: string;
+            /** @enum {string} */
+            type: "ISSUE" | "RETURN";
+            /** @example 5.0000 */
+            quantity: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ReturnProductionOrderMaterialDto: {
+            productionOrderMaterialId: string;
+            /** @example 1.0000 */
+            quantity: string;
+        };
+        ProductionOrderFinishedGoodsReceiptResponseDto: {
+            id: string;
+            productionOrderId: string;
+            /** @example 10.0000 */
+            quantity: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RecordFinishedGoodsDto: {
+            /** @example 10.0000 */
+            quantity: string;
+        };
+        ProductionOrderOperationResponseDto: {
+            id: string;
+            productionOrderId: string;
+            name: string;
+            sortOrder: number;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AddProductionOrderOperationDto: {
+            name: string;
         };
     };
     responses: never;
@@ -10179,6 +10563,536 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityResponseDto"];
+                };
+            };
+        };
+    };
+    BillsOfMaterialController_list: {
+        parameters: {
+            query?: {
+                productId?: string;
+                status?: "ACTIVE" | "INACTIVE";
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOfMaterialResponseDto"][];
+                };
+            };
+        };
+    };
+    BillsOfMaterialController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBillOfMaterialDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOfMaterialResponseDto"];
+                };
+            };
+        };
+    };
+    BillsOfMaterialController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOfMaterialResponseDto"];
+                };
+            };
+        };
+    };
+    BillsOfMaterialController_listBillOfMaterialComponents: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOfMaterialComponentResponseDto"][];
+                };
+            };
+        };
+    };
+    BillsOfMaterialController_setBillOfMaterialStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBillOfMaterialStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillOfMaterialResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_list: {
+        parameters: {
+            query?: {
+                status?: "DRAFT" | "CONFIRMED" | "CLOSED" | "CANCELLED";
+                billOfMaterialId?: string;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductionOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_listOrderMaterials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderMaterialResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_confirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_close: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_cancel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderResponseDto"];
+                };
+            };
+            /** @description PRODUCTION_ORDER_HAS_ACTIVITY */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ProductionOrdersController_issue: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueProductionOrderMaterialDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderMaterialMovementResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_returnMaterialToStock: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnProductionOrderMaterialDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderMaterialMovementResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_listFinishedGoodsReceipts: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderFinishedGoodsReceiptResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_recordFinishedGoodsReceipt: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFinishedGoodsDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderFinishedGoodsReceiptResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_listOrderOperations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderOperationResponseDto"][];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_addOrderOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddProductionOrderOperationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderOperationResponseDto"];
+                };
+            };
+        };
+    };
+    ProductionOrdersController_completeOrderOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionOrderOperationResponseDto"];
                 };
             };
         };
