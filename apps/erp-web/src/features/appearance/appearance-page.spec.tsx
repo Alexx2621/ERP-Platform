@@ -24,10 +24,12 @@ vi.mock("../../shared/auth/auth-context", () => ({
 const appearanceContext = vi.hoisted(() => ({
   accentColor: "#0070f2",
   navigationLayout: "sidebar" as "sidebar" | "navbar",
+  navBackground: null as string | null,
   isReady: true,
   saveError: null as string | null,
   setAccentColor: vi.fn(),
   setNavigationLayout: vi.fn(),
+  setNavBackground: vi.fn(),
 }));
 
 vi.mock("../../shared/appearance/appearance-context", () => ({
@@ -48,16 +50,18 @@ describe("AppearancePage", () => {
     vi.restoreAllMocks();
     appearanceContext.accentColor = "#0070f2";
     appearanceContext.navigationLayout = "sidebar";
+    appearanceContext.navBackground = null;
     appearanceContext.isReady = true;
     appearanceContext.saveError = null;
     appearanceContext.setAccentColor.mockClear();
     appearanceContext.setNavigationLayout.mockClear();
+    appearanceContext.setNavBackground.mockClear();
   });
 
   it("shows the current accent color and marks the active layout option", () => {
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    expect(screen.getByLabelText("Código hexadecimal")).toHaveValue("#0070f2");
+    expect(screen.getByLabelText("Código hexadecimal para color principal")).toHaveValue("#0070f2");
     const sidebarOption = screen.getByRole("button", { name: /Barra lateral/ });
     expect(sidebarOption).toHaveAttribute("aria-pressed", "true");
     const navbarOption = screen.getByRole("button", { name: /Barra superior/ });
@@ -68,7 +72,7 @@ describe("AppearancePage", () => {
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    await user.click(screen.getByRole("button", { name: "Usar color Verde" }));
+    await user.click(screen.getByRole("button", { name: "Usar color Verde para color principal" }));
     expect(appearanceContext.setAccentColor).toHaveBeenCalledWith("#0f8a5f");
   });
 
@@ -76,7 +80,7 @@ describe("AppearancePage", () => {
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    const hexInput = screen.getByLabelText("Código hexadecimal");
+    const hexInput = screen.getByLabelText("Código hexadecimal para color principal");
     await user.clear(hexInput);
     await user.type(hexInput, "#7c3aed");
     await user.tab();
@@ -88,13 +92,13 @@ describe("AppearancePage", () => {
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    const hexInput = screen.getByLabelText("Código hexadecimal");
+    const hexInput = screen.getByLabelText("Código hexadecimal para color principal");
     await user.clear(hexInput);
     await user.type(hexInput, "not-a-color");
     await user.tab();
 
     expect(appearanceContext.setAccentColor).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/color hexadecimal válido/);
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent(/color hexadecimal válido/);
   });
 
   it("switches the navigation layout when the navbar option is selected", async () => {
@@ -112,5 +116,48 @@ describe("AppearancePage", () => {
     expect(
       screen.getByText("No se pudo guardar la preferencia. Se aplicó solo para esta sesión."),
     ).toBeInTheDocument();
+  });
+
+  it("shows the navigation background as uncustomized by default, with the reset link disabled", () => {
+    render(<AppearancePage selection={selection} navigate={navigate} />);
+
+    expect(screen.getByLabelText("Código hexadecimal para fondo de navegación")).toHaveValue("#ffffff");
+    expect(screen.getByRole("button", { name: "Usar tema predeterminado" })).toBeDisabled();
+  });
+
+  it("applies a dark preset for the navigation background, independent of the accent color", async () => {
+    const user = userEvent.setup();
+    render(<AppearancePage selection={selection} navigate={navigate} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Usar color Pizarra oscura para fondo de navegación" }),
+    );
+
+    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith("#0f172a");
+    expect(appearanceContext.setAccentColor).not.toHaveBeenCalled();
+  });
+
+  it("enables the reset link once a navigation background is customized, and clears it on click", async () => {
+    appearanceContext.navBackground = "#0f172a";
+    const user = userEvent.setup();
+    render(<AppearancePage selection={selection} navigate={navigate} />);
+
+    const resetButton = screen.getByRole("button", { name: "Usar tema predeterminado" });
+    expect(resetButton).toBeEnabled();
+
+    await user.click(resetButton);
+    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith(null);
+  });
+
+  it("commits a manually typed navigation background hex on blur", async () => {
+    const user = userEvent.setup();
+    render(<AppearancePage selection={selection} navigate={navigate} />);
+
+    const hexInput = screen.getByLabelText("Código hexadecimal para fondo de navegación");
+    await user.clear(hexInput);
+    await user.type(hexInput, "#18181b");
+    await user.tab();
+
+    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith("#18181b");
   });
 });

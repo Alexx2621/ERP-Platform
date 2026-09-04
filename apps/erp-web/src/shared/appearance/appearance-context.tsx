@@ -10,7 +10,7 @@ import {
 } from "react";
 import { apiClient } from "../api/client";
 import { useAuth } from "../auth/auth-context";
-import { buildAccentPalette, isValidHexColor } from "./color-utils";
+import { buildAccentPalette, buildNavPalette, isValidHexColor, type ColorScheme } from "./color-utils";
 
 export type NavigationLayout = "sidebar" | "navbar";
 
@@ -19,14 +19,20 @@ const DEFAULT_NAVIGATION_LAYOUT: NavigationLayout = "sidebar";
 
 const ACCENT_COLOR_KEY = "ui.accentColor";
 const NAVIGATION_LAYOUT_KEY = "ui.navigationLayout";
+const NAV_BACKGROUND_KEY = "ui.navBackground";
+/** Persisted alongside a real hex value to mean "explicitly cleared, follow the theme default". */
+const NAV_BACKGROUND_AUTO = "auto";
 
 interface AppearanceContextValue {
   accentColor: string;
   navigationLayout: NavigationLayout;
+  /** null = not customized, sidebar/navbar follow the theme's own surface color (light or dark). */
+  navBackground: string | null;
   isReady: boolean;
   saveError: string | null;
   setAccentColor: (hex: string) => void;
   setNavigationLayout: (layout: NavigationLayout) => void;
+  setNavBackground: (hex: string | null) => void;
 }
 
 // Defaults to a real, working value (not null) — ProductShell reads this
@@ -39,16 +45,32 @@ interface AppearanceContextValue {
 const DEFAULT_CONTEXT_VALUE: AppearanceContextValue = {
   accentColor: DEFAULT_ACCENT_COLOR,
   navigationLayout: DEFAULT_NAVIGATION_LAYOUT,
+  navBackground: null,
   isReady: true,
   saveError: null,
   setAccentColor: () => {},
   setNavigationLayout: () => {},
+  setNavBackground: () => {},
 };
 
 const AppearanceContext = createContext<AppearanceContextValue>(DEFAULT_CONTEXT_VALUE);
 
-function applyAccentColor(hex: string): void {
-  const palette = buildAccentPalette(hex);
+function readColorScheme(): ColorScheme {
+  if (typeof window === "undefined" || !window.matchMedia) {
+    return "light";
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+/**
+ * Applies the derived accent palette as inline CSS custom properties.
+ * Scheme-aware: see color-utils.ts's buildAccentPalette docstring for why
+ * — using the same light-leaning math regardless of light/dark mode was a
+ * real bug (a custom accent's "soft" tint stayed light even in dark mode,
+ * where --ink is a near-white color, making text on it unreadable).
+ */
+function applyAccentColor(hex: string, scheme: ColorScheme): void {
+  const palette = buildAccentPalette(hex, scheme);
   const root = document.documentElement.style;
   root.setProperty("--accent", palette.accent);
   root.setProperty("--accent-hover", palette.accentHover);
@@ -57,25 +79,70 @@ function applyAccentColor(hex: string): void {
   root.setProperty("--accent-contrast", palette.accentContrast);
 }
 
+/**
+ * Applies (or clears) a custom sidebar/navbar background. Unlike the
+ * accent color, this is scheme-independent by design — the whole point is
+ * letting a user run e.g. a dark sidebar regardless of whether the rest
+ * of the theme is light or dark, the same way the reference product
+ * screenshot the user shared does with its own separate "Fondo de
+ * navegación" swatches. Clearing removes the inline overrides entirely so
+ * the CSS defaults (--nav-bg: var(--paper), etc. — already theme-aware)
+ * take back over, rather than reapplying some other hardcoded value.
+ */
+function applyNavBackground(hex: string | null): void {
+  const root = document.documentElement.style;
+  if (!hex) {
+    root.removeProperty("--nav-bg");
+    root.removeProperty("--nav-ink");
+    root.removeProperty("--nav-muted");
+    root.removeProperty("--nav-line");
+    root.removeProperty("--nav-hover");
+    return;
+  }
+  const palette = buildNavPalette(hex);
+  root.setProperty("--nav-bg", palette.navBg);
+  root.setProperty("--nav-ink", palette.navInk);
+  root.setProperty("--nav-muted", palette.navMuted);
+  root.setProperty("--nav-line", palette.navLine);
+  root.setProperty("--nav-hover", palette.navHover);
+}
+
 export function AppearanceProvider({ children }: PropsWithChildren) {
   const { session, getAccessToken } = useAuth();
   const [accentColor, setAccentColorState] = useState(DEFAULT_ACCENT_COLOR);
   const [navigationLayout, setNavigationLayoutState] = useState<NavigationLayout>(
     DEFAULT_NAVIGATION_LAYOUT,
   );
+  const [navBackground, setNavBackgroundState] = useState<string | null>(null);
+  const [colorScheme, setColorScheme] = useState<ColorScheme>(readColorScheme);
   const [isReady, setIsReady] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const loadedForUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    applyAccentColor(accentColor);
-  }, [accentColor]);
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return;
+    }
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => setColorScheme(event.matches ? "dark" : "light");
+    mediaQuery.addEventListener("change", onChange);
+    return () => mediaQuery.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    applyAccentColor(accentColor, colorScheme);
+  }, [accentColor, colorScheme]);
+
+  useEffect(() => {
+    applyNavBackground(navBackground);
+  }, [navBackground]);
 
   useEffect(() => {
     if (!session) {
       loadedForUserIdRef.current = null;
       setAccentColorState(DEFAULT_ACCENT_COLOR);
       setNavigationLayoutState(DEFAULT_NAVIGATION_LAYOUT);
+      setNavBackgroundState(null);
       setIsReady(true);
       return;
     }
@@ -94,11 +161,17 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
         const storedLayout = preferences.find(
           (preference) => preference.key === NAVIGATION_LAYOUT_KEY,
         )?.value;
+        const storedNavBackground = preferences.find(
+          (preference) => preference.key === NAV_BACKGROUND_KEY,
+        )?.value;
         if (typeof storedAccent === "string" && isValidHexColor(storedAccent)) {
           setAccentColorState(storedAccent);
         }
         if (storedLayout === "sidebar" || storedLayout === "navbar") {
           setNavigationLayoutState(storedLayout);
+        }
+        if (typeof storedNavBackground === "string" && isValidHexColor(storedNavBackground)) {
+          setNavBackgroundState(storedNavBackground);
         }
       } catch {
         // Keep defaults — the appearance page can still be used to set
@@ -145,9 +218,38 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     [persist],
   );
 
+  const setNavBackground = useCallback(
+    (hex: string | null) => {
+      if (hex !== null && !isValidHexColor(hex)) {
+        return;
+      }
+      setNavBackgroundState(hex);
+      persist(NAV_BACKGROUND_KEY, hex ?? NAV_BACKGROUND_AUTO);
+    },
+    [persist],
+  );
+
   const value = useMemo(
-    () => ({ accentColor, navigationLayout, isReady, saveError, setAccentColor, setNavigationLayout }),
-    [accentColor, navigationLayout, isReady, saveError, setAccentColor, setNavigationLayout],
+    () => ({
+      accentColor,
+      navigationLayout,
+      navBackground,
+      isReady,
+      saveError,
+      setAccentColor,
+      setNavigationLayout,
+      setNavBackground,
+    }),
+    [
+      accentColor,
+      navigationLayout,
+      navBackground,
+      isReady,
+      saveError,
+      setAccentColor,
+      setNavigationLayout,
+      setNavBackground,
+    ],
   );
 
   return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>;

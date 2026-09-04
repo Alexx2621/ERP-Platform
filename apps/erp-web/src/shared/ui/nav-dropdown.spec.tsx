@@ -75,6 +75,7 @@ describe("NavDropdown", () => {
 
     await user.click(screen.getByRole("button", { name: /Administración/ }));
     const activeItem = screen.getByRole("menuitem", { name: "Roles y permisos" });
-    expect(activeItem).toHaveClass("text-[var(--accent)]");
+    expect(activeItem).toHaveClass("bg-[var(--accent)]");
+    expect(activeItem).toHaveClass("text-[var(--accent-contrast)]");
   });
 });

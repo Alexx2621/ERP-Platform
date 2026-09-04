@@ -40,6 +40,17 @@
   --shadow-sm: 0 1px 2px rgb(27 39 51 / 0.06);
   --shadow-md: 0 4px 16px rgb(27 39 51 / 0.08);
   --shadow-lg: 0 20px 60px rgb(15 23 32 / 0.22);
+  /* Sidebar/navbar/mobile-drawer chrome. Default to the same surface as
+     the rest of the app (so an uncustomized nav looks identical to
+     before), but this is a genuinely separate set of tokens so a user can
+     pick e.g. a dark sidebar over an otherwise light theme — see the
+     "Fondo de navegación" picker in Apariencia — without that choice
+     fighting for control of --paper/--ink everywhere else. */
+  --nav-bg: var(--paper);
+  --nav-ink: var(--ink);
+  --nav-muted: var(--muted-strong);
+  --nav-line: var(--line);
+  --nav-hover: var(--field-hover);
 }
 
 * {

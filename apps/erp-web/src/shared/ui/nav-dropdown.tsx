@@ -56,8 +56,8 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
         onClick={() => setOpen((current) => !current)}
         className={`flex h-9 items-center gap-1 rounded-[8px] px-3 text-[13px] font-bold transition-colors duration-150 ${
           hasActiveItem
-            ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-            : "text-[var(--muted-strong)] hover:bg-[var(--field-hover)] hover:text-[var(--ink)]"
+            ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+            : "text-[var(--nav-muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--nav-ink)]"
         }`}
       >
         {label}
@@ -79,7 +79,7 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
           id={menuId}
           role="menu"
           aria-label={label}
-          className="absolute left-0 top-full z-30 mt-1.5 min-w-[200px] rounded-[10px] border border-[var(--line)] bg-[var(--paper)] p-1.5 shadow-[var(--shadow-md)]"
+          className="absolute left-0 top-full z-30 mt-1.5 min-w-[200px] rounded-[10px] border border-[var(--nav-line)] bg-[var(--nav-bg)] p-1.5 shadow-[var(--shadow-md)]"
         >
           {items.map((item) => (
             <button
@@ -92,8 +92,8 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
               }}
               className={`flex w-full items-center gap-2.5 rounded-[7px] px-3 py-2 text-left text-[13px] font-bold transition-colors duration-150 ${
                 item.active
-                  ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-                  : "text-[var(--muted-strong)] hover:bg-[var(--field-hover)] hover:text-[var(--ink)]"
+                  ? "bg-[var(--accent)] text-[var(--accent-contrast)]"
+                  : "text-[var(--nav-muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--nav-ink)]"
               }`}
             >
               {item.label}
