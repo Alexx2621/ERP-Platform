@@ -4,6 +4,12 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["node"],
+    // DOM lib is needed only for page.evaluate() callback bodies that
+    // reference browser globals (window, sessionStorage, etc.) — those
+    // closures type-check against this Node-side tsconfig even though
+    // they execute inside the real browser page, per Playwright's own
+    // TypeScript guidance.
+    "lib": ["ES2022", "dom"],
     "declaration": false,
     "sourceMap": false,
     "noEmit": true
