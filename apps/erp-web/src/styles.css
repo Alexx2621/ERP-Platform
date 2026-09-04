@@ -31,6 +31,20 @@
      the user picks a custom accent — this is only the default before
      that preference loads, or for a user who never set one. */
   --accent-contrast: #ffffff;
+  /* Foreground for text/icons placed directly on top of --accent-soft
+     (several "highlight" cards across the app pair the two). Defaults to
+     --accent itself, which already contrasts fine against the default
+     blue's own accent-soft — but AppearanceProvider overrides this with a
+     color computed from accent-soft's own final value whenever the user
+     picks a custom accent, since an already-dark/muted accent (e.g. a
+     slate/graphite preset) can end up too close in lightness to its own
+     darkened accent-soft for --accent text to stay legible on it. */
+  --accent-soft-text: var(--accent);
+  /* Secondary/caption text on top of --accent-soft (e.g. a description
+     line under a heading that already uses --accent-soft-text) — same
+     reasoning and same default-preserving fallback as --accent-soft-text
+     itself. */
+  --accent-soft-muted: var(--muted-strong);
   --success: #16794f;
   --success-soft: #e5f5ee;
   --danger: #c53434;

@@ -59,6 +59,8 @@ export interface AccentPalette {
   accentLight: string;
   accentSoft: string;
   accentContrast: string;
+  accentSoftText: string;
+  accentSoftMuted: string;
 }
 
 /**
@@ -72,23 +74,52 @@ export interface AccentPalette {
  * for "hover": lighter than the accent in dark mode, darker in light mode,
  * mirroring what styles.css's own dark-mode block already did for the
  * default blue before this module existed.
+ *
+ * accentSoftText/accentSoftMuted are a second, broader contrast bug fix:
+ * many components draw text directly on top of an --accent-soft
+ * background (e.g. DevelopmentProgressPanel's whole "Estimación
+ * temporal" card, or a selected option card in Apariencia) — some of
+ * that text in --accent itself, but just as often in --ink/--muted-
+ * strong, the *surface* palette's own contrast pair. Both patterns
+ * silently assume the surface/accent tokens agree on which end of the
+ * lightness scale is "dark" — true only by coincidence for the default
+ * theme, and false in general: --accent-soft is derived from the accent
+ * color and OS color scheme alone, completely independent of --ink
+ * (derived from the surface/theme, and overridable by its own separate
+ * "Color de fondo" picker) — confirmed by reproducing several genuinely
+ * illegible combinations against a real browser (an already-dark/muted
+ * accent preset like "Pizarra" leaves too little room below it once
+ * darkened again; a light accent under a dark OS scheme produces a mid-
+ * gray accentSoft that --ink, still computed for a light default theme,
+ * never anticipated). accentSoftText/accentSoftMuted are computed
+ * directly from accentSoft's own final color (never from hex, never from
+ * the surface), so text and captions drawn on top of it stay legible
+ * regardless of how light/dark the base accent or the current theme
+ * happen to be — any component that fills its background with
+ * --accent-soft must use these two for its own text, not --ink/--muted*.
  */
 export function buildAccentPalette(hex: string, scheme: ColorScheme = "light"): AccentPalette {
-  if (scheme === "dark") {
-    return {
-      accent: hex,
-      accentHover: lighten(hex, 0.16),
-      accentLight: lighten(hex, 0.34),
-      accentSoft: darken(hex, 0.72),
-      accentContrast: getContrastText(hex),
-    };
-  }
+  const palette =
+    scheme === "dark"
+      ? {
+          accent: hex,
+          accentHover: lighten(hex, 0.16),
+          accentLight: lighten(hex, 0.34),
+          accentSoft: darken(hex, 0.72),
+          accentContrast: getContrastText(hex),
+        }
+      : {
+          accent: hex,
+          accentHover: darken(hex, 0.14),
+          accentLight: lighten(hex, 0.28),
+          accentSoft: lighten(hex, 0.88),
+          accentContrast: getContrastText(hex),
+        };
+  const accentSoftText = getContrastText(palette.accentSoft);
   return {
-    accent: hex,
-    accentHover: darken(hex, 0.14),
-    accentLight: lighten(hex, 0.28),
-    accentSoft: lighten(hex, 0.88),
-    accentContrast: getContrastText(hex),
+    ...palette,
+    accentSoftText,
+    accentSoftMuted: mixColors(accentSoftText, palette.accentSoft, 0.4),
   };
 }
 

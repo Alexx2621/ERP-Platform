@@ -77,6 +77,8 @@ function applyAccentColor(hex: string, scheme: ColorScheme): void {
   root.setProperty("--accent-light", palette.accentLight);
   root.setProperty("--accent-soft", palette.accentSoft);
   root.setProperty("--accent-contrast", palette.accentContrast);
+  root.setProperty("--accent-soft-text", palette.accentSoftText);
+  root.setProperty("--accent-soft-muted", palette.accentSoftMuted);
 }
 
 const SURFACE_PROPERTIES = [

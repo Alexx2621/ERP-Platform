@@ -399,12 +399,16 @@ export function CommandPalette({ selection, navigate, isPlatformAdmin }: Command
                   onClick={result.onSelect}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] font-bold transition-colors duration-100 ${
                     index === activeIndex
-                      ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                      ? "bg-[var(--accent-soft)] text-[var(--accent-soft-text)]"
                       : "text-[var(--ink)]"
                   }`}
                 >
                   <span className="truncate">{result.title}</span>
-                  <span className="shrink-0 text-[10px] font-semibold text-[var(--muted)]">
+                  <span
+                    className={`shrink-0 text-[10px] font-semibold ${
+                      index === activeIndex ? "text-[var(--accent-soft-muted)]" : "text-[var(--muted)]"
+                    }`}
+                  >
                     {result.subtitle}
                   </span>
                 </button>

@@ -920,12 +920,12 @@ export function RolesPermissionsPage({ selection, navigate }: RolesPermissionsPa
         {statusMessage ? (
           <div
             role="status"
-            className="mb-5 flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold leading-5 text-[var(--ink)]"
+            className="mb-5 flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold leading-5 text-[var(--accent-soft-text)]"
           >
             <CheckCircle
               size={18}
               weight="fill"
-              className="mt-0.5 shrink-0 text-[var(--accent)]"
+              className="mt-0.5 shrink-0 text-[var(--accent-soft-text)]"
               aria-hidden="true"
             />
             <span>{statusMessage}</span>

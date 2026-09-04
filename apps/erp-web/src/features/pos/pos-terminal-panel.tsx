@@ -294,8 +294,8 @@ function OpenShiftWorkspace({ selection, companyId, shift, customers, products, 
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--accent-soft)] px-5 py-4">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent)]">Turno abierto</p>
-          <p className="text-[13px] font-semibold text-[var(--ink)]">Fondo inicial: {shift.openingCash}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--accent-soft-text)]">Turno abierto</p>
+          <p className="text-[13px] font-semibold text-[var(--accent-soft-text)]">Fondo inicial: {shift.openingCash}</p>
         </div>
         <Button type="button" variant="secondary" onClick={() => setCloseModalOpen(true)}>
           <Lock size={16} weight="bold" aria-hidden="true" />

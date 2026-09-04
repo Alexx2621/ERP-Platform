@@ -690,12 +690,12 @@ export function SettingsPage({ selection, navigate }: SettingsPageProps) {
         {statusMessage ? (
           <div
             role="status"
-            className="mb-5 flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--ink)]"
+            className="mb-5 flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--accent-soft-text)]"
           >
             <CheckCircle
               size={18}
               weight="fill"
-              className="shrink-0 text-[var(--accent)]"
+              className="shrink-0 text-[var(--accent-soft-text)]"
               aria-hidden="true"
             />
             <span>{statusMessage}</span>

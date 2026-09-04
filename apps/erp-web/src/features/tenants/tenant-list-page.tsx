@@ -172,10 +172,10 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
                     <EnvelopeSimpleOpen size={20} weight="duotone" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-extrabold tracking-[-0.02em]">
+                    <span className="block truncate text-[14px] font-extrabold tracking-[-0.02em] text-[var(--accent-soft-text)]">
                       {invitation.tenantName}
                     </span>
-                    <span className="mt-0.5 block truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted-strong)]">
+                    <span className="mt-0.5 block truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--accent-soft-muted)]">
                       {invitation.tenantSlug}
                     </span>
                   </span>
@@ -259,7 +259,7 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
                   onClick={() => void openTenant(tenant)}
                   className="group flex min-h-32 w-full items-center gap-4 rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-5 text-left transition-[border-color,transform,background-color] duration-150 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--field)] disabled:cursor-wait disabled:opacity-60"
                 >
-                  <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent)]">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
                     <Buildings size={22} weight="duotone" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">

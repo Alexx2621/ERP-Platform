@@ -146,7 +146,7 @@ export function OnboardingPage({ navigate, onProvisioned }: OnboardingPageProps)
           <fieldset className="rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-5 sm:p-7">
             <legend className="sr-only">Datos del espacio y la organización</legend>
             <div className="mb-6 flex items-start gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent)]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
                 <Buildings size={21} weight="duotone" aria-hidden="true" />
               </span>
               <div>
@@ -209,7 +209,7 @@ export function OnboardingPage({ navigate, onProvisioned }: OnboardingPageProps)
             <legend className="sr-only">Empresa inicial</legend>
             <div className="flex items-start justify-between gap-5">
               <div className="flex items-start gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent)]">
+                <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
                   <Factory size={21} weight="duotone" aria-hidden="true" />
                 </span>
                 <div>

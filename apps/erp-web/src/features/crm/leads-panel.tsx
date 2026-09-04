@@ -170,7 +170,7 @@ export function LeadsPanel({ selection, companyId, leads, error, onRetry, onLead
       {convertedNotice ? (
         <div
           role="status"
-          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--line)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold leading-5 text-[var(--accent)]"
+          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--line)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold leading-5 text-[var(--accent-soft-text)]"
         >
           <span>{convertedNotice}</span>
         </div>

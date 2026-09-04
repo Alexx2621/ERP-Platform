@@ -260,12 +260,27 @@ export function AppearancePage({ selection, navigate }: AppearancePageProps) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="text-[13.5px] font-extrabold text-[var(--ink)]">{option.title}</span>
+                      <span
+                        className={`text-[13.5px] font-extrabold ${
+                          selected ? "text-[var(--accent-soft-text)]" : "text-[var(--ink)]"
+                        }`}
+                      >
+                        {option.title}
+                      </span>
                       {selected ? (
-                        <Check size={15} weight="bold" className="text-[var(--accent)]" aria-hidden="true" />
+                        <Check
+                          size={15}
+                          weight="bold"
+                          className="text-[var(--accent-soft-text)]"
+                          aria-hidden="true"
+                        />
                       ) : null}
                     </span>
-                    <span className="mt-1 block text-[12px] font-medium leading-5 text-[var(--muted-strong)]">
+                    <span
+                      className={`mt-1 block text-[12px] font-medium leading-5 ${
+                        selected ? "text-[var(--accent-soft-muted)]" : "text-[var(--muted-strong)]"
+                      }`}
+                    >
                       {option.description}
                     </span>
                   </span>

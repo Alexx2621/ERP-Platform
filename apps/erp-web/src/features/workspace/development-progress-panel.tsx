@@ -71,16 +71,16 @@ export function DevelopmentProgressPanel() {
     >
       <div className="grid border-b border-[var(--line)] lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="bg-[var(--accent-soft)] p-6 sm:p-8">
-          <div className="flex items-center gap-2 text-[var(--accent)]">
+          <div className="flex items-center gap-2 text-[var(--accent-soft-text)]">
             <ChartDonut size={20} weight="duotone" aria-hidden="true" />
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
               Estimación temporal
             </p>
           </div>
-          <p className="mt-6 font-mono text-[54px] font-extrabold leading-none tracking-[-0.08em] text-[var(--ink)]">
+          <p className="mt-6 font-mono text-[54px] font-extrabold leading-none tracking-[-0.08em] text-[var(--accent-soft-text)]">
             {overallDevelopmentProgress}%
           </p>
-          <p className="mt-3 text-[12px] font-bold text-[var(--muted-strong)]">
+          <p className="mt-3 text-[12px] font-bold text-[var(--accent-soft-muted)]">
             Roadmap total del producto
           </p>
           <div className="mt-5">

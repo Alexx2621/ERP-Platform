@@ -183,9 +183,14 @@ function UsersPanel() {
       {statusMessage ? (
         <div
           role="status"
-          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--ink)]"
+          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--accent-soft-text)]"
         >
-          <CheckCircle size={18} weight="fill" className="shrink-0 text-[var(--accent)]" aria-hidden="true" />
+          <CheckCircle
+            size={18}
+            weight="fill"
+            className="shrink-0 text-[var(--accent-soft-text)]"
+            aria-hidden="true"
+          />
           <span>{statusMessage}</span>
         </div>
       ) : null}
@@ -439,9 +444,14 @@ function PlatformSettingsPanel() {
       {statusMessage ? (
         <div
           role="status"
-          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--ink)]"
+          className="flex items-start gap-2.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-3 text-[13px] font-semibold text-[var(--accent-soft-text)]"
         >
-          <CheckCircle size={18} weight="fill" className="shrink-0 text-[var(--accent)]" aria-hidden="true" />
+          <CheckCircle
+            size={18}
+            weight="fill"
+            className="shrink-0 text-[var(--accent-soft-text)]"
+            aria-hidden="true"
+          />
           <span>{statusMessage}</span>
         </div>
       ) : null}
