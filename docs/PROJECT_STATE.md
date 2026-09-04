@@ -3637,6 +3637,122 @@ test E2E necesaria), y una corrida real de GitHub Actions confirmada verde
 vía `gh run watch`. Los tres procesos persistentes de desarrollo reiniciados
 y verificados con el build final.
 
+### Bug real de contraste en modo oscuro + selector independiente de fondo de navegación (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, que compartió dos capturas reales: (1) el
+propio panel "Avance del desarrollo" en modo oscuro, con el texto "100%"
+en blanco prácticamente ilegible sobre una tarjeta de fondo verde-menta
+claro; (2) una referencia visual mostrando dos selectores de color
+independientes — "Color principal" y "Fondo de navegación" — cada uno con
+presets propios y una opción de hex personalizado. Mensaje textual del
+usuario: *"Deberia de haber otro selector de color para que no pase esto
+con los contrastes."*
+
+**Causa raíz real, no cosmética**: `buildAccentPalette()`
+(`color-utils.ts`) calculaba `accentSoft` siempre como
+`lighten(hex, 0.88)` — un tinte claro — sin importar el esquema de color
+activo. `AppearanceProvider` aplica esa paleta vía propiedades CSS en
+línea (`document.documentElement.style.setProperty(...)`), que por
+especificidad de CSS siempre ganan sobre la regla `@media
+(prefers-color-scheme: dark)` de `styles.css`, la cual sí define un
+`--accent-soft` oscuro correcto por defecto. El resultado: **cualquier
+usuario en modo oscuro con un color de acento personalizado** (no solo un
+caso extremo) perdía el contraste correcto del `--accent-soft` heredado
+del tema, exactamente el bug real que mostraba la primera captura.
+
+- **`color-utils.ts`**: `buildAccentPalette(hex, scheme: ColorScheme =
+  "light")` ahora bifurca — modo claro conserva la matemática original
+  (`accentHover` oscurecido 14%, `accentLight` aclarado 28%, `accentSoft`
+  aclarado 88%); modo oscuro deriva en la dirección opuesta
+  (`accentHover` aclarado 16%, `accentLight` aclarado 34%, `accentSoft`
+  **oscurecido** 72%), reflejando la misma dirección que el bloque oscuro
+  ya escrito a mano en `styles.css` usa para el acento azul por defecto.
+  Nuevo `mixColors(from, to, weight)` (interpolación general de color,
+  del que `darken`/`lighten` ahora son casos particulares) y nuevo
+  `buildNavPalette(hex)` (deriva ink/muted/line/hover legibles a partir
+  de un color de fondo arbitrario, para el selector nuevo — ver abajo).
+- **`appearance-context.tsx`**: `AppearanceProvider` detecta el esquema
+  de color real vía `window.matchMedia("(prefers-color-scheme: dark)")`
+  (con un listener `change` para reaccionar en vivo si el usuario cambia
+  el tema del sistema mientras la app está abierta) y lo pasa a
+  `buildAccentPalette`. Nuevo estado `navBackground: string | null` (null
+  = sin personalizar, sigue el tema) con su propio
+  `setNavBackground`/`applyNavBackground`, persistido vía el mismo
+  mecanismo real de `UserPreference` ya usado por `accentColor`/
+  `navigationLayout` (clave `ui.navBackground`, sin backend nuevo).
+  Limpiar la personalización remueve las 5 propiedades CSS en línea
+  (`--nav-bg`/`--nav-ink`/`--nav-muted`/`--nav-line`/`--nav-hover`),
+  dejando que los defaults de `styles.css` (que ya alias a `--paper`/
+  `--ink`/etc., sensibles al tema) vuelvan a tomar control — nunca
+  reaplica un valor hardcodeado.
+- **`styles.css`**: los 5 tokens `--nav-*` nuevos, declarados una sola
+  vez en `:root` aliasando `var(--paper)`/`var(--ink)`/etc. — no
+  necesitan redeclararse en el bloque `@media (prefers-color-scheme:
+  dark)`, ya que `var(--paper)` se resuelve dinámicamente contra el valor
+  vigente del tema, no por sustitución estática.
+- **`product-shell.tsx`, `brand-mark.tsx`, `nav-dropdown.tsx`**: el
+  sidebar (desktop y drawer mobile), la fila del navbar y `NavDropdown`
+  pasaron de `--line`/`--paper`/`--ink`/`--muted-strong`/`--field-hover`
+  a los `--nav-*` nuevos — deliberadamente **solo** en la superficie de
+  navegación, no en el header de contenido de página (`eyebrow`/`title`/
+  usuario/logout), que sigue leyendo los tokens de tema normales, ya que
+  el selector nuevo controla el "menú", no el "contenido" — la misma
+  distinción de alcance que la propia captura de referencia del usuario
+  sugería. El ítem de navegación activo pasó de la combinación frágil
+  `accent-soft` de fondo + `accent` de texto (que podría perder contraste
+  contra un `--nav-bg` personalizado arbitrario) a un fondo `--accent`
+  sólido con texto `--accent-contrast`, que ya se autocalcula legible
+  contra cualquier acento elegido — más robusto, no solo suficiente para
+  este bug puntual. `BrandMark` gana una prop `tone="nav"` para leer su
+  etiqueta de `--nav-ink` en vez de `--ink` cuando vive dentro del
+  sidebar/navbar.
+- **`appearance-page.tsx`**: reescrita para exponer el segundo selector,
+  igualando el patrón de la referencia del usuario — sección "Colores de
+  interfaz" con dos `ColorPickerField` lado a lado ("Color principal" y
+  "Fondo de navegación", cada uno con swatch nativo + campo hex + grid de
+  presets), el segundo con presets deliberadamente oscuros (Pizarra
+  oscura, Carbón, Púrpura oscuro, Verde bosque, Vino, Blanco) más un
+  enlace "Usar tema predeterminado" (deshabilitado mientras no hay
+  personalización) que limpia la personalización de vuelta a `null`.
+- **Verificado end-to-end contra los servidores de desarrollo reales**
+  (script de Playwright ad hoc con `colorScheme: "dark"`, no comiteado):
+  registro y onboarding reales en modo oscuro real del navegador → un
+  acento púrpura personalizado real aplicado → `--accent-soft` computado
+  resultó `#231042` (luminancia relativa `0.011`, genuinamente oscuro,
+  frente al tinte claro que se habría producido antes del fix) → el
+  texto "100%" del panel de avance confirmado legible por captura real →
+  un fondo de navegación oscuro real aplicado (`#0f172a`) → **recarga
+  real de página confirmando que tanto el acento como el fondo de
+  navegación sobreviven** vía el backend real de `UserPreference`, no
+  solo en el cliente → el mismo fondo de navegación personalizado
+  confirmado aplicándose también en modo navbar (mismos tokens `--nav-*`
+  reutilizados). Una franja púrpura visible al pie del sidebar en una
+  captura intermedia se investigó antes de asumir que fuera un bug: era
+  el propio ítem activo "Apariencia" resaltado con el acento
+  personalizado — comportamiento correcto e independiente del fondo de
+  navegación, no un defecto.
+- Tests: aserción rota en `nav-dropdown.spec.tsx` corregida (el ítem
+  activo ahora usa `accent-contrast`, no `accent`, para el texto).
+  `color-utils.spec.ts` ampliado con `mixColors`, la derivación oscura de
+  `accentSoft` (el bug real, verificado por luminancia) y
+  `buildNavPalette`. `appearance-context.spec.tsx` ganó 9 tests nuevos
+  (carga/aplica/persiste/limpia un fondo de navegación real, ignora un
+  valor guardado inválido, ignora un hex inválido al setear, deriva un
+  `accentSoft` oscuro real bajo un `matchMedia` oscuro simulado, y
+  re-deriva la paleta en vivo ante un cambio de esquema real). Etiquetas
+  accesibles de `appearance-page.tsx` desambiguadas (el hex de cada
+  selector ahora es "Código hexadecimal para color principal"/"...para
+  fondo de navegación", ya no un texto duplicado) y su spec actualizado
+  en consecuencia — 109/109 en `apps/erp-web`.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 109/109, `apps/e2e` 20/20 Playwright contra
+  infraestructura efímera real (sin ninguna modificación de test E2E
+  necesaria, cero regresiones en los 19 archivos de negocio existentes),
+  y una corrida real de GitHub Actions verificada. Los tres procesos
+  persistentes de desarrollo detenidos antes del E2E (evitando el mismo
+  conflicto de puerto ya documentado en sesiones anteriores) y
+  reiniciados con el build final al terminar.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -3712,14 +3828,30 @@ encontrado y corregido en `StorefrontSystemUserSeeder`), y
 `docs/MODULE_TEMPLATE.md` nuevo (la condición del propio roadmap —
 "confirmar el patrón con dos módulos reales" — cumplida 15 veces sobre).
 `docs/ROADMAP.md` §17 quedó reescrito con el estado real, ítem por ítem,
-de los cinco workstreams. Sin trabajo en curso — lo único que queda de
-todo `docs/ROADMAP.md` §16/§17 está bloqueado por el mismo gate de
-evidencia que cerró Fase 12 (SLOs/alertas, capacity tests, runbooks/
-backup/PITR/DR drills, previews de PR, export/legal holds/derecho al
-olvido) — ninguno tiene un siguiente paso real sin tráfico de producción
-genuino. El siguiente trabajo depende de que el usuario aporte esa
-evidencia, indique otra prioridad, o pida iniciar una fase/ítem
-deliberadamente diferido documentado en "## Pending".
+de los cinco workstreams. **Inmediatamente después, a pedido explícito
+del usuario tras compartir dos capturas reales del panel de avance en
+modo oscuro, se corrigió un bug real de contraste** — ver "Bug real de
+contraste en modo oscuro + selector independiente de fondo de
+navegación" arriba: `buildAccentPalette()` calculaba siempre un
+`--accent-soft` claro sin importar el esquema de color activo, y como
+`AppearanceProvider` lo aplica vía propiedades CSS en línea (que ganan
+por especificidad sobre la regla `@media (prefers-color-scheme: dark)`),
+esto rompía el contraste en modo oscuro para cualquier usuario con acento
+personalizado, no solo un caso extremo — corregido haciendo la derivación
+consciente del esquema de color real (`matchMedia`). De paso, y a pedido
+explícito del propio usuario ("Deberia de haber otro selector de color
+para que no pase esto con los contrastes"), se agregó un segundo selector
+de color, totalmente independiente del acento, para el fondo de
+navegación (`--nav-*`, nuevos tokens), verificado con persistencia real
+tras recarga y en ambos layouts (sidebar/navbar). Sin trabajo en curso —
+lo único que queda de todo `docs/ROADMAP.md` §16/§17 sigue bloqueado por
+el mismo gate de evidencia que cerró Fase 12 (SLOs/alertas, capacity
+tests, runbooks/backup/PITR/DR drills, previews de PR, export/legal
+holds/derecho al olvido) — ninguno tiene un siguiente paso real sin
+tráfico de producción genuino. El siguiente trabajo depende de que el
+usuario aporte esa evidencia, indique otra prioridad, reporte otro bug
+real, o pida iniciar una fase/ítem deliberadamente diferido documentado
+en "## Pending".
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

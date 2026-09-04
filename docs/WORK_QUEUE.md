@@ -212,6 +212,58 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (bug real de contraste en modo oscuro + selector independiente de fondo de navegación)
+
+A pedido explícito del usuario, que compartió dos capturas reales: el
+texto "100%" del panel de avance prácticamente ilegible en blanco sobre
+una tarjeta de fondo claro en modo oscuro, y una referencia visual con
+dos selectores de color independientes ("Color principal"/"Fondo de
+navegación"). Mensaje textual: *"Deberia de haber otro selector de color
+para que no pase esto con los contrastes."*
+
+- **Causa raíz real**: `buildAccentPalette()` calculaba `accentSoft`
+  siempre como un tinte claro, sin importar el esquema de color activo;
+  como `AppearanceProvider` lo aplica vía propiedades CSS en línea (que
+  ganan por especificidad sobre la regla `@media (prefers-color-scheme:
+  dark)`), esto rompía el contraste en modo oscuro para cualquier usuario
+  con acento personalizado, no un caso extremo.
+- **`color-utils.ts`**: `buildAccentPalette(hex, scheme)` ahora bifurca
+  claro/oscuro (oscuro deriva `accentSoft` oscureciendo, no aclarando).
+  `mixColors` nuevo (interpolación general) y `buildNavPalette(hex)`
+  nuevo para el selector de fondo de navegación.
+- **`appearance-context.tsx`**: detecta el esquema real vía
+  `matchMedia` (con listener `change` en vivo); nuevo estado
+  `navBackground`/`setNavBackground`, persistido vía el mismo
+  `UserPreference` real ya usado por `accentColor`/`navigationLayout`
+  (clave `ui.navBackground`, sin backend nuevo).
+- **`styles.css`, `product-shell.tsx`, `brand-mark.tsx`,
+  `nav-dropdown.tsx`**: 5 tokens `--nav-*` nuevos (aliasando `--paper`/
+  `--ink`/etc. por defecto), consumidos solo por la superficie de
+  navegación (sidebar/drawer/navbar/dropdowns), no por el header de
+  contenido. El ítem activo pasó de `accent-soft`+`accent` (frágil
+  contra un `--nav-bg` arbitrario) a `accent` sólido + `accent-contrast`.
+- **`appearance-page.tsx`**: segundo `ColorPickerField` para "Fondo de
+  navegación" (presets oscuros + hex + enlace "Usar tema
+  predeterminado").
+- **Verificado end-to-end contra los servidores reales** (Playwright ad
+  hoc, `colorScheme: "dark"`): acento púrpura real → `accentSoft`
+  computado `#231042` (luminancia `0.011`, genuinamente oscuro) → texto
+  "100%" legible por captura real → fondo de navegación oscuro real
+  aplicado y **persistido tras una recarga real** vía backend → mismo
+  fondo confirmado en modo navbar. Ver el detalle completo en
+  `docs/PROJECT_STATE.md` — "Bug real de contraste en modo oscuro +
+  selector independiente de fondo de navegación".
+- Tests: aserción rota en `nav-dropdown.spec.tsx` corregida;
+  `color-utils.spec.ts` ampliado; `appearance-context.spec.tsx` ganó 9
+  tests nuevos (persistencia/limpieza del fondo, derivación consciente
+  del esquema, reactividad en vivo); `appearance-page.spec.tsx`
+  actualizado con etiquetas accesibles desambiguadas — 109/109 en
+  `apps/erp-web`.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 109/109, `apps/e2e` 20/20 Playwright (sin regresiones
+  en los 19 archivos de negocio existentes), corrida real de CI
+  verificada.
+
 ### Hecho — sesión 36 (Fase 12 — Scale, evaluada y cerrada sin evidencia)
 
 A pedido explícito del usuario ("Ok, continua con la fase 12 entonces"),
