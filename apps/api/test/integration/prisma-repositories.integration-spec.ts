@@ -1451,6 +1451,8 @@ describe("Prisma repositories against PostgreSQL", () => {
         causationId: publishedRow.causationId,
         actorType: publishedRow.actorType as "USER" | "SYSTEM" | null,
         actorId: publishedRow.actorId,
+        traceParent: publishedRow.traceParent,
+        traceState: publishedRow.traceState,
         createdAt: publishedRow.createdAt,
       }).toEnvelope(),
     );
@@ -1546,6 +1548,8 @@ describe("Prisma repositories against PostgreSQL", () => {
         causationId: publishedRow.causationId,
         actorType: publishedRow.actorType as "USER" | "SYSTEM" | null,
         actorId: publishedRow.actorId,
+        traceParent: publishedRow.traceParent,
+        traceState: publishedRow.traceState,
         createdAt: publishedRow.createdAt,
       }).toEnvelope(),
     );

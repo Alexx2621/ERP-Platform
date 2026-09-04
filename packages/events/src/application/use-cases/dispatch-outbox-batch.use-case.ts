@@ -1,9 +1,14 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import { context, SpanStatusCode, trace } from "@opentelemetry/api";
+import { restoreTraceContext } from "@erp/observability";
+import { OutboxMessage } from "../../domain/outbox-message.entity";
 import {
   OUTBOX_MESSAGE_REPOSITORY,
   OutboxMessageRepository,
 } from "../../domain/outbox-message.repository";
 import { DomainEventBus } from "../domain-event-bus";
+
+const tracer = trace.getTracer("@erp/events");
 
 export interface DispatchOutboxBatchInput {
   limit?: number;
@@ -51,7 +56,7 @@ export class DispatchOutboxBatchUseCase {
     let failed = 0;
     for (const message of claimed) {
       try {
-        await this.domainEventBus.publish(message.toEnvelope());
+        await this.publishWithTrace(message);
         message.markPublished(new Date());
         await this.outbox.save(message);
         published++;
@@ -67,5 +72,37 @@ export class DispatchOutboxBatchUseCase {
     }
 
     return { claimed: claimed.length, published, failed };
+  }
+
+  /**
+   * Publishes to DomainEventBus as a continuation of the producer's own
+   * trace, not an unrelated one — `restoreTraceContext` turns the row's
+   * stored `traceParent`/`traceState` (or the current, unrelated context,
+   * if the row carries none) into the parent for a new
+   * `outbox.dispatch <eventType>` span, and every span the handler itself
+   * creates (its own DB queries, downstream calls) nests under it, since
+   * it runs inside `context.with(...)` (docs/ARCHITECTURE.md §11: "traces
+   * cruzan API, outbox, worker e integración").
+   */
+  private async publishWithTrace(message: OutboxMessage): Promise<void> {
+    const parentContext = restoreTraceContext({
+      traceParent: message.traceParent,
+      traceState: message.traceState,
+    });
+    const span = tracer.startSpan(`outbox.dispatch ${message.eventType}`, undefined, parentContext);
+    span.setAttribute("app.correlation_id", message.correlationId);
+    span.setAttribute("messaging.message.id", message.id);
+
+    try {
+      await context.with(trace.setSpan(parentContext, span), () =>
+        this.domainEventBus.publish(message.toEnvelope()),
+      );
+    } catch (error) {
+      span.recordException(error instanceof Error ? error : String(error));
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
+    }
   }
 }

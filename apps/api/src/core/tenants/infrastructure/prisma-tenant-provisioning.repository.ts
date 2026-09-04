@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
 import { appendOutboxMessage } from "@erp/events";
+import { captureTraceContext } from "@erp/observability";
 import { Company } from "../../companies";
 import { Organization } from "../../organizations";
 import {
@@ -67,6 +68,9 @@ export class PrismaTenantProvisioningRepository implements TenantProvisioningRep
     const membership = provisioned.ownerMembership.toProps();
     const organization = provisioned.organization.toProps();
     const company = provisioned.company?.toProps();
+    // Captured here, outside the transaction — the active span belongs to
+    // this HTTP request, not to the DB round-trip (docs/ARCHITECTURE.md §11).
+    const traceContext = captureTraceContext();
 
     await this.prisma.$transaction(async (transaction) => {
       await transaction.tenant.create({ data: tenant });
@@ -98,6 +102,8 @@ export class PrismaTenantProvisioningRepository implements TenantProvisioningRep
         },
         correlationId: context.correlationId,
         actor: { type: "USER", id: membership.userId },
+        traceParent: traceContext?.traceParent,
+        traceState: traceContext?.traceState,
       });
     });
   }

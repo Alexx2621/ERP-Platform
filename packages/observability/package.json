@@ -1,5 +1,5 @@
 {
-  "name": "@erp/events",
+  "name": "@erp/observability",
   "version": "0.0.1",
   "private": true,
   "main": "./dist/src/index.js",
@@ -11,17 +11,16 @@
     "test": "jest"
   },
   "dependencies": {
-    "@erp/database": "workspace:*",
-    "@erp/observability": "workspace:*",
-    "@nestjs/common": "^11.2.1",
-    "@nestjs/config": "^4.0.4",
     "@opentelemetry/api": "1.9.1",
-    "reflect-metadata": "^0.2.2"
+    "@opentelemetry/auto-instrumentations-node": "0.80.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
+    "@opentelemetry/resources": "2.11.0",
+    "@opentelemetry/sdk-node": "0.222.0",
+    "@opentelemetry/semantic-conventions": "1.43.0"
   },
   "devDependencies": {
     "@opentelemetry/context-async-hooks": "2.11.0",
     "@opentelemetry/core": "2.11.0",
-    "@nestjs/testing": "^11.2.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.3.0",
     "jest": "^30.4.2",

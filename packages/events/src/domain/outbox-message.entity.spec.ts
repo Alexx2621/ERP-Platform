@@ -22,6 +22,8 @@ const base = {
   causationId: null,
   actorType: "USER" as const,
   actorId: "user-1",
+  traceParent: null,
+  traceState: null,
   createdAt: new Date("2026-08-27T10:00:00.000Z"),
 };
 

@@ -2786,6 +2786,179 @@ lo haga), `quality` (2m43s), `e2e` (3m56s) — **pasaron los cuatro**.
 Primera vez confirmada en la historia de este proyecto que el pipeline
 real de GitHub Actions está genuinamente verde de punta a punta.
 
+### OpenTelemetry distributed tracing — workstream de Observabilidad/SRE, §17 (sesión 36, 2026-09-03)
+
+A pedido explícito del usuario ("Ok sigue con eso entonces"), inmediatamente
+después de cerrar el workstream de Seguridad y su bug real de CI. De los dos
+candidatos de `docs/ROADMAP.md` §17 que había señalado repetidamente como
+bien acotados (Seguridad, ya completo, y Observabilidad/SRE), este bloque
+entrega el ítem concreto "Tracing API/worker/integrations" — deliberadamente
+no los otros tres ítems de esa misma sección (SLOs/alertas, capacity tests,
+runbooks/backup/PITR/DR drills), todos condicionados a tráfico de producción
+real que no existe (`docs/PROJECT_STATE.md` "Production Status": *Not
+deployed*), el mismo gate ya aplicado a Fase 12.
+
+**`packages/observability`** (`@erp/observability`, paquete nuevo):
+`startTracing(options)` (`NodeSDK` de `@opentelemetry/sdk-node`,
+auto-instrumentación vía `getNodeAutoInstrumentations()` — cubre
+http/express/pg/ioredis/nestjs-core, con `fs` desactivado explícitamente por
+ser extremadamente ruidoso sin valor real — export OTLP HTTP a
+`OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, default
+`http://localhost:4318`; `OTEL_ENABLED=false` es un no-op real, no un
+exportador roto en silencio, usado por la config de Jest para que ninguna
+corrida de test intente alcanzar un collector que no existe) y
+`captureTraceContext()`/`restoreTraceContext()` (propagación manual W3C
+Trace Context — `propagation.inject()`/`propagation.extract()` — para el
+único cruce de proceso real que no es una llamada HTTP con sus propios
+headers: la fila del outbox entre `apps/api` y `apps/worker`).
+
+**Arranque vía `node -r`, no un import de nivel superior en `main.ts`**:
+`apps/api/src/tracing.ts`/`apps/worker/src/tracing.ts` (nuevos, cada uno una
+sola línea real: `startTracing({ serviceName: "erp-api" | "erp-worker" })`)
+se cargan con `-r ./dist/tracing.js`/`-r ./src/tracing.ts` desde los propios
+scripts `start`/`start:dev` de cada `package.json` — un import dentro de
+`main.ts` ya sería tarde, porque `NestFactory` arrastra `express` en cuanto
+se importa `./app.module`, y la auto-instrumentación de OpenTelemetry
+funciona parchando esos módulos la primera vez que se hace `require()` de
+ellos (`docs/ARCHITECTURE.md` §11: "OpenTelemetry se introduce detrás de una
+configuración común"). Consecuencia real y documentada, no un descuido: el
+arnés E2E (`apps/e2e/src/global-setup.ts`) arranca `apps/api`/`apps/worker`
+vía `node dist/main.js` directo, sin pasar por `start`, así que el tracing
+nunca corre durante el E2E — un gap aceptado a propósito, ya que el E2E
+verifica comportamiento de negocio real, no recolección de trazas; esta
+última se verificó por otra vía (ver abajo).
+
+**Propagación real a través de la frontera de proceso del outbox**: nueva
+migración (`20260904030000_outbox_trace_context`, columnas
+`trace_parent VARCHAR(80)`/`trace_state VARCHAR(512)` nullable en
+`outbox_messages`, **generada y aplicada directamente contra Postgres
+real**) — mismo patrón ya establecido para `correlation_id` (columna
+dedicada, nunca metida dentro del JSONB de `payload`).
+`PrismaTenantProvisioningRepository` (el único productor real del outbox
+desde ADR-004) captura el contexto de traza **fuera** de su propia
+transacción de Prisma (el span activo pertenece al request HTTP, no al
+round-trip de base de datos) y lo pasa a `appendOutboxMessage`.
+`DispatchOutboxBatchUseCase.publishWithTrace()` (`packages/events`, nuevo)
+rehidrata ese contexto guardado como el padre de un span nuevo
+`outbox.dispatch <eventType>`, y publica al `DomainEventBus` dentro de
+`context.with(...)` — así que cualquier span que el propio handler cree (sus
+propias queries, llamadas posteriores) anida bajo ese span, no bajo uno sin
+relación (`docs/ARCHITECTURE.md` §11: "traces cruzan API, outbox, worker e
+integración", el requisito exacto que este bloque cierra).
+`CorrelationIdMiddleware` etiqueta el span HTTP activo con
+`app.correlation_id` — cruza los dos sistemas de identidad (traza real de
+OpenTelemetry vs. `correlationId` propio de este código base) sin
+fusionarlos, para poder buscar uno desde el otro.
+
+**Bug real encontrado y corregido, aislado con scripts de depuración
+manuales antes de tocar el código de producción**: en el entorno de tests
+(Jest), `context.with(...)`/`context.active()` de `@opentelemetry/api`
+resultaban ser no-ops silenciosos — el contexto "activo" nunca cambiaba
+dentro del callback. Causa raíz: `NodeSDK.start()` registra automáticamente
+un `AsyncHooksContextManager` como parte de sus defaults en producción, pero
+ningún test llama `startTracing()` (no hay SDK que arrancar en un test
+unitario), así que ese registro nunca ocurría ahí. Corregido registrando
+`AsyncHooksContextManager` explícitamente en los `beforeAll` de los tests de
+`packages/events`/`packages/observability` que ejercitan la propagación real
+— el código de producción no tenía el bug, solo el arnés de test necesitaba
+el mismo registro que `NodeSDK` ya hace por su cuenta.
+
+**Decisión de alcance deliberada**: `apps/api/src/tracing.ts` no pasa
+`serviceVersion` a `startTracing()` — importar la propia versión desde
+`package.json` tenía un riesgo real y verificable de violar `rootDir:
+"./src"` de `tsconfig.json` (`TS6059`), evitado proactivamente en vez de
+depurado, ya que el campo es puramente informativo y no bloquea ningún
+requisito real de `docs/ARCHITECTURE.md` §11.
+
+**`docker-compose.yml`** gana el servicio `jaeger`
+(`jaegertracing/all-in-one:latest`, backend de trazas local — puerto 16686
+para la UI, 4317/4318 para OTLP gRPC/HTTP) — el mismo patrón que
+Postgres/Redis/MinIO, sin credenciales ni configuración de producción real
+todavía (`docs/ARCHITECTURE.md` §11: "OpenTelemetry se introduce detrás de
+una configuración común", no un backend de producción elegido en este
+bloque).
+
+**Verificado contra Jaeger real, no simulado**: con los procesos reales de
+`apps/api`/`apps/worker` corriendo y el contenedor `jaeger` real levantado,
+una petición HTTP real disparó un ciclo completo request→outbox→dispatch, y
+una consulta directa a la API REST real de Jaeger confirmó un único
+`traceId` real compartido entre un span del servicio `erp-api` y un span del
+servicio `erp-worker`, ambos con el mismo tag `app.correlation_id` — la
+prueba directa de que la propagación cruza el proceso, no solo que el código
+compila. **Verificado una segunda vez contra la suite E2E completa real**
+(19/19 Playwright, Chromium vía Testcontainers — ver el hallazgo operativo
+más abajo): aunque los procesos que el E2E arranca no tienen tracing activo
+(ver arriba), el log real de `apps/worker` confirmó
+`Outbox dispatch: claimed=1 published=1 failed=0` para cada uno de los 19
+eventos reales de aprovisionamiento de tenant de la corrida completa — las
+columnas `trace_parent`/`trace_state` nuevas y el código de captura/
+restauración nunca interfirieron con la garantía real de entrega del
+outbox, verificado contra Postgres real, no solo razonado.
+
+**Hallazgo operativo real, no un bug de este trabajo — investigado y
+descartado explícitamente antes de continuar**: la primera corrida completa
+del E2E tras este bloque mostró 14 de 19 archivos fallando con `429` real en
+`POST /api/v1/auth/register` (límite de tasa excedido). Investigado a fondo
+en vez de asumido: aislar un solo archivo (`commercial.spec.ts`) reveló en
+su propio log `Error: listen EADDRINUSE: address already in use :::3000` —
+el servidor persistente de `apps/api` de esta misma sesión (reiniciado horas
+antes para la propia verificación manual con Jaeger) seguía ocupando el
+puerto 3000 con el límite de tasa **estricto por defecto**
+(`LOGIN_RATE_LIMIT_MAX=5`, `.env`), así que el proceso efímero propio del
+arnés E2E nunca pudo enlazar (`EADDRINUSE`) y el tráfico real del navegador
+caía silenciosamente sobre el servidor persistente en vez del efímero
+—que sí lleva el override real `LOGIN_RATE_LIMIT_MAX=50` que
+`apps/e2e/src/global-setup.ts` establece desde la sesión 4 exactamente para
+este caso. Confirmado que no era una regresión del código de trazas:
+deteniendo los tres procesos persistentes (`apps/api`/`apps/worker`/
+`apps/erp-web`) y repitiendo la corrida limpia produjo 19/19 reales, sin
+tocar ningún código. Mismo patrón operativo "servidor persistente ocupando
+el puerto que el arnés E2E necesita" ya documentado en sesiones anteriores
+(sesión 18); la lección aplicada aquí, nueva para este proyecto, es
+verificar el log del propio proceso fallido (`EADDRINUSE`) antes de asumir
+que un código de error HTTP inesperado (`429`) apunta a un bug en el cambio
+recién hecho.
+
+**Segundo hallazgo operativo real, también investigado y descartado**: la
+corrida completa de `pnpm test` a nivel de monorepo mostró 8 archivos de
+`apps/erp-web` fallando por timeout (`import 2682.04s` reportado por
+Vitest — un valor imposible bajo condiciones normales), ninguno de ellos
+tocado por este bloque de trabajo (`pos-page`, `commercial-page`,
+`inventory-page`, etc.). Repetir la suite completa de `apps/erp-web` en
+aislamiento (`--no-file-parallelism`) bajó a 3 fallos (`import 287.42s`);
+repetir solo esos 2-3 archivos en aislamiento total bajó a **0 fallos**
+(`import 9.48s`, ~280× más rápido) — contención de recursos real de esta
+sesión extraordinariamente larga y pesada (múltiples arranques de
+Testcontainers, una pila persistente de Postgres/Redis/MinIO/Jaeger, builds
+concurrentes de turbo), el mismo patrón ya documentado repetidamente en el
+historial de este proyecto (sesiones 25, 27, 28, 29, 30, 32, 33, 34), no una
+regresión de este trabajo.
+
+Alcance deliberadamente fuera de este bloque, sin aprobación explícita, per
+`docs/ROADMAP.md` §17: SLOs por capability y alertas accionables (necesitan
+tráfico real para definir umbrales con sentido, mismo gate de evidencia ya
+aplicado a Fase 12), métricas/Prometheus (este bloque es tracing únicamente,
+elección explícita de alcance), capacity tests, y runbooks/backup/PITR/
+disaster-recovery drills — los tres quedan como ítems futuros reales del
+mismo workstream, no fabricados aquí.
+
+Tests: 5 tests unitarios nuevos en `@erp/observability`
+(`trace-context.spec.ts`: captura real, restauración con y sin contexto
+guardado, round-trip captura→persistir→restaurar de vuelta al mismo trace
+id). 1 test nuevo en `@erp/events`
+(`dispatch-outbox-batch.use-case.spec.ts`, escenario de continuidad de
+traza) — 28/28 en total (antes 27). `@erp/notifications` (33/33) y
+`@erp/worker` (6/6) sin cambios, no tocados por este bloque. 48/48 tests de
+integración de `apps/api` sin cambios de conteo (las dos fixtures reales de
+`OutboxMessage.create()` en `prisma-repositories.integration-spec.ts` se
+actualizaron con los campos nuevos, sin escenario de integración dedicado a
+trazas — la verificación real de propagación es la de Jaeger, arriba). 19/19
+E2E de Playwright sin cambios de conteo, verificados limpios tras el
+hallazgo operativo descrito arriba. Validación completa del monorepo:
+`pnpm lint` (16/16), `pnpm typecheck` (16/16, incluyendo el proyecto de
+tests de `apps/api` con las fixtures nuevas), `pnpm build` (11/11, "FULL
+TURBO") — todo verde.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -2823,10 +2996,19 @@ infraestructura de CI: el pipeline real de GitHub Actions nunca había
 pasado" arriba para el detalle completo — corregido en la misma sesión
 (`turbo.json` gana una tarea `generate` real, `ci.yml` gana un paso
 explícito de generación de Prisma en los tres jobs que compilan código).
-Sin trabajo en curso — salvo indicación distinta del usuario, el
-siguiente trabajo real depende de evidencia concreta de necesidad de
-escalar (Fase 12), de otro workstream del §17 (Observabilidad/
-OpenTelemetry, Data lifecycle, Developer platform), o de una nueva
+**Inmediatamente después, en la misma sesión 36 ("Ok sigue con eso
+entonces"), se construyó tracing distribuido con OpenTelemetry** — ver
+"OpenTelemetry distributed tracing — workstream de Observabilidad/SRE, §17"
+arriba: paquete nuevo `@erp/observability`, propagación real de contexto de
+traza W3C a través de la frontera de proceso del outbox (API → fila de
+Postgres → Worker), verificado contra Jaeger real y contra la suite E2E
+completa, con dos hallazgos operativos reales investigados y descartados
+como ajenos al código (un servidor persistente ocupando el puerto del
+arnés E2E; contención de recursos de esta sesión larga en `apps/erp-web`) en
+vez de asumidos como regresiones. Sin trabajo en curso — salvo indicación
+distinta del usuario, el siguiente trabajo real depende de evidencia
+concreta de necesidad de escalar (Fase 12), de otro workstream del §17
+(SLOs/alertas, Data lifecycle, Developer platform), o de una nueva
 prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
@@ -3758,3 +3940,18 @@ perdiera acceso a los módulos de negocio que ya estaba usando, la prueba
 definitiva de que ADR-015 preserva el comportamiento previo de la
 plataforma exactamente como se diseñó, no solo en un escenario sintético
 de 2 tenants de prueba.
+
+**Sesión 36 (2026-09-03, OpenTelemetry distributed tracing)**: migración
+`20260904030000_outbox_trace_context` (columnas `trace_parent
+VARCHAR(80)`/`trace_state VARCHAR(512)` nullable en `outbox_messages`),
+**generada y aplicada directamente contra Postgres real**. Verificado con
+la suite de integración real (`prisma-repositories.integration-spec.ts`,
+fixtures existentes de `OutboxMessage.create()` actualizadas con los
+campos nuevos, 48/48 en total, sin cambio de conteo) que las columnas
+nuevas, siempre nullable, no rompen ningún flujo existente del outbox. La
+verificación real de que la propagación de contexto de traza funciona de
+punta a punta (API real → fila real de Postgres → Worker real) se hizo
+contra un Jaeger real, no contra esta suite — ver "OpenTelemetry
+distributed tracing" en `## Completed` arriba para el detalle completo,
+incluyendo la consulta directa a la API REST real de Jaeger confirmando
+un `traceId` compartido entre un span de `erp-api` y uno de `erp-worker`.

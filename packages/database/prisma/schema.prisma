@@ -533,6 +533,14 @@ model OutboxMessage {
   causationId      String?             @map("causation_id") @db.VarChar(100)
   actorType        String?             @map("actor_type") @db.VarChar(20)
   actorId          String?             @map("actor_id") @db.Uuid
+  /// W3C `traceparent` header (docs/ARCHITECTURE.md §11), captured once at
+  /// append time from the producer's active span — this is the only thing
+  /// that carries a trace across the API process -> outbox row -> worker
+  /// process boundary; write-once, never updated after creation, same
+  /// treatment as correlationId.
+  traceParent      String?             @map("trace_parent") @db.VarChar(80)
+  /// W3C `tracestate` header, optional vendor-specific span metadata.
+  traceState       String?             @map("trace_state") @db.VarChar(512)
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
 
   tenant  Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Restrict)

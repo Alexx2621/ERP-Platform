@@ -22,6 +22,14 @@ export interface AppendOutboxMessageInput {
   correlationId: string;
   causationId?: string | null;
   actor: { type: "USER" | "SYSTEM"; id: string | null } | null;
+  /**
+   * W3C `traceparent`/`tracestate`, typically from `@erp/observability`'s
+   * `captureTraceContext()` called at the same point the producer resolves
+   * `correlationId` — null when there is no active trace to carry
+   * (docs/ARCHITECTURE.md §11).
+   */
+  traceParent?: string | null;
+  traceState?: string | null;
   /** Defaults to now — override only to backdate a message reconstructed from an already-occurred fact. */
   occurredAt?: Date;
 }
@@ -59,6 +67,8 @@ export async function appendOutboxMessage(
     causationId: input.causationId ?? null,
     actorType: input.actor?.type ?? null,
     actorId: input.actor?.id ?? null,
+    traceParent: input.traceParent ?? null,
+    traceState: input.traceState ?? null,
     createdAt: now,
   });
 
@@ -82,6 +92,8 @@ export async function appendOutboxMessage(
       causationId: props.causationId,
       actorType: props.actorType,
       actorId: props.actorId,
+      traceParent: props.traceParent,
+      traceState: props.traceState,
       createdAt: props.createdAt,
     },
   });

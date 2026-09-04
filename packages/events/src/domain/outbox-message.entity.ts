@@ -23,6 +23,9 @@ export interface OutboxMessageProps {
   causationId: string | null;
   actorType: EventActorType | null;
   actorId: string | null;
+  /** W3C `traceparent`/`tracestate`, captured once at append time — see docs/ARCHITECTURE.md §11. */
+  traceParent: string | null;
+  traceState: string | null;
   createdAt: Date;
 }
 
@@ -95,6 +98,14 @@ export class OutboxMessage {
 
   get correlationId(): string {
     return this.props.correlationId;
+  }
+
+  get traceParent(): string | null {
+    return this.props.traceParent;
+  }
+
+  get traceState(): string | null {
+    return this.props.traceState;
   }
 
   /** Reconstitutes the integration event envelope this row describes, for handing to DomainEventBus. */

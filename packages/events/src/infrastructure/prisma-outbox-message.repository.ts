@@ -82,6 +82,8 @@ export class PrismaOutboxMessageRepository implements OutboxMessageRepository {
       causationId: record.causationId,
       actorType: record.actorType as "USER" | "SYSTEM" | null,
       actorId: record.actorId,
+      traceParent: record.traceParent,
+      traceState: record.traceState,
       createdAt: record.createdAt,
     });
   }
