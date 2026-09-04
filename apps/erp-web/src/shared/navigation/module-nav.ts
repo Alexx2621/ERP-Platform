@@ -4,6 +4,7 @@ import {
   Factory,
   Globe,
   Package,
+  PaintBrush,
   ShieldCheck,
   ShoppingCartSimple,
   SlidersHorizontal,
@@ -30,9 +31,10 @@ export interface ModuleNavSection {
 }
 
 /**
- * Single source of truth for the sidebar navigation and the workspace home
- * launchpad tiles — grouped the way SAP Business One groups its own left
- * module menu, so both surfaces stay in sync automatically.
+ * Single source of truth for module navigation — consumed by ProductShell's
+ * sidebar (layout: "sidebar") and its category dropdowns (layout: "navbar"),
+ * grouped the way SAP Business One groups its own module menu so both
+ * surfaces stay in sync automatically.
  */
 export const moduleNavSections: ModuleNavSection[] = [
   {
@@ -71,6 +73,7 @@ export const moduleNavSections: ModuleNavSection[] = [
       { path: "/apps", label: "Apps", icon: Storefront },
       { path: "/roles", label: "Roles y permisos", icon: ShieldCheck },
       { path: "/settings", label: "Ajustes", icon: SlidersHorizontal },
+      { path: "/appearance", label: "Apariencia", icon: PaintBrush },
     ],
   },
 ];

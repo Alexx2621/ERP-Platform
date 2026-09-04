@@ -26,6 +26,11 @@
   --accent-hover: #0057d2;
   --accent-light: #4db1ff;
   --accent-soft: #e7f1fe;
+  /* Foreground color for text/icons placed on top of --accent. Overridden
+     live by AppearanceProvider (computed per-color for contrast) whenever
+     the user picks a custom accent — this is only the default before
+     that preference loads, or for a user who never set one. */
+  --accent-contrast: #ffffff;
   --success: #16794f;
   --success-soft: #e5f5ee;
   --danger: #c53434;
@@ -88,6 +93,7 @@ a:focus-visible {
     --accent-hover: #6cc0ff;
     --accent-light: #89d1ff;
     --accent-soft: #16324d;
+    --accent-contrast: #101820;
     --success: #4fd39a;
     --success-soft: #113527;
     --danger: #f0918c;

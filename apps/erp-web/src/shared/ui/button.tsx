@@ -15,7 +15,8 @@ export function Button({
   ...buttonProps
 }: PropsWithChildren<ButtonProps>) {
   const variantClass = {
-    primary: "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)] hover:bg-[var(--accent-hover)]",
+    primary:
+      "bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[var(--shadow-sm)] hover:bg-[var(--accent-hover)]",
     secondary:
       "border border-[var(--line-strong)] bg-[var(--field)] text-[var(--ink)] hover:bg-[var(--field-hover)]",
     quiet: "text-[var(--muted-strong)] hover:bg-[var(--field-hover)] hover:text-[var(--ink)]",

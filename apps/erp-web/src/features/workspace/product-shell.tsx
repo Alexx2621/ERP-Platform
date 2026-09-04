@@ -1,10 +1,12 @@
 import { List, ShieldCheck, SignOut, UserCircle, X } from "@phosphor-icons/react";
 import { useState, type PropsWithChildren, type ReactNode } from "react";
+import { useAppearance } from "../../shared/appearance/appearance-context";
 import { useAuth } from "../../shared/auth/auth-context";
 import { moduleNavSections } from "../../shared/navigation/module-nav";
 import type { AppPath } from "../../shared/navigation/router";
 import { BrandMark } from "../../shared/ui/brand-mark";
 import { Button } from "../../shared/ui/button";
+import { NavDropdown } from "../../shared/ui/nav-dropdown";
 
 interface ProductShellProps {
   eyebrow?: string;
@@ -27,6 +29,8 @@ export function ProductShell({
   children,
 }: PropsWithChildren<ProductShellProps>) {
   const { session, logout } = useAuth();
+  const { navigationLayout } = useAppearance();
+  const isNavbarLayout = navigationLayout === "navbar";
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Every real navigation swaps in a different page component (see
   // App()'s path -> component switch), so ProductShell always remounts
@@ -105,7 +109,7 @@ export function ProductShell({
 
   return (
     <div className="flex min-h-[100dvh] bg-[var(--canvas)] text-[var(--ink)]">
-      {showNav ? (
+      {showNav && !isNavbarLayout ? (
         <aside className="hidden w-64 shrink-0 flex-col border-r border-[var(--line)] bg-[var(--paper)] lg:flex">
           {sidebarContent}
         </aside>
@@ -134,64 +138,125 @@ export function ProductShell({
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--paper)]/95 px-4 backdrop-blur sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            {showNav ? (
-              <button
-                type="button"
-                aria-label="Abrir menú"
-                onClick={() => setMobileNavOpen(true)}
-                className="grid size-9 shrink-0 place-items-center rounded-[8px] text-[var(--muted-strong)] hover:bg-[var(--field-hover)] lg:hidden"
+        <div className="sticky top-0 z-20">
+          {showNav && isNavbarLayout ? (
+            <div className="hidden border-b border-[var(--line)] bg-[var(--paper)] lg:block">
+              <nav
+                aria-label="Módulos"
+                className="flex min-h-14 flex-wrap items-center gap-1 px-4 py-1.5 sm:px-6"
               >
-                <List size={20} weight="bold" aria-hidden="true" />
-              </button>
-            ) : (
-              <BrandMark />
-            )}
-            <div className="min-w-0">
-              {eyebrow ? (
-                <p className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent)]">
-                  {eyebrow}
-                </p>
-              ) : null}
-              <h1 className="truncate text-[17px] font-extrabold tracking-[-0.015em] sm:text-[19px]">
-                {title}
-              </h1>
+                <div className="mr-2 shrink-0">
+                  <BrandMark />
+                </div>
+                {sections.map((section) =>
+                  section.items.length === 1 ? (
+                    section.items.map((item) => (
+                      <button
+                        key={item.path}
+                        type="button"
+                        onClick={() => navigate?.(item.path)}
+                        aria-current={item.path === currentPath ? "page" : undefined}
+                        className={`flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] px-3 text-[13px] font-bold transition-colors duration-150 ${
+                          item.path === currentPath
+                            ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                            : "text-[var(--muted-strong)] hover:bg-[var(--field-hover)] hover:text-[var(--ink)]"
+                        }`}
+                      >
+                        <item.icon size={16} aria-hidden="true" />
+                        {item.label}
+                      </button>
+                    ))
+                  ) : (
+                    <NavDropdown
+                      key={section.label}
+                      label={section.label}
+                      items={section.items.map((item) => ({
+                        key: item.path,
+                        active: item.path === currentPath,
+                        onSelect: () => navigate?.(item.path),
+                        label: (
+                          <span className="flex items-center gap-2.5">
+                            <item.icon size={16} aria-hidden="true" />
+                            {item.label}
+                          </span>
+                        ),
+                      }))}
+                    />
+                  ),
+                )}
+                <div className="ml-auto shrink-0 pl-2">
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    className="h-9 px-3 text-[12px]"
+                    onClick={() => navigate?.("/tenants")}
+                  >
+                    Cambiar espacio
+                  </Button>
+                </div>
+              </nav>
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
-            {navigate && session?.user.isPlatformAdmin ? (
+          ) : null}
+
+          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--paper)]/95 px-4 backdrop-blur sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              {showNav ? (
+                <button
+                  type="button"
+                  aria-label="Abrir menú"
+                  onClick={() => setMobileNavOpen(true)}
+                  className="grid size-9 shrink-0 place-items-center rounded-[8px] text-[var(--muted-strong)] hover:bg-[var(--field-hover)] lg:hidden"
+                >
+                  <List size={20} weight="bold" aria-hidden="true" />
+                </button>
+              ) : (
+                <BrandMark />
+              )}
+              <div className="min-w-0">
+                {eyebrow ? (
+                  <p className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent)]">
+                    {eyebrow}
+                  </p>
+                ) : null}
+                <h1 className="truncate text-[17px] font-extrabold tracking-[-0.015em] sm:text-[19px]">
+                  {title}
+                </h1>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+              {navigate && session?.user.isPlatformAdmin ? (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  className="h-9 gap-1.5 px-2.5 sm:px-3"
+                  onClick={() => navigate("/platform-admin")}
+                >
+                  <ShieldCheck size={16} weight="duotone" aria-hidden="true" />
+                  <span className="hidden sm:inline">Plataforma</span>
+                </Button>
+              ) : null}
+              <div className="hidden items-center gap-2 border-l border-[var(--line)] pl-3 text-right sm:flex">
+                <UserCircle size={19} weight="duotone" className="text-[var(--muted)]" aria-hidden="true" />
+                <div>
+                  <p className="text-[12px] font-extrabold leading-4">{session?.user.displayName}</p>
+                  <p className="max-w-[180px] truncate text-[10px] font-semibold text-[var(--muted)]">
+                    {session?.user.email}
+                  </p>
+                </div>
+              </div>
               <Button
                 type="button"
                 variant="quiet"
-                className="h-9 gap-1.5 px-2.5 sm:px-3"
-                onClick={() => navigate("/platform-admin")}
+                className="size-9 px-0"
+                onClick={() => void logout()}
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
               >
-                <ShieldCheck size={16} weight="duotone" aria-hidden="true" />
-                <span className="hidden sm:inline">Plataforma</span>
+                <SignOut size={17} weight="bold" aria-hidden="true" />
               </Button>
-            ) : null}
-            <div className="hidden items-center gap-2 border-l border-[var(--line)] pl-3 text-right sm:flex">
-              <UserCircle size={19} weight="duotone" className="text-[var(--muted)]" aria-hidden="true" />
-              <div>
-                <p className="text-[12px] font-extrabold leading-4">{session?.user.displayName}</p>
-                <p className="max-w-[180px] truncate text-[10px] font-semibold text-[var(--muted)]">
-                  {session?.user.email}
-                </p>
-              </div>
             </div>
-            <Button
-              type="button"
-              variant="quiet"
-              className="size-9 px-0"
-              onClick={() => void logout()}
-              aria-label="Cerrar sesión"
-              title="Cerrar sesión"
-            >
-              <SignOut size={17} weight="bold" aria-hidden="true" />
-            </Button>
-          </div>
-        </header>
+          </header>
+        </div>
 
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 sm:px-8 sm:py-8">
           {description || action ? (

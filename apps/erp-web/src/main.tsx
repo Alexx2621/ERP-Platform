@@ -3,6 +3,7 @@ import "@fontsource-variable/jetbrains-mono";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/app";
+import { AppearanceProvider } from "./shared/appearance/appearance-context";
 import { AuthProvider } from "./shared/auth/auth-context";
 import "./styles.css";
 
@@ -15,7 +16,9 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <AppearanceProvider>
+        <App />
+      </AppearanceProvider>
     </AuthProvider>
   </StrictMode>,
 );

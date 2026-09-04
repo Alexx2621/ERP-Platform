@@ -31,7 +31,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
         <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-sm)] sm:p-8">
           <div className="flex items-start gap-4">
-            <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent)] text-white">
+            <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent)] text-[var(--accent-contrast)]">
               <SquaresFour size={22} weight="fill" aria-hidden="true" />
             </span>
             <div>
