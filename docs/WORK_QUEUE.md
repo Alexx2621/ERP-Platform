@@ -212,6 +212,64 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (contraste de texto sobre --accent-soft, corregido de forma sistémica)
+
+A pedido explícito del usuario, con dos rondas sucesivas de capturas
+reales mostrando texto ilegible en distintas secciones. Cada ronda se
+investigó reproduciendo el escenario exacto contra un navegador real, no
+asumiendo la causa desde la captura sola.
+
+- **Ronda 1 (selección de texto)**: `::selection` usaba `--accent-soft`
+  (sin relación con el color de fondo elegido por el usuario) — texto
+  blanco sobre azul casi blanco, prácticamente invisible. Corregido con
+  `--line-strong` (siempre en un punto de contraste medio contra
+  `--ink`).
+- **Ronda 2 (causa raíz sistémica)**: reproducido con el tema por
+  defecto, sin ninguna personalización, solo con el sistema operativo en
+  modo oscuro — `--accent-soft` (derivado del acento + esquema del SO) y
+  `--ink`/`--muted-strong` (derivados de la superficie) son fuentes de
+  verdad independientes sin garantía de coincidir. Un barrido de los 10
+  archivos con `bg-[var(--accent-soft)]` encontró varios casos más allá
+  de los dos reportados. Tokens nuevos `accentSoftText`/`accentSoftMuted`
+  (derivados siempre del color final de `accentSoft`, nunca de la
+  superficie ni del acento crudo) aplicados en los 10 archivos.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Contraste de
+  texto sobre `--accent-soft`, corregido de forma sistémica".
+- Verificado de nuevo contra un navegador real ambos escenarios exactos
+  reportados por el usuario, y confirmado que el tema claro por defecto
+  se ve pixel-a-pixel igual que antes de este bloque.
+- Tests: 110/110 en `apps/erp-web` sin cambios necesarios. Validación
+  completa: `pnpm turbo run lint typecheck build` (31/31), `apps/e2e`
+  20/20 Playwright, dos corridas reales de CI verificadas.
+
+### Hecho — sesión 36 (selector de color de fondo generalizado a toda la interfaz)
+
+A pedido explícito del usuario, tras el fix de contraste anterior:
+*"Pero se debe poder aplicarse a todo, no a un solo componente como el
+side o navbar."* Presentado el trade-off vía pregunta directa — el
+usuario eligió extender el color a toda la interfaz.
+
+- `buildNavPalette` (solo nav) reemplazado por `buildSurfacePalette`,
+  que deriva 14 tokens (canvas/paper/ink/muted*/line*/field* + nav*)
+  desde un único color base — `paper` es el color elegido, `canvas` se
+  oscurece un 10% para que las tarjetas sigan "elevadas".
+- Como toda superficie de la app ya lee su color exclusivamente de este
+  set de variables CSS, sobrescribirlas re-tematiza sidebar, header,
+  tarjetas y páginas de contenido ordinario sin tocar ningún componente.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "El selector de
+  color de fondo pasa de solo-navegación a toda la interfaz".
+- **Bug real de sintaxis encontrado y corregido durante la propia
+  redacción**: un comentario JSDoc con la secuencia literal `*/` dentro
+  de su propio texto cerraba el comentario antes de tiempo — detectado
+  de inmediato por `typecheck`.
+- Verificado end-to-end contra los servidores reales: un color elegido
+  recolorea sidebar, header, tarjetas y una página de contenido no
+  relacionada de forma idéntica, persiste tras recarga real.
+- Tests: `color-utils.spec.ts`/`appearance-context.spec.tsx`/
+  `appearance-page.spec.tsx` actualizados — 110/110 en `apps/erp-web`.
+  Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/e2e` 20/20 Playwright, corrida real de CI verificada.
+
 ### Hecho — sesión 36 (bug real de contraste en modo oscuro + selector independiente de fondo de navegación)
 
 A pedido explícito del usuario, que compartió dos capturas reales: el

@@ -3753,6 +3753,141 @@ del tema, exactamente el bug real que mostraba la primera captura.
   conflicto de puerto ya documentado en sesiones anteriores) y
   reiniciados con el build final al terminar.
 
+### El selector de color de fondo pasa de solo-navegación a toda la interfaz (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, tras ver el fix de contraste anterior en
+capturas reales: *"Pero se debe poder aplicarse a todo, no a un solo
+componente como el side o navbar."* Presentado el trade-off vía pregunta
+directa (extender solo al header, extender a toda la interfaz, o
+reemplazar por un único selector de tema) — el usuario eligió "Todo el
+fondo de la interfaz".
+
+- **`color-utils.ts`**: `buildNavPalette` (solo nav) reemplazado por
+  `buildSurfacePalette(hex)`, que deriva un set completo — `canvas`,
+  `paper`, `field`/`fieldHover`, `ink`, `mutedStrong`/`muted`,
+  `line`/`lineStrong`, más el mismo set `nav*` de antes — a partir de un
+  único color base. `paper` es el color elegido tal cual; `canvas` se
+  oscurece un 10% respecto a él para que las tarjetas sigan leyéndose
+  "elevadas" sobre el fondo de página, el mismo patrón
+  paper-más-claro-que-canvas que ya usan los temas claro y oscuro
+  incorporados.
+- **`appearance-context.tsx`**: `navBackground` renombrado a
+  `surfaceColor` (preferencia `ui.navBackground` → `ui.surfaceColor`,
+  sin migración de backend — reutiliza el mismo `UserPreference`
+  genérico). `applySurfaceColor` ahora sobrescribe 14 variables CSS a la
+  vez (el set completo de superficie + nav), en vez de solo 5.
+- **`appearance-page.tsx`**: el selector "Fondo de navegación" pasa a
+  "Color de fondo", con presets que ahora incluyen también opciones
+  claras (antes solo oscuras, ya que el alcance anterior asumía "sidebar
+  oscuro sobre tema claro" como el único caso de uso).
+- Como absolutamente toda superficie de la app ya lee su color
+  exclusivamente de este mismo set de variables CSS (verificado por grep,
+  el mismo hecho que hizo posible el rediseño de sesión 36 en primer
+  lugar), sobrescribir este único set re-tematiza la aplicación completa
+  sin tocar ningún componente individual — sidebar, header, tarjetas,
+  páginas de contenido ordinario.
+- **Verificado end-to-end contra los servidores reales**: un verde bosque
+  elegido recolorea sidebar, header, tarjetas del workspace y una página
+  de contenido no relacionada (Ventas) de forma idéntica, con texto
+  blanco legible en todas partes, y la elección persiste tras una recarga
+  real vía el backend.
+- Tests: `color-utils.spec.ts` reescrito (tests de `buildNavPalette` →
+  `buildSurfacePalette`, incluyendo la relación canvas-más-oscuro-que-paper
+  para bases claras y oscuras); `appearance-context.spec.tsx` reescrito
+  (persistencia/limpieza del color de superficie, verificando el set
+  completo de tokens, no solo los de nav); `appearance-page.spec.tsx`
+  actualizado — 110/110 en `apps/erp-web`.
+- **Bug real de sintaxis encontrado y corregido durante la propia
+  redacción**: un comentario JSDoc contenía literalmente la secuencia
+  `*/` dentro de su propio texto explicativo, cerrando el comentario de
+  bloque antes de tiempo y corrompiendo el resto del archivo en código
+  no parseable — detectado de inmediato por `typecheck`, antes de
+  cualquier commit.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 110/110, `apps/e2e` 20/20 Playwright (sin ninguna
+  modificación de test E2E necesaria), corrida real de CI verificada.
+
+### Contraste de texto sobre `--accent-soft`, corregido de forma sistémica (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, con tres rondas sucesivas de capturas
+reales mostrando texto ilegible en distintas secciones ("veo que en unas
+partes aun no se aplica, no se ven algunas palabras y al seleccionar
+texto se oscurece" → "Aun sigue sin contrastar bien en varias
+secciones"). Cada ronda se investigó reproduciendo el escenario exacto
+contra un navegador real, nunca asumiendo la causa desde la captura sola.
+
+- **Ronda 1 — selección de texto**: reproducido con un drag-select real
+  sobre la tarjeta "Preparado para los módulos ERP" con un fondo
+  personalizado oscuro. `::selection` usaba
+  `background: var(--accent-soft); color: var(--ink);` — pero
+  `--accent-soft` se deriva del acento + esquema de color del SO,
+  completamente independiente de cualquier color de fondo personalizado;
+  con un fondo oscuro (`--ink` blanco) y el acento sin personalizar
+  (`--accent-soft` aún un azul pálido, sin relación), la selección
+  resultaba en texto blanco sobre un azul casi blanco — prácticamente
+  invisible, confirmado con la propia consulta de estilo computado de
+  Playwright (`rgb(255,255,255)` sobre `rgb(224,238,253)`). Corregido
+  usando `--line-strong` (derivado del mismo par ink/paper que `--ink`
+  mismo, por lo tanto siempre en un punto de contraste medio legible
+  contra ambos) en vez de `--accent-soft`.
+- **Ronda 2 — la causa raíz real y sistémica**: investigando la segunda
+  ronda de capturas (la tarjeta "Estimación temporal" con "100%"
+  ilegible, y la tarjeta "Barra superior" seleccionada en Apariencia con
+  título/descripción apenas visibles), se encontró que **ninguna de las
+  dos requiere personalización alguna** — ambas se reproducen con el
+  tema por defecto, sin tocar nada, con el sistema operativo en modo
+  oscuro: `AppearanceProvider` aplica sus estilos en línea de forma
+  incondicional desde el primer render, calculando `--accent-soft` desde
+  el acento por defecto (`#0070f2`) vía la fórmula de modo oscuro, dando
+  un azul marino oscuro (`#001f44`) — mientras que el texto de esas
+  tarjetas seguía usando `--ink`/`--muted-strong` (derivados de la
+  *superficie*, una fuente de verdad completamente independiente de
+  `--accent-soft`). Verificado exactamente así contra un navegador real:
+  cuenta nueva, cero personalización, solo modo oscuro del SO, y ambas
+  capturas se reproducen de forma idéntica a lo que el usuario mostró.
+- **Barrido exhaustivo, no solo el caso reportado**: un grep de
+  `bg-[var(--accent-soft)]` encontró 10 archivos; cada uno se revisó
+  completo (no solo las líneas que ya decían "accent") en busca de
+  `--ink`/`--muted`/`--muted-strong` anidado directamente sobre ese
+  fondo — encontrando varios más allá de los dos ya reportados: un
+  patrón de "banner de éxito" repetido en 3 archivos
+  (`roles-permissions-page.tsx`, `settings-page.tsx`,
+  `platform-admin-page.tsx` ×2), el resumen de turno abierto de POS, la
+  tarjeta de invitación pendiente en el selector de tenant, y el
+  subtítulo de la fila activa del Command Palette.
+- **`color-utils.ts`**: `AccentPalette` gana `accentSoftText`
+  (equivalente a `accentContrast`, pero calculado desde el color final
+  de `accentSoft`, nunca desde el acento crudo ni desde la superficie) y
+  `accentSoftMuted` (una variante atenuada del anterior, para texto
+  secundario/descripciones) — el mismo criterio ya usado para
+  `accentContrast`, extendido para cubrir también texto secundario.
+  `styles.css` los declara con default `var(--accent)`/
+  `var(--muted-strong)` (preserva el look actual del tema por defecto sin
+  cambios) y `AppearanceProvider` los sobrescribe en vivo junto al resto
+  de la paleta de acento.
+- Los 10 archivos actualizados para que **todo** texto dentro de un
+  contenedor `accent-soft` use este par nuevo en vez de los tokens de
+  superficie — en `appearance-page.tsx`/`command-palette.tsx`, donde el
+  fondo `accent-soft` es condicional (solo al estar seleccionado/activo),
+  el color del texto ahora también es condicional, en vez de fijo.
+- **Verificado de nuevo contra un navegador real, ambos escenarios
+  exactos reportados**: acento "Pizarra" (ya oscuro) + modo oscuro →
+  "100%" ahora blanco y legible; tema por defecto sin personalizar + modo
+  oscuro → la tarjeta "Barra superior" seleccionada ahora con título
+  blanco y descripción en un azul grisáceo claramente legible,
+  coincidiendo exactamente con el layout de la captura del usuario pero
+  ahora con contraste correcto. Confirmado también que el tema claro por
+  defecto, sin ninguna personalización, se ve pixel-a-pixel igual que
+  antes de este bloque (captura real comparada).
+- Tests: 110/110 en `apps/erp-web` sin cambios necesarios (ningún test
+  existente afirmaba las cadenas de clase específicas tocadas).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 110/110, `apps/e2e` 20/20 Playwright (sin regresiones en
+  los 19 archivos de negocio existentes), dos corridas reales de CI
+  verificadas (una por cada commit de esta ronda). Los tres procesos
+  persistentes de desarrollo reiniciados y verificados con el build
+  final.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -3843,15 +3978,37 @@ explícito del propio usuario ("Deberia de haber otro selector de color
 para que no pase esto con los contrastes"), se agregó un segundo selector
 de color, totalmente independiente del acento, para el fondo de
 navegación (`--nav-*`, nuevos tokens), verificado con persistencia real
-tras recarga y en ambos layouts (sidebar/navbar). Sin trabajo en curso —
-lo único que queda de todo `docs/ROADMAP.md` §16/§17 sigue bloqueado por
-el mismo gate de evidencia que cerró Fase 12 (SLOs/alertas, capacity
-tests, runbooks/backup/PITR/DR drills, previews de PR, export/legal
-holds/derecho al olvido) — ninguno tiene un siguiente paso real sin
-tráfico de producción genuino. El siguiente trabajo depende de que el
-usuario aporte esa evidencia, indique otra prioridad, reporte otro bug
-real, o pida iniciar una fase/ítem deliberadamente diferido documentado
-en "## Pending".
+tras recarga y en ambos layouts (sidebar/navbar). **Inmediatamente
+después, a pedido explícito del usuario ("Pero se debe poder aplicarse a
+todo, no a un solo componente como el side o navbar"), ese selector se
+generalizó de solo-navegación a toda la interfaz** — ver "El selector de
+color de fondo pasa de solo-navegación a toda la interfaz" arriba:
+`buildSurfacePalette` reemplaza a `buildNavPalette`, sobrescribiendo 14
+variables CSS (canvas/paper/ink/muted*/line*/field* + nav*) desde un
+único color elegido, verificado recoloreando sidebar, header, tarjetas y
+páginas de contenido ordinario de forma idéntica. **Inmediatamente
+después, con dos rondas sucesivas de capturas reales del usuario
+mostrando texto ilegible en más secciones, se corrigió de forma
+sistémica el contraste de todo texto dibujado sobre `--accent-soft`** —
+ver "Contraste de texto sobre `--accent-soft`, corregido de forma
+sistémica" arriba: un bug real en `::selection` (usaba `--accent-soft`
+sin relación con el color de fondo elegido) y, más significativo, la
+causa raíz real de que `--accent-soft` (derivado del acento + esquema de
+color del SO) y `--ink`/`--muted-strong` (derivados de la superficie) son
+fuentes de verdad independientes sin garantía de coincidir — reproducible
+con el tema por defecto sin ninguna personalización, solo con el sistema
+operativo en modo oscuro. Un barrido exhaustivo de los 10 archivos que
+usan `bg-[var(--accent-soft)]` encontró y corrigió varios casos más allá
+de los dos ya reportados, con un par de tokens nuevo
+(`accentSoftText`/`accentSoftMuted`) derivado siempre desde el color
+final de `accentSoft` mismo. Sin trabajo en curso — lo único que queda de
+todo `docs/ROADMAP.md` §16/§17 sigue bloqueado por el mismo gate de
+evidencia que cerró Fase 12 (SLOs/alertas, capacity tests, runbooks/
+backup/PITR/DR drills, previews de PR, export/legal holds/derecho al
+olvido) — ninguno tiene un siguiente paso real sin tráfico de producción
+genuino. El siguiente trabajo depende de que el usuario aporte esa
+evidencia, indique otra prioridad, reporte otro bug real, o pida iniciar
+una fase/ítem deliberadamente diferido documentado en "## Pending".
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 
