@@ -2959,6 +2959,115 @@ hallazgo operativo descrito arriba. Validación completa del monorepo:
 tests de `apps/api` con las fixtures nuevas), `pnpm build` (11/11, "FULL
 TURBO") — todo verde.
 
+### Fase 0 — los dos spikes obligatorios que nunca se habían ejecutado (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, tras mostrar el panel "Avance del
+desarrollo" del workspace (`Arquitectura` al 85%, `Escala` al 0%, 91%
+total) y pedir revisar y terminar lo pendiente. Investigando qué
+representaba concretamente ese 15% de `Arquitectura` — el propio
+componente nunca lo explicaba, solo mostraba el número — encontré que de
+los 5 spikes obligatorios de Fase 0 (`docs/ROADMAP.md` §4), 3 estaban
+genuinamente completos y verificados (Prisma + FKs compuestas, UUIDv7
+real, sesiones/auth), pero **2 nunca se habían ejecutado como spike real**:
+el cierre formal de Fase 0 (sesión 22) había sido, en retrospectiva,
+prematuro en este punto concreto.
+
+- **RLS**: `docs/DECISIONS.md` ADR-003 ya documentaba la decisión de
+  diferir Row Level Security, pero esa decisión nunca se había validado
+  con un spike real contra Postgres/Prisma/pool — confirmado con un grep
+  de todo el repo, sin ningún artefacto de código relacionado, solo
+  menciones en documentación.
+- **BullMQ**: `docs/ROADMAP.md` §4 pide un spike de "Outbox claim/recovery
+  con PostgreSQL + BullMQ" — el lado Postgres está probado exhaustivamente
+  (ADR-004), pero **BullMQ nunca se había instalado en ningún lugar del
+  monorepo** (confirmado con grep, cero coincidencias en ningún
+  `package.json`).
+
+Antes de ejecutar ambos spikes, pregunté explícitamente al usuario si
+quería que los corriera (dado que había pedido mantener el panel en
+85%/0%, lo cual entraba en tensión con completar el trabajo que
+justificaría subir `Arquitectura` a 100%) — eligió ejecutar ambos.
+
+**Spike de RLS**
+(`apps/api/test/integration/spikes/row-level-security.spike.integration-spec.ts`,
+nuevo): ejecutado enteramente dentro de una instancia efímera de
+Testcontainers Postgres, sin tocar `schema.prisma` ni ninguna migración
+real — RLS se habilita, se aplica una policy, y se elimina todo dentro del
+mismo test, sobre una tabla real ya migrada (`companies`). Verifica: (1)
+el rol owner/migración sigue viendo todo sin `BYPASSRLS` explícito
+(`FORCE ROW LEVEL SECURITY` deliberadamente omitido); (2) `SET LOCAL`
+(tanto para el rol como para el GUC `app.current_tenant_id`) es
+genuinamente scoped a la transacción bajo el patrón de conexión real de
+este código base (Prisma + `@prisma/adapter-pg`, pool real), sin fuga
+entre transacciones que reutilizan la misma conexión pooled, confirmado
+empíricamente con 5 ciclos repetidos; (3) el propio query builder de
+Prisma (`tx.company.findMany()`), no solo SQL crudo, queda filtrado de
+forma transparente por la policy. **Bug real encontrado y corregido antes
+de dar el spike por bueno, no simulado**: la primera versión de la policy
+(`current_setting('app.current_tenant_id', true)::uuid`) fallaba con un
+error real de cast (`invalid input syntax for type uuid: ""`) en vez de
+denegar en silencio — causa raíz confirmada empíricamente: una vez que un
+GUC personalizado se fijó vía `SET LOCAL` al menos una vez en una
+conexión, Postgres lo revierte a **string vacío**, no NULL, al terminar
+esa transacción — un hallazgo real y no obvio de la documentación de
+Postgres por sí sola. Corregido con `NULLIF(current_setting(...),
+'')::uuid`, re-verificado. Conclusión, documentada en
+`docs/DECISIONS.md` ADR-003 (sección "Amendment") y `docs/MULTITENANCY.md`
+§8.1: sin incompatibilidad técnica bloqueante, pero el modelo
+composite-FK + repositorios scoped ya en producción cubre la misma
+garantía sin el costo operativo real que este spike expuso (plumbing de
+`SET LOCAL` por request, un rol adicional que administrar, el hallazgo del
+string vacío, y que el valor no puede bindearse como parámetro de
+consulta — `SET` no tiene sintaxis de placeholder) — RLS sigue diferido,
+ahora sobre bases verificadas, no solo asumidas.
+
+**Spike de BullMQ**
+(`apps/worker/test/integration/spikes/bullmq.spike.integration-spec.ts`,
+nuevo, con infraestructura de integración nueva para `apps/worker`:
+`jest.integration.config.js`, `test:integration` en `package.json`, mismo
+patrón ya establecido en `apps/api`): `bullmq` y `@testcontainers/redis`
+agregados como devDependencies de `apps/worker` — deliberadamente **no**
+conectados al grafo real de módulos de `WorkerModule`, ya que ningún job
+real (PDF, reporte pesado, webhook, sincronización — MASTER_SPEC §11)
+existe todavía que los necesite. Verificado contra Redis real
+(Testcontainers): una `Queue`/`Worker`/`QueueEvents` real entrega un job
+exactamente una vez con su resultado observable vía
+`job.waitUntilFinished`; un job con fallo transitorio reintenta con
+backoff exponencial y eventualmente tiene éxito; un job con fallo
+permanente agota sus intentos configurados y termina en un estado
+`failed` real y consultable (`queue.getFailed()`), nunca descartado en
+silencio. Conclusión, documentada en `docs/DECISIONS.md` ADR-004 (sección
+"Amendment"): BullMQ queda validado como la herramienta real para
+alcanzar en cuanto exista un job asíncrono real que lo necesite, sin
+reemplazar el mecanismo ya elegido y probado para el outbox
+(claim/lease sobre Postgres, ADR-004 original) — ambos resuelven
+problemas distintos.
+- **Bug de entorno encontrado y corregido** (no de código, mismo patrón
+  ya documentado en sesión 14 para `@scarf/scarf`): `pnpm install` bloqueó
+  con `[ERR_PNPM_IGNORED_BUILDS]` para `msgpackr-extract` (dependencia
+  transitiva real de `bullmq`/`ioredis`, no telemetría) — a diferencia de
+  `@scarf/scarf`, `msgpackr-extract` es una extensión nativa real de
+  rendimiento con fallback JS seguro si no se compila, así que se aprobó
+  explícitamente (`true`) en `pnpm-workspace.yaml`, no rechazado.
+
+**UI**: `apps/erp-web/src/features/workspace/development-progress-panel.tsx`
+— `Arquitectura` actualizado de 85% a 100% (los 5 spikes de Fase 0 y los
+11 entregables de `docs/ROADMAP.md` §4 están ahora genuinamente completos,
+no solo declarados), con el promedio total recalculado automáticamente
+por el propio componente de 91% a 92% (13 fases, solo `Escala` en 0%
+ahora). El test existente (`development-progress-panel.spec.tsx`) no
+necesitó ningún cambio — sus aserciones ya eran dinámicas
+(`overallDevelopmentProgress`, `phase.progress`), no hardcodeadas.
+
+Tests: 1 test de integración nuevo en `apps/api`
+(`row-level-security.spike.integration-spec.ts`, contra Postgres real vía
+Testcontainers) — 49/49 en total (antes 48). 3 tests de integración nuevos
+en `apps/worker` (`bullmq.spike.integration-spec.ts`, contra Redis real vía
+Testcontainers, primera suite de integración de este proceso) — 3/3 en
+total (paquete nuevo de infraestructura de test). Validación completa:
+`pnpm lint`/`typecheck`/`build` limpios en el monorepo, `apps/erp-web`
+verificado con la suite existente sin cambios necesarios.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -3005,11 +3114,21 @@ Postgres → Worker), verificado contra Jaeger real y contra la suite E2E
 completa, con dos hallazgos operativos reales investigados y descartados
 como ajenos al código (un servidor persistente ocupando el puerto del
 arnés E2E; contención de recursos de esta sesión larga en `apps/erp-web`) en
-vez de asumidos como regresiones. Sin trabajo en curso — salvo indicación
-distinta del usuario, el siguiente trabajo real depende de evidencia
-concreta de necesidad de escalar (Fase 12), de otro workstream del §17
-(SLOs/alertas, Data lifecycle, Developer platform), o de una nueva
-prioridad que el usuario indique.
+vez de asumidos como regresiones. **Inmediatamente después, a pedido
+explícito del usuario tras revisar el panel "Avance del desarrollo" del
+workspace, se ejecutaron los dos spikes obligatorios de Fase 0 que nunca
+se habían corrido de verdad** — ver "Fase 0 — los dos spikes obligatorios
+que nunca se habían ejecutado" arriba: un spike real de RLS contra
+Postgres (con un bug real encontrado y corregido durante el propio spike:
+el hallazgo del string vacío en `current_setting` tras un `SET LOCAL`) y
+un spike real de BullMQ contra Redis, ninguno de los dos había sido
+siquiera intentado antes pese a que el cierre formal de Fase 0 (sesión 22)
+los daba por hechos. `Arquitectura` en el panel de avance pasó de 85% a
+100%. Sin trabajo en curso — salvo indicación distinta del usuario, el
+siguiente trabajo real depende de evidencia concreta de necesidad de
+escalar (Fase 12), de otro workstream del §17 (SLOs/alertas, Data
+lifecycle, Developer platform), o de una nueva prioridad que el usuario
+indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

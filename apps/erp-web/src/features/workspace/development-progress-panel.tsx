@@ -9,7 +9,7 @@ interface RoadmapPhase {
 // Temporary, manually maintained snapshot. Keep it aligned with MASTER_SPEC,
 // PROJECT_STATE and WORK_QUEUE until a real delivery-tracking source exists.
 export const developmentRoadmap: readonly RoadmapPhase[] = [
-  { id: "phase-0", name: "Arquitectura", progress: 85 },
+  { id: "phase-0", name: "Arquitectura", progress: 100 },
   { id: "phase-1", name: "Foundation", progress: 100 },
   { id: "phase-2", name: "Master Data", progress: 100 },
   { id: "phase-3", name: "Inventario", progress: 100 },
@@ -147,10 +147,10 @@ export function DevelopmentProgressPanel() {
         <aside className="border-t border-[var(--line)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
-            Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura está al 85%; Foundation,
-            Master Data, Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM,
-            Manufactura y la Plataforma de plugins están cerradas formalmente al 100%; solo Escala
-            permanece en 0%, ya que es explícitamente "solo por evidencia".
+            Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura, Foundation, Master Data,
+            Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM, Manufactura y
+            la Plataforma de plugins están cerradas formalmente al 100%; solo Escala permanece en
+            0%, ya que es explícitamente "solo por evidencia".
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para

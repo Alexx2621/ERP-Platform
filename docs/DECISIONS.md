@@ -351,6 +351,63 @@ Manufacturing/App Registry) depends on it holding.
   context from a verified, server-side mapping (`storefrontCode` →
   tenant) instead, never from client input directly.
 
+**Amendment (2026-09-04) — The Fase 0 RLS spike executed**
+
+`docs/ROADMAP.md` §4 names "RLS con pool, worker y migrations, aunque la
+decisión sea postergarlo" as a mandatory Fase 0 spike — separate from the
+deferral *decision* documented above, which had rested on reasoning alone
+since RLS was first considered (session 22 era) with no spike ever run.
+This amendment records that the spike was executed
+(`apps/api/test/integration/spikes/row-level-security.spike.integration-spec.ts`),
+entirely inside a throwaway Testcontainers Postgres instance — RLS was
+enabled, policed, and dropped on a real, already-migrated table
+(`companies`) without touching `schema.prisma` or any real migration.
+
+Findings, none obvious from documentation alone:
+
+1. `SET LOCAL` — both for a role switch (`SET LOCAL ROLE ...`) and for the
+   custom `app.current_tenant_id` GUC the policy reads — is genuinely
+   transaction-scoped under this codebase's real connection pattern
+   (Prisma + `@prisma/adapter-pg`, a pooled `pg.Pool`). A value set in one
+   `$transaction` call never leaked into a later, unrelated `$transaction`
+   reusing the same pooled connection, confirmed empirically across
+   repeated cycles, not merely assumed from Postgres's own documented
+   semantics.
+2. Prisma's own query builder (`tx.company.findMany()`), not just raw SQL,
+   is transparently filtered by the policy — no special-casing needed on
+   the application side beyond issuing the `SET LOCAL` statements inside
+   the same transaction.
+3. A genuinely new, concrete operational cost: once a custom GUC has been
+   `SET LOCAL` at least once on a given backend connection, Postgres
+   reverts it to an **empty string**, not NULL, once that transaction
+   ends. A naive policy predicate
+   (`current_setting('app.current_tenant_id', true)::uuid`) fails *open to
+   a hard cast error* — not a silent, safe zero-rows deny — the first time
+   a pooled connection that previously served a tenant-scoped request
+   later serves an unscoped one. The policy needs
+   `NULLIF(current_setting(...), '')::uuid` to fail closed correctly. This
+   is exactly the kind of subtle, pool-interaction gotcha ADR-003's
+   original "operational complexity" concern named only in the abstract.
+4. The table owner (the same role migrations run as) transparently
+   bypasses RLS by default without `FORCE ROW LEVEL SECURITY`, confirming
+   the "migrations own the whole table" assumption this codebase already
+   relies on for every other schema operation.
+
+**Conclusion: the deferral stands, now on verified rather than assumed
+grounds.** No blocking technical incompatibility was found — RLS is real,
+safe, and compatible with this codebase's exact connection pattern under
+the tested scenarios. But the composite-FK + scoped-repository model
+already in production provides equivalent tenant isolation with none of
+RLS's operational cost (per-request `SET LOCAL` plumbing, a second role to
+manage, the empty-string gotcha above, and the value can't be bound as a
+query parameter at all — `SET` has no placeholder syntax, so any real
+adoption would need its own careful validation of the tenant id string
+before interpolating it into a `SET LOCAL` statement). RLS remains
+deferred as optional defense-in-depth, to be reconsidered only if a
+concrete, demonstrated need for a second isolation layer appears — not
+because it doesn't work, but because the existing layer already does the
+job this codebase actually needs today.
+
 ---
 
 ## ADR-004 — Event Architecture V1 (Transactional Outbox + In-Process Bus)
@@ -506,6 +563,38 @@ backlog item this ADR always called out as later work. Concretely:
   currently needs it — every other repository still manages its own
   transactions independently, per existing precedent (`docs/ARCHITECTURE.md`
   §6).
+
+**Amendment (2026-09-04) — The Fase 0 BullMQ spike executed**
+
+`docs/ROADMAP.md` §4 names "Outbox claim/recovery con PostgreSQL + BullMQ"
+as a mandatory Fase 0 spike. The outbox's own dispatch mechanism was
+always going to be Postgres-based (point 2 above, "Alternatives
+considered" above), so this spike is not about revisiting that decision —
+it is about validating BullMQ itself as a real, working option for the
+job types this codebase will eventually need (MASTER_SPEC §11: PDF
+generation, heavy report generation, webhook delivery, marketplace sync),
+none of which exist as real features yet. `bullmq` had never been
+installed anywhere in this monorepo before this spike.
+
+The spike
+(`apps/worker/test/integration/spikes/bullmq.spike.integration-spec.ts`)
+runs a real `Queue`/`Worker`/`QueueEvents` triple against a real,
+Testcontainers-provisioned Redis and confirms: a job is delivered exactly
+once under normal operation with its result observable via
+`job.waitUntilFinished`; a transiently-failing job retries with
+exponential backoff and eventually succeeds; and a permanently-failing
+job exhausts its configured attempts and lands in a real, queryable
+`failed` state (`queue.getFailed()`) rather than being silently dropped.
+`bullmq` and `@testcontainers/redis` are devDependencies of `apps/worker`,
+exercised only by this spike — neither is wired into `WorkerModule`'s real
+runtime module graph, since no real job type calls them yet.
+
+**Conclusion: BullMQ is validated and ready to reach for.** The moment any
+of MASTER_SPEC §11's job types becomes a real feature, this spike's
+`Queue`/`Worker`/`QueueEvents` pattern — running inside `apps/worker`,
+alongside the outbox dispatcher it deliberately does not replace — is the
+mechanism to build it with, backed by a real, executed spike rather than
+an unverified name on a list.
 
 ---
 

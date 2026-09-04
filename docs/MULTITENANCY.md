@@ -264,12 +264,35 @@ RLS ofrece defensa en profundidad contra queries sin filtro, pero añade riesgos
 - comportamiento especial de owners/bypass roles;
 - mayor complejidad de debugging y testing con Prisma.
 
-Por ello, V1 empieza con enforcement de aplicación + constraints. Antes de producción se ejecutará un spike con `SET LOCAL` dentro de transacciones, PgBouncer/pool real, jobs y pruebas de fuga. Si se adopta RLS:
+Por ello, V1 empieza con enforcement de aplicación + constraints. ~~Antes de
+producción se ejecutará un spike con `SET LOCAL` dentro de transacciones,
+PgBouncer/pool real, jobs y pruebas de fuga.~~ **Spike ejecutado el
+2026-09-04** (Fase 0, `docs/ROADMAP.md` §4 —
+`apps/api/test/integration/spikes/row-level-security.spike.integration-spec.ts`,
+detalle completo en `docs/DECISIONS.md` ADR-003, sección "Amendment"):
+`SET LOCAL` (tanto para el rol como para el GUC `app.current_tenant_id`)
+resultó genuinamente scoped a la transacción bajo el patrón de conexión
+real de este código base (Prisma + `@prisma/adapter-pg`, pool real de
+`pg.Pool`) — sin fuga entre transacciones que reutilizan la misma conexión
+pooled, confirmado empíricamente con ciclos repetidos, no solo asumido de
+la documentación de Postgres. Hallazgo real y concreto, no obvio de
+antemano: una vez que un GUC personalizado se fijó vía `SET LOCAL` al
+menos una vez en una conexión, Postgres lo revierte a **string vacío**, no
+NULL, al terminar esa transacción — una policy ingenua con
+`current_setting(..., true)::uuid` falla abierta con un error de cast, no
+con un deny silencioso; se necesita `NULLIF(..., '')::uuid` para fallar
+cerrado correctamente. Conclusión: sin incompatibilidad técnica
+bloqueante, pero el modelo composite-FK + repositorios scoped ya en
+producción cubre la misma garantía sin este costo operativo — RLS sigue
+diferido como defensa adicional, ahora sobre bases verificadas, no solo
+asumidas. Si se adopta RLS en el futuro:
 
 - será adicional, nunca el único control;
 - el rol de runtime no será owner ni tendrá `BYPASSRLS`;
 - toda operación tenant-owned ocurrirá dentro de una transacción que fije contexto;
-- las tablas sin policy serán deny-by-default según una allowlist explícita.
+- las tablas sin policy serán deny-by-default según una allowlist explícita;
+- toda policy usará `NULLIF(current_setting(...), '')`, nunca
+  `current_setting(..., true)` a secas, por el hallazgo real de arriba.
 
 ## 9. RBAC con scope
 

@@ -1,14 +1,13 @@
-/** @type {import('jest').Config} */
 module.exports = {
+  displayName: "redis integration",
   rootDir: ".",
   testEnvironment: "node",
   setupFiles: ["<rootDir>/test/jest-env-setup.js"],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
   },
-  testRegex: ".*\\.spec\\.ts$",
-  testPathIgnorePatterns: ["<rootDir>/test/integration/"],
+  testRegex: ".*\\.integration-spec\\.ts$",
   moduleFileExtensions: ["js", "json", "ts"],
-  collectCoverageFrom: ["src/**/*.(t|j)s"],
-  coverageDirectory: "coverage",
+  testTimeout: 120_000,
+  maxWorkers: 1,
 };

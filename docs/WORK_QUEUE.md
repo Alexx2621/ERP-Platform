@@ -26,8 +26,13 @@ como el workstream de Observabilidad/SRE del mismo §17 — paquete nuevo
 de la frontera de proceso del outbox, verificada contra un Jaeger real y
 contra la suite E2E completa, con dos hallazgos operativos reales
 investigados y descartados como ajenos al código en vez de asumidos como
-regresiones — los cinco bloques a pedido explícito del usuario). Modelo
-operativo actualizado: 2026-08-27.
+regresiones; y, a pedido explícito del usuario tras revisar el panel
+"Avance del desarrollo" del workspace, los dos spikes obligatorios de
+Fase 0 (`docs/ROADMAP.md` §4) que nunca se habían ejecutado de verdad —
+RLS y BullMQ — corridos por primera vez contra Postgres/Redis reales,
+cerrando genuinamente Fase 0 (un cierre formal previo, sesión 22, había
+dado ambos por hechos sin haberlos corrido nunca) — los siete bloques a
+pedido explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -72,11 +77,18 @@ propagación de contexto de traza W3C a través de la frontera de proceso
 del outbox, verificado contra Jaeger real (Data lifecycle y Developer
 platform siguen sin iniciar; SLOs/alertas, capacity tests y runbooks/
 backup/PITR/DR drills del propio §17 quedan fuera, condicionados a tráfico
-de producción real que no existe). Sin ítem de mantenimiento restante
-conocido: salvo que el usuario aporte evidencia real de necesidad de
-escalar algo específico (Fase 12), pida otro workstream del §17, o
-indique otra prioridad, no hay un siguiente bloque de trabajo no
-bloqueado identificado en este momento.
+de producción real que no existe). **Inmediatamente después, a pedido
+explícito del usuario tras revisar el panel "Avance del desarrollo" del
+workspace, se ejecutaron los dos spikes obligatorios de Fase 0 que nunca
+se habían corrido de verdad** — ver "Hecho — sesión 36 (Fase 0: spikes de
+RLS y BullMQ, cierre genuino)" abajo: RLS y BullMQ, ninguno probado antes
+pese a que el cierre formal de Fase 0 (sesión 22) los daba por hechos —
+Fase 0 queda ahora genuinamente completa, `Arquitectura` pasó de 85% a
+100% en el panel de avance. Sin ítem de mantenimiento restante conocido:
+salvo que el usuario aporte evidencia real de necesidad de escalar algo
+específico (Fase 12), pida otro workstream del §17, o indique otra
+prioridad, no hay un siguiente bloque de trabajo no bloqueado identificado
+en este momento.
 Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
@@ -231,6 +243,63 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (Fase 0: spikes de RLS y BullMQ, cierre genuino)
+
+A pedido explícito del usuario, tras mostrar el panel "Avance del
+desarrollo" del workspace (`Arquitectura` 85%, `Escala` 0%, 91% total) y
+pedir revisar y terminar lo pendiente. Investigar qué representaba
+concretamente ese 15% reveló que 2 de los 5 spikes obligatorios de Fase 0
+(`docs/ROADMAP.md` §4) nunca se habían ejecutado de verdad — el cierre
+formal de Fase 0 en la sesión 22 los había dado por hechos sin haberlos
+corrido nunca. Antes de ejecutarlos, pregunté explícitamente al usuario
+(dado que había pedido mantener el panel en 85%/0%, en tensión con
+terminar el trabajo que justificaría subir `Arquitectura`) — eligió
+ejecutar ambos.
+
+- **Spike de RLS**
+  (`apps/api/test/integration/spikes/row-level-security.spike.integration-spec.ts`,
+  nuevo): RLS habilitado, policado y eliminado enteramente dentro de una
+  instancia efímera de Testcontainers Postgres, sobre la tabla real
+  `companies`, sin tocar `schema.prisma` ni ninguna migración real.
+  Verifica que el rol owner/migración sigue viendo todo, que `SET LOCAL`
+  (rol y GUC `app.current_tenant_id`) no tiene fuga entre transacciones
+  que reutilizan la misma conexión pooled, y que el propio query builder
+  de Prisma queda filtrado por la policy. **Bug real encontrado y
+  corregido durante el propio spike**: `current_setting(...,
+  true)::uuid` fallaba con un error de cast real
+  (`invalid input syntax for type uuid: ""`) — causa raíz: un GUC
+  personalizado revierte a string vacío, no NULL, tras un `SET LOCAL` en
+  esa misma conexión — corregido con `NULLIF(current_setting(...),
+  '')::uuid`. Conclusión: sin incompatibilidad técnica, la decisión de
+  diferir RLS (ADR-003) queda confirmada sobre bases verificadas, no solo
+  asumidas.
+- **Spike de BullMQ**
+  (`apps/worker/test/integration/spikes/bullmq.spike.integration-spec.ts`,
+  nuevo, con infraestructura de integración nueva para `apps/worker` —
+  `jest.integration.config.js`, `test:integration`, mismo patrón que
+  `apps/api`): `bullmq`/`@testcontainers/redis` como devDependencies,
+  deliberadamente sin conectar a `WorkerModule` real (ningún job real lo
+  necesita todavía). Verificado contra Redis real: entrega exactamente
+  una vez, retry con backoff exponencial hasta éxito, y agotamiento de
+  intentos hacia un estado `failed` real y consultable. Conclusión:
+  BullMQ queda validado como la herramienta correcta para futuros jobs
+  asíncronos (MASTER_SPEC §11), sin reemplazar el mecanismo ya elegido
+  para el outbox (ADR-004).
+- **Bug de entorno encontrado y corregido** (mismo patrón que
+  `@scarf/scarf` en sesión 14, pero decisión opuesta): `msgpackr-extract`
+  (dependencia transitiva real de `bullmq`/`ioredis`, una extensión
+  nativa de rendimiento con fallback JS seguro, no telemetría) se aprobó
+  explícitamente en `pnpm-workspace.yaml`.
+- **UI**: `development-progress-panel.tsx` — `Arquitectura` de 85% a
+  100%, total recalculado automáticamente de 91% a 92%.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Fase 0 — los dos
+  spikes obligatorios que nunca se habían ejecutado" y
+  `docs/DECISIONS.md` ADR-003/ADR-004 (secciones "Amendment").
+- Tests: 1 test de integración nuevo en `apps/api` — 49/49 en total (antes
+  48). 3 tests de integración nuevos en `apps/worker` (primera suite de
+  integración de este proceso) — 3/3. Validación completa:
+  `pnpm lint`/`typecheck`/`build` limpios en el monorepo.
 
 ### Hecho — sesión 36 (OpenTelemetry distributed tracing / Observabilidad)
 

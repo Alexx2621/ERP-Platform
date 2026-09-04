@@ -12,8 +12,18 @@ transferencias con estado explícito, con seguridad de concurrencia real
 verificada contra Postgres real (`docs/DATABASE.md`/`docs/SECURITY.md`
 "Inventory"). Deliberadamente fuera de alcance por falta de aprobación
 explícita (`docs/ROADMAP.md` §7): ubicaciones/bins de bodega,
-lote/serie/vencimiento. Las fases 4-12 siguen como propuesta de roadmap
-sin implementar.**
+lote/serie/vencimiento. Las fases 4-12 se completaron en sesiones
+posteriores — ver `docs/PROJECT_STATE.md` para el estado real y detallado
+de cada una; este encabezado histórico no se ha mantenido fase por fase.
+**Corrección honesta, sesión 36, 2026-09-04**: el cierre formal de Fase 0
+de arriba (sesión 22) fue, en retrospectiva, prematuro en un punto
+concreto — 2 de los 5 spikes obligatorios de §4 (RLS, BullMQ) nunca se
+ejecutaron realmente, solo se documentó la decisión de diferir RLS sin
+spike, y BullMQ nunca se instaló en el código base. Ambos spikes se
+ejecutaron recién ahora, contra infraestructura real — ver §4 "Spikes
+obligatorios" abajo y `docs/DECISIONS.md` ADR-003/ADR-004 (secciones
+"Amendment") para el detalle completo. Ningún hallazgo bloqueante; Fase 0
+queda ahora genuinamente completa, no solo declarada.**
 
 Estrategia: fases con exit criteria, sin fechas artificiales
 
@@ -88,11 +98,26 @@ Convertir la visión en decisiones implementables y reducir riesgos antes del bo
 
 ### Spikes obligatorios
 
-- Prisma + FKs compuestas tenant-safe + transactions.
-- UUIDv7 real en Node/PostgreSQL/Prisma y política de generación.
-- Sesiones/auth y revocación.
-- RLS con pool, worker y migrations, aunque la decisión sea postergarlo.
-- Outbox claim/recovery con PostgreSQL + BullMQ.
+Los 5 spikes están completos y verificados — **los dos últimos, ejecutados
+recién el 2026-09-04** (antes de esa fecha solo la decisión de diferir RLS
+estaba documentada, sin spike real; BullMQ nunca se había instalado en el
+código base). Detalle completo de cada spike en `docs/DECISIONS.md`
+ADR-003/ADR-004 (secciones "Amendment").
+
+- ✓ Prisma + FKs compuestas tenant-safe + transactions.
+- ✓ UUIDv7 real en Node/PostgreSQL/Prisma y política de generación.
+- ✓ Sesiones/auth y revocación.
+- ✓ RLS con pool, worker y migrations, aunque la decisión sea postergarlo —
+  ejecutado contra Postgres real vía Testcontainers
+  (`apps/api/test/integration/spikes/row-level-security.spike.integration-spec.ts`);
+  conclusión: sin incompatibilidad técnica, decisión de diferir RLS
+  confirmada sobre bases verificadas.
+- ✓ Outbox claim/recovery con PostgreSQL + BullMQ — el lado Postgres ya
+  estaba probado extensamente (ADR-004); BullMQ se validó por separado
+  contra Redis real
+  (`apps/worker/test/integration/spikes/bullmq.spike.integration-spec.ts`),
+  confirmando que es la herramienta correcta para futuros jobs asíncronos
+  (MASTER_SPEC §11) sin reemplazar el mecanismo ya elegido para el outbox.
 
 ### Exit criteria
 
