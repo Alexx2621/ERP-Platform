@@ -284,6 +284,45 @@ primer commit, pero seguían sin su propio documento numerado.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
 
+### Hecho — sesión 36 (rediseño de UI: sidebar persistente + paleta clara estilo SAP Fiori)
+
+A pedido explícito del usuario ("rediseñes toda la UI, se ve muy generico
+... busca en internet como esta la ultima versión de sap b1 ... moderno,
+limpio, facil de usar, con colores claros").
+
+- **`styles.css`**: paleta completa nueva (blanco/gris neutro claro,
+  acento `#0070f2` — el azul real de SAP Fiori Horizon, confirmado por
+  búsqueda web) — verificado que TODO `apps/erp-web/src` consume color
+  solo vía variables CSS (grep completo, cero hardcodeos), así que este
+  archivo re-tematiza la app entera.
+- **`shared/navigation/module-nav.ts`** (nuevo): los 15 módulos
+  agrupados por categoría, única fuente de verdad para sidebar y (antes)
+  el muro de botones del workspace.
+- **`ProductShell`**: sidebar izquierdo persistente + drawer mobile,
+  reemplazando el header hero gigante y la ausencia total de navegación
+  entre módulos — cero cambios de props, los 18 callers heredan el
+  rediseño automáticamente.
+- **`WorkspacePage`**: eliminado el muro de 14 botones (redundante con
+  el sidebar), preservando cada string que el E2E ya verifica.
+- **Dos bugs reales encontrados durante la verificación, no por
+  inspección**: (1) el botón "Catálogo" de Comercio colisionaba con el
+  enlace "Catálogo" del sidebar — rompía un test unitario y habría roto
+  2 aserciones E2E reales (Playwright hace matching por subcadena por
+  defecto) — renombrado a "Ver catálogo"; (2) el efecto de bootstrap de
+  sesión (bloque anterior de esta sesión) se disparaba dos veces bajo
+  React 19 StrictMode en desarrollo, consumiendo dos veces un refresh
+  token de un solo uso y borrando la sesión recién establecida —
+  encontrado con un script real de Playwright contra el dev server real,
+  corregido con un `useRef` de guardia.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Rediseño de la UI
+  de apps/erp-web".
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 67/67 tests, `apps/e2e` 20/20 Playwright real (los 19
+  archivos E2E de negocio existentes siguieron pasando intactos contra
+  el shell rediseñado), verificación visual real contra el dev server
+  (desktop y mobile, incluyendo una recarga real de página), y una
+  corrida real de GitHub Actions confirmada verde vía `gh run watch`.
+
 ### Hecho — sesión 36 (persistencia de sesión al recargar + dos bugs reales de tooling encontrados de paso)
 
 A pedido explícito del usuario ("Cuando recargo la página en cualquier

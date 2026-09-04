@@ -3432,6 +3432,129 @@ empujar. **Verificado contra una segunda corrida real de GitHub Actions**
 and build` (el que había fallado) y el propio `session-persistence.spec.ts`
 dentro del job de E2E.
 
+### Rediseño de la UI de `apps/erp-web`: shell con sidebar persistente y paleta clara estilo SAP Fiori (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario ("quiero que rediseñes toda la UI, se ve
+muy generico... busca en internet como esta la ultima versión de sap b1,
+quiero que se vea moderno, limpio, facil de usar, con colores claros").
+Investigado antes de tocar código: `apps/erp-web/src/styles.css` (paleta
+verde/tierra sobre `--paper`/`--canvas` sin sidebar alguno) y
+`ProductShell` (un header simple con un `h1` de tipografía tipo hero,
+`clamp(2rem,5vw,4rem)`, y navegación entre módulos resuelta únicamente
+por un muro de 14 botones en `WorkspacePage`, sin ningún nav persistente
+— para ir de un módulo a otro había que volver primero al workspace).
+Búsqueda web confirmó el lenguaje visual actual de SAP (Fiori Horizon):
+azul primario `#0070F2`, superficies claras/blancas sobre un canvas gris
+neutro, y una barra lateral de navegación agrupada por categoría con
+variantes expandida/colapsada. **Verificado por grep completo de todo
+`apps/erp-web/src` que cero archivos `.tsx` usan un color hardcodeado o
+una clase de paleta por defecto de Tailwind** — cada componente consume
+color exclusivamente vía las variables CSS de `styles.css`, confirmando
+que reescribir un solo archivo re-tematiza la aplicación completa.
+
+- **`styles.css`**: paleta nueva completa — superficies blancas/casi
+  blancas sobre `--canvas: #f4f6f9`, acento `--accent: #0070f2` (el azul
+  real de SAP Fiori Horizon, con `--accent-hover`/`--accent-light`/
+  `--accent-soft` derivados), tokens nuevos `--success`/`--success-soft`
+  y `--shadow-sm`/`--shadow-md`/`--shadow-lg`. Modo oscuro también
+  actualizado a la misma familia de azul (Evening Horizon), aunque el
+  pedido explícito del usuario era la paleta clara como estado por
+  defecto.
+- **`shared/navigation/module-nav.ts`** (nuevo): única fuente de verdad
+  para los 15 módulos de negocio, agrupados igual que el propio menú
+  lateral de SAP B1 (Ventas y clientes, Compras e inventario, Producción
+  y finanzas, Administración) — reemplaza el array de botones que antes
+  vivía embebido y duplicado dentro de `WorkspacePage`.
+- **`ProductShell` reescrito por completo**: sidebar izquierdo persistente
+  y agrupado (desktop, `lg:flex`) + drawer deslizante con overlay
+  (mobile, `<lg`), construidos desde `module-nav.ts`; top bar compacto
+  (título `text-[17px]/[19px]`, no el hero de `clamp(2rem,5vw,4rem)`
+  anterior); resaltado de la ruta activa leído directamente de
+  `window.location.pathname` en el momento del render — sin necesidad de
+  un hook de router propio, ya que cada navegación real a un path
+  distinto ya desmonta/remonta `ProductShell` completo (los 15+ módulos
+  son componentes de tipo distinto en el switch de `App()`), así que leer
+  la URL una vez al montar siempre está actualizado. **Cero cambios a la
+  firma de props** (`eyebrow`/`title`/`description`/`action`/`navigate`,
+  todos ya opcionales salvo `title`) — los 18 archivos que ya consumían
+  `ProductShell` heredan el sidebar/paleta nuevos automáticamente, sin
+  tocarlos.
+- **`WorkspacePage`**: se eliminó el muro de 14 botones de navegación (el
+  `action` prop completo), ahora redundante con el sidebar persistente —
+  preservando cada string/heading que el E2E (`onboarding.spec.ts`) ya
+  verifica (`"Preparado para los módulos ERP"`, `"Contexto activo"`, el
+  tenant name como heading, `DevelopmentProgressPanel` intacto).
+- **`Button`/`Modal`/`BrandMark`**: pulido menor consistente con la nueva
+  paleta — `Button` de `h-11`/`rounded-[10px]`/`font-extrabold` a
+  `h-10`/`rounded-[8px]`/`font-bold` (más compacto, menos "gritado");
+  `Modal`'s sombra hardcodeada en verde oscuro (`rgba(10,20,16,...)`)
+  reemplazada por el token `--shadow-lg`; `BrandMark` recolorada de
+  `--ink` a `--accent` (azul) para un logo con más carácter de marca.
+
+**Dos bugs reales encontrados y corregidos durante la propia
+verificación, no por inspección**:
+
+1. **Colisión de nombre accesible real**: el botón "Catálogo" por cada
+   fila de tienda en `storefronts-panel.tsx` (Comercio → abre el modal
+   "Catálogo publicado") colisionaba con el nuevo enlace persistente
+   "Catálogo" del sidebar — ambos son `role="button"` con el mismo texto.
+   Bajo el matching exacto de `@testing-library/react`'s `getByRole` esto
+   solo rompía un test unitario
+   (`commerce-page.spec.tsx`, reproducido en aislamiento, confirmado que
+   no era un flake de contención) — pero **`page.getByRole()` de
+   Playwright hace matching por subcadena por defecto**, así que también
+   habría roto dos aserciones reales de `commerce.spec.ts` (E2E) en la
+   siguiente corrida, encontradas y corregidas en el mismo pase.
+   Corregido renombrando el botón a "Ver catálogo" (más claro para el
+   usuario real también, ya que "Catálogo" solo, junto a una fila de
+   tienda, era ambiguo incluso para una persona).
+2. **Doble consumo de un refresh token de un solo uso bajo React 19
+   StrictMode**: el efecto de bootstrap de sesión añadido en el bloque
+   anterior de esta misma sesión (persistencia de sesión al recargar) se
+   disparaba dos veces en desarrollo — StrictMode invoca deliberadamente
+   cada efecto dos veces (mount → cleanup simulado → mount de nuevo) para
+   detectar efectos secundarios impuros. La primera invocación
+   consumía el refresh token guardado con éxito y lo rotaba; la segunda,
+   leyendo el mismo token ya consumido (single-use), fallaba con "Session
+   not found" y **borraba la sesión que la primera invocación acababa de
+   establecer**. Encontrado con un script real de Playwright contra el
+   dev server real corriendo (no simulado) — confirmado con los 401
+   reales y el mensaje de error real "Session not found" en la captura.
+   Corregido con un `useRef` que guarda el intento de bootstrap, para que
+   solo la primera invocación del efecto llegue a llamar
+   `apiClient.refresh()`.
+
+**Verificado visualmente contra el dev server real** (script de
+Playwright ad hoc, no comiteado): capturas en desktop (1440px — login,
+workspace, ventas con el sidebar resaltando el módulo activo, roles y
+permisos) y mobile (390px — vista compacta con hamburguesa, drawer
+deslizante con overlay abierto), más una recarga real de página
+confirmando que la sesión persiste (aterriza en "Tus espacios" sin pasar
+por login, exactamente el comportamiento documentado en el bloque
+anterior).
+
+Tests: sin tests nuevos de UI (cambio de shell/tema, no de lógica de
+negocio) — 2 archivos existentes actualizados por el rename de botón
+(`commerce-page.spec.tsx`, `commerce.spec.ts`). Validación completa:
+`pnpm turbo run lint typecheck build` sobre el monorepo (31/31 tareas),
+`apps/erp-web` 20/20 archivos 67/67 tests, `apps/e2e` 20/20 Playwright
+contra infraestructura efímera real (Postgres/Redis/MinIO/api/worker) sin
+ninguna otra modificación de test necesaria — el resto de la suite E2E
+(19 archivos reales que ejercitan cada módulo de negocio) siguió pasando
+intacta contra el shell completamente rediseñado, confirmando que el
+cambio es puramente de presentación/navegación y no alteró ningún
+contrato de comportamiento. Los tres procesos persistentes de desarrollo
+reiniciados y verificados con el build final.
+
+**Alcance deliberadamente fuera de este bloque**: no se tocó el markup
+interno de los ~60 paneles/formularios de cada módulo (tablas, modales,
+tabs específicos de cada feature) — el sidebar y los tokens ya
+re-teman la aplicación completa automáticamente vía las variables CSS
+compartidas, que es donde estaba concentrado el 90% del "look" genérico
+reportado por el usuario. Pulir el detalle visual de paneles individuales
+(densidad de tablas, badges de estado con color semántico consistente,
+etc.) queda como trabajo incremental futuro si el usuario lo pide.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
