@@ -61,6 +61,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [isBootstrapping, setIsBootstrapping] = useState(() => readStoredRefreshToken() !== null);
   const sessionRef = useRef<SessionResponse | null>(null);
   const refreshPromiseRef = useRef<Promise<SessionResponse> | null>(null);
+  // Guards the one-time bootstrap refresh below against firing twice — the
+  // refresh token is single-use, so React 19 StrictMode's deliberate
+  // double-invocation of effects in development (mount -> cleanup ->
+  // mount again) would otherwise send the same token to /auth/refresh
+  // twice: the first call rotates it and succeeds, the second call reuses
+  // the now-already-consumed token and fails, wiping the session that the
+  // first call had just established. A ref (not state) survives both
+  // invocations synchronously, so only the first one proceeds.
+  const bootstrapAttemptedRef = useRef(false);
 
   const replaceSession = useCallback((nextSession: SessionResponse | null) => {
     sessionRef.current = nextSession;
@@ -69,6 +78,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
+    if (bootstrapAttemptedRef.current) {
+      return;
+    }
+    bootstrapAttemptedRef.current = true;
+
     const storedRefreshToken = readStoredRefreshToken();
     if (!storedRefreshToken) {
       return;

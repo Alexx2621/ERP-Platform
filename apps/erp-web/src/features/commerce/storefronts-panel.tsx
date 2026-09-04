@@ -304,7 +304,7 @@ export function StorefrontsPanel({ selection, companyId, products, warehouses, a
                     <div className="flex justify-end gap-2">
                       <Button type="button" variant="secondary" className="h-9 px-3" onClick={() => setDetailStorefront(storefront)}>
                         <ListDashes size={16} weight="bold" aria-hidden="true" />
-                        Catálogo
+                        Ver catálogo
                       </Button>
                       <Button type="button" variant="quiet" className="h-9 px-3" busy={statusBusyId === storefront.id} onClick={() => void toggleStatus(storefront)}>
                         {storefront.status === "ACTIVE" ? (

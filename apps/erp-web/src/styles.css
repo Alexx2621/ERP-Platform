@@ -10,23 +10,31 @@
   font-family: "Manrope Variable", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --paper: #f8f7f3;
-  --canvas: #efeee9;
+  /* Light, enterprise palette inspired by SAP Fiori's "Morning Horizon"
+     theme — a neutral gray-blue canvas, white surfaces, and #0070f2 as
+     the primary accent (SAP Fiori Horizon's own brand blue). */
+  --paper: #ffffff;
+  --canvas: #f4f6f9;
   --field: #ffffff;
-  --field-hover: #f2f1ec;
-  --ink: #17201d;
-  --muted-strong: #59635f;
-  --muted: #7b8581;
-  --line: #dcded8;
-  --line-strong: #c4c8c1;
-  --accent: #167a5b;
-  --accent-hover: #11664b;
-  --accent-light: #63d5ad;
-  --accent-soft: #dcefe7;
-  --danger: #a63c3c;
-  --danger-soft: #f8e7e3;
-  --danger-line: #ecc5be;
-  --overlay: rgb(13 18 16 / 0.65);
+  --field-hover: #eef2f7;
+  --ink: #1b2733;
+  --muted-strong: #47576a;
+  --muted: #7c8a9b;
+  --line: #e3e8ee;
+  --line-strong: #ccd4de;
+  --accent: #0070f2;
+  --accent-hover: #0057d2;
+  --accent-light: #4db1ff;
+  --accent-soft: #e7f1fe;
+  --success: #16794f;
+  --success-soft: #e5f5ee;
+  --danger: #c53434;
+  --danger-soft: #fceeed;
+  --danger-line: #f3c9c5;
+  --overlay: rgb(15 23 32 / 0.5);
+  --shadow-sm: 0 1px 2px rgb(27 39 51 / 0.06);
+  --shadow-md: 0 4px 16px rgb(27 39 51 / 0.08);
+  --shadow-lg: 0 20px 60px rgb(15 23 32 / 0.22);
 }
 
 * {
@@ -67,22 +75,28 @@ a:focus-visible {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #121815;
-    --canvas: #0d1210;
-    --field: #18201c;
-    --field-hover: #202a25;
-    --ink: #e8eee9;
-    --muted-strong: #a9b3ae;
-    --muted: #7f8b85;
-    --line: #28332e;
-    --line-strong: #3a4741;
-    --accent: #2aa578;
-    --accent-hover: #35b888;
-    --accent-light: #65d8ad;
-    --accent-soft: #173d30;
-    --danger: #f09289;
-    --danger-soft: #3b201e;
-    --danger-line: #64332e;
+    --paper: #141b24;
+    --canvas: #0e131a;
+    --field: #1a222c;
+    --field-hover: #212b36;
+    --ink: #e8edf3;
+    --muted-strong: #a7b3c0;
+    --muted: #7c8a9b;
+    --line: #26313d;
+    --line-strong: #3a4756;
+    --accent: #4db1ff;
+    --accent-hover: #6cc0ff;
+    --accent-light: #89d1ff;
+    --accent-soft: #16324d;
+    --success: #4fd39a;
+    --success-soft: #113527;
+    --danger: #f0918c;
+    --danger-soft: #3a1e1c;
+    --danger-line: #5c302c;
+    --overlay: rgb(5 8 12 / 0.65);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-md: 0 4px 16px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);
   }
 }
 

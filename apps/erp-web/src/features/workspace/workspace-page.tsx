@@ -1,28 +1,6 @@
-import {
-  ArrowLeft,
-  Buildings,
-  Calculator,
-  CheckCircle,
-  Coins,
-  Factory,
-  Gear,
-  Globe,
-  LockKey,
-  Package,
-  ShoppingCartSimple,
-  SlidersHorizontal,
-  ShieldCheck,
-  SquaresFour,
-  Storefront,
-  Target,
-  Truck,
-  TShirt,
-  Users,
-  Wallet,
-} from "@phosphor-icons/react";
+import { Buildings, CheckCircle, Factory, LockKey, SquaresFour } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
 import type { AppPath } from "../../shared/navigation/router";
-import { Button } from "../../shared/ui/button";
 import { DevelopmentProgressPanel } from "./development-progress-panel";
 import { ProductShell } from "./product-shell";
 
@@ -47,75 +25,11 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
     <ProductShell
       eyebrow={`Tenant / ${selection.slug}`}
       title={selection.name}
-      description="El contexto empresarial está listo. Los módulos operativos aparecerán cuando sus permisos y contratos HTTP estén disponibles."
+      description="Selecciona un módulo desde el menú lateral para comenzar a trabajar."
       navigate={navigate}
-      action={
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => navigate("/roles")}>
-            <ShieldCheck size={17} weight="bold" aria-hidden="true" />
-            Roles y permisos
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/settings")}>
-            <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
-            Ajustes
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/apps")}>
-            <Storefront size={17} weight="bold" aria-hidden="true" />
-            Apps
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/catalog")}>
-            <TShirt size={17} weight="bold" aria-hidden="true" />
-            Catálogo
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/contacts")}>
-            <Users size={17} weight="bold" aria-hidden="true" />
-            Contactos
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/commercial")}>
-            <Wallet size={17} weight="bold" aria-hidden="true" />
-            Comercial
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/inventory")}>
-            <Package size={17} weight="bold" aria-hidden="true" />
-            Inventario
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/sales")}>
-            <ShoppingCartSimple size={17} weight="bold" aria-hidden="true" />
-            Ventas
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/purchasing")}>
-            <Truck size={17} weight="bold" aria-hidden="true" />
-            Compras
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/pos")}>
-            <Coins size={17} weight="bold" aria-hidden="true" />
-            Punto de venta
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/commerce")}>
-            <Globe size={17} weight="bold" aria-hidden="true" />
-            Comercio
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/accounting")}>
-            <Calculator size={17} weight="bold" aria-hidden="true" />
-            Contabilidad
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/crm")}>
-            <Target size={17} weight="bold" aria-hidden="true" />
-            CRM
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/manufacturing")}>
-            <Gear size={17} weight="bold" aria-hidden="true" />
-            Manufactura
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => navigate("/tenants")}>
-            <ArrowLeft size={17} weight="bold" aria-hidden="true" />
-            Cambiar espacio
-          </Button>
-        </div>
-      }
     >
-      <section className="grid gap-6 pt-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
-        <div className="rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-6 sm:p-8">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
+        <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-sm)] sm:p-8">
           <div className="flex items-start gap-4">
             <span className="grid size-11 shrink-0 place-items-center rounded-[10px] bg-[var(--accent)] text-white">
               <SquaresFour size={22} weight="fill" aria-hidden="true" />
@@ -124,7 +38,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--muted)]">
                 Workspace base
               </p>
-              <h2 className="mt-2 text-[22px] font-extrabold tracking-[-0.04em]">
+              <h2 className="mt-2 text-[20px] font-extrabold tracking-[-0.02em]">
                 Preparado para los módulos ERP
               </h2>
               <p className="mt-3 max-w-[56ch] text-[13px] font-medium leading-6 text-[var(--muted-strong)]">
@@ -157,7 +71,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           </div>
         </div>
 
-        <aside className="rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-6">
+        <aside className="rounded-[14px] border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-sm)]">
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--accent)]">
             Contexto activo
           </p>
@@ -183,6 +97,7 @@ export function WorkspacePage({ selection, navigate }: WorkspacePageProps) {
           </dl>
         </aside>
       </section>
+
       <DevelopmentProgressPanel />
     </ProductShell>
   );

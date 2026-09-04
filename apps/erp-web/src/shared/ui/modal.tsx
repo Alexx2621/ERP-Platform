@@ -56,7 +56,7 @@ export function Modal({
           onOpenChange(false);
         }
       }}
-      className={`m-auto w-[calc(100%-2rem)] ${widthClass} rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[0_24px_80px_rgba(10,20,16,0.24)] backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px]`}
+      className={`m-auto w-[calc(100%-2rem)] ${widthClass} rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[var(--shadow-lg)] backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px]`}
     >
       <div onClick={(event) => event.stopPropagation()}>
         <header className="flex items-start justify-between gap-5 border-b border-[var(--line)] px-5 py-4 sm:px-6">

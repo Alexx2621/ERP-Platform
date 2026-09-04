@@ -150,7 +150,7 @@ describe("CommercePage", () => {
       }),
     );
 
-    await user.click(await screen.findByRole("button", { name: "Catálogo" }));
+    await user.click(await screen.findByRole("button", { name: "Ver catálogo" }));
     const detailModal = await screen.findByRole("dialog", { name: /Catálogo publicado/i });
     await user.selectOptions(within(detailModal).getByLabelText("Producto"), "product-1");
     await user.click(within(detailModal).getByRole("button", { name: "Publicar" }));

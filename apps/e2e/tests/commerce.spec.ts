@@ -98,7 +98,7 @@ test("publishes a real product to a real storefront in the ERP admin, then a rea
   await storefrontDialog.getByRole("button", { name: "Crear" }).click();
   expect((await createStorefrontResponse).status()).toBe(201);
 
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  await page.getByRole("button", { name: "Ver catálogo" }).click();
   const catalogDialog = page.getByRole("dialog", { name: /Catálogo publicado/ });
   await catalogDialog.getByLabel("Producto").selectOption({ label: "Taza en línea (CUP-01)" });
   const publishResponse = page.waitForResponse(
