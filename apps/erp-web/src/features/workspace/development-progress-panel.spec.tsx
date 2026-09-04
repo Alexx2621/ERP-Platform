@@ -11,9 +11,16 @@ describe("DevelopmentProgressPanel", () => {
     render(<DevelopmentProgressPanel />);
 
     expect(screen.getByRole("heading", { name: "Avance del desarrollo" })).toBeInTheDocument();
-    expect(screen.getByText(`${overallDevelopmentProgress}%`)).toBeInTheDocument();
+    // Scoped to the unique labeled progressbar, not raw text — now that
+    // Escala is excluded from the average, overallDevelopmentProgress is
+    // 100, the same string every other fully-closed phase's own label
+    // shows too ("Plataforma de plugins 100%" among them), so a plain
+    // getByText("100%") would resolve to multiple elements.
+    expect(
+      screen.getByRole("progressbar", { name: "Avance total estimado" }),
+    ).toHaveAttribute("aria-valuenow", String(overallDevelopmentProgress));
     expect(screen.getByText("Plataforma de plugins 100%")).toBeInTheDocument();
-    expect(screen.getByText(/Promedio simple de las 13 fases/)).toBeInTheDocument();
+    expect(screen.getByText(/Promedio simple de las 12 fases/)).toBeInTheDocument();
     expect(screen.getByText(/No representa horas, presupuesto ni fecha/)).toBeInTheDocument();
   });
 

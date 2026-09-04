@@ -3225,6 +3225,74 @@ pura (`docs/PRIVACY.md`, `docs/MODULE_TEMPLATE.md`,
 completa: `pnpm lint`/`typecheck`/`build` limpios en el monorepo,
 `apps/api` unitarios verificados sin regresiones.
 
+### Bug real de CI encontrado por el usuario + Escala excluida del promedio (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, que compartió capturas reales de GitHub
+mostrando varias corridas de CI fallando en `develop` después del cierre
+del bug de infraestructura anterior. Investigado con `gh run view
+--log-failed` contra el repo real, no asumido — reveló **dos causas
+reales y distintas**, ninguna relacionada con el bug de `prisma generate`
+ya cerrado:
+
+1. **`apps/e2e/tests/onboarding.spec.ts` tenía hardcodeado
+   `aria-valuenow: "91"`** para la barra de "Avance total estimado" del
+   panel de progreso — un valor que dejó de ser cierto en cuanto la propia
+   sesión bumpeó `Arquitectura` de 85% a 100% durante el bloque de spikes
+   de Fase 0, desplazando el promedio real de 91 a 92. El componente se
+   actualizó correctamente en ese momento; esta aserción de E2E nunca se
+   tocó, rompiendo CI en cada push desde entonces (confirmado: el commit
+   `9f08d5a`, exactamente el de los spikes, es el primero en fallar por
+   esto). Corregido reemplazando el valor exacto hardcodeado por un rango
+   (`>= 80` y `<= 100`) — la lección real es que este número seguiría
+   rompiéndose cada vez que una fase cambiara de verdad, así que un
+   assertion resiliente vale más aquí que uno exacto; la verificación
+   exacta ya la cubre el test unitario dinámico del propio componente.
+2. **`apps/erp-web`'s Vitest no tenía `testTimeout` configurado**
+   (default de 5000ms) — demasiado ajustado para esta suite bajo un
+   runner de GitHub Actions de 2 cores. **Confirmado con `gh run view`
+   contra el commit `74a086a`** (un commit puramente de documentación, sin
+   ningún cambio de código) **que `inventory-page.spec.tsx` ya fallaba
+   exactamente igual antes de cualquier trabajo de esta sesión** —
+   descartando por completo que fuera una regresión introducida ahora, y
+   confirmando que es una característica real y preexistente del entorno
+   de CI (el propio log muestra la fase de "import" del conjunto completo
+   de tests tardando más de 130s bajo ese runner). Corregido con
+   `testTimeout`/`hookTimeout: 20_000` en `vite.config.ts`, un valor
+   generoso pero real (varios tests de este mismo proyecto ya tardan
+   8-13s de forma legítima incluso en local).
+
+Verificado con `gh run watch` contra una corrida real disparada por el
+push del fix — no asumido: los 4 jobs pasaron limpio
+(`postgres-integration` 2m22s, `security` 27s, `quality` 3m47s incluyendo
+"Unit tests" ✓, `e2e` 3m52s incluyendo el escenario de onboarding real).
+
+**Escala excluida del promedio del panel de avance** (a pedido explícito
+del usuario, tras plantearle directamente la tensión: poner Escala en
+100% habría sido una cifra falsa sin ningún trabajo real detrás, dado que
+Fase 12 sigue cerrada formalmente "solo por evidencia" sin ningún tráfico
+de producción que la justifique). En vez de eso, `RoadmapPhase` gana un
+campo `includeInOverall` (default `true`, `false` solo para
+`phase-12`/Escala) — `overallDevelopmentProgress` ahora promedia
+únicamente las 12 fases reales de MASTER_SPEC V1 (todas al 100%), dando
+un total honesto de 100%, mientras Escala se sigue mostrando por separado
+en la lista de fases con su 0% real, no ocultada. El texto "Cómo se
+calcula" se reescribió para explicar esta exclusión explícitamente, no
+solo el número. **Bug real encontrado y corregido durante la propia
+verificación de este cambio, antes de cualquier commit**: con el
+promedio ahora en exactamente 100%, la aserción `screen.getByText(
+"100%")` del test unitario del componente pasó a coincidir con múltiples
+elementos a la vez (la cifra principal Y "Plataforma de plugins 100%" Y
+las 11 fases restantes que también muestran "100%" junto a su nombre) —
+corregido escopando la aserción al `progressbar` único vía su
+`aria-label`, en vez de buscar texto plano ambiguo.
+
+Tests: sin tests nuevos — 2 archivos de test existentes actualizados
+(`development-progress-panel.spec.tsx` con la aserción escopada y el
+texto "12 fases"; `onboarding.spec.ts` con el rango en vez del valor
+exacto). Validación completa: `pnpm lint`/`typecheck` limpios en el
+monorepo, `apps/erp-web` 20/20 archivos, 63/63 tests, y la corrida real
+de CI confirmada verde vía `gh run watch`.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

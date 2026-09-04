@@ -44,8 +44,15 @@ real — PII classification (`docs/PRIVACY.md` nuevo), la convención de
 seeders reentrantes/observables formalizada (`docs/ARCHITECTURE.md`
 §14.4, con un bug real corregido en `StorefrontSystemUserSeeder`), y un
 module template real (`docs/MODULE_TEMPLATE.md`, la condición del propio
-roadmap cumplida 15 veces sobre) — los nueve bloques a pedido explícito
-del usuario). Modelo operativo actualizado: 2026-08-27.
+roadmap cumplida 15 veces sobre); y, a pedido explícito del usuario tras
+compartir capturas reales de GitHub mostrando CI fallando en `develop`,
+dos bugs reales de CI encontrados con `gh run view --log-failed` (una
+aserción de E2E con un valor hardcodeado que dejó de ser cierto, y un
+timeout de Vitest demasiado ajustado para el runner de 2 cores de GitHub
+Actions — confirmado preexistente, no introducido por esta sesión) más
+Escala excluida del promedio del panel de avance (a pedido explícito del
+usuario, en vez de mostrar una cifra falsa) — los once bloques a pedido
+explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -276,6 +283,41 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (bug real de CI + Escala excluida del promedio)
+
+A pedido explícito del usuario, que compartió capturas reales de GitHub
+mostrando CI fallando en `develop`. Investigado con `gh run view
+--log-failed` contra el repo real — dos causas reales, no el bug de
+`prisma generate` ya cerrado:
+
+- **`onboarding.spec.ts`** tenía `aria-valuenow: "91"` hardcodeado para
+  la barra de avance total — dejó de ser cierto en cuanto la propia
+  sesión bumpeó `Arquitectura` a 100% durante los spikes de Fase 0
+  (91→92), rompiendo CI desde ese commit. Corregido con un rango
+  (`>= 80` y `<= 100`) en vez de un valor exacto — la verificación exacta
+  ya la cubre el test unitario dinámico del componente.
+- **`apps/erp-web`'s Vitest sin `testTimeout`** (default 5000ms) — muy
+  ajustado para un runner de 2 cores. Confirmado con `gh run view` contra
+  `74a086a` (commit puramente de documentación) que
+  `inventory-page.spec.tsx` ya fallaba igual antes de cualquier trabajo
+  de esta sesión — descartando una regresión, confirmando un límite real
+  y preexistente del entorno. Corregido con `testTimeout`/`hookTimeout:
+  20_000`.
+- Verificado con `gh run watch` contra una corrida real: los 4 jobs
+  pasaron limpio.
+- **Escala excluida del promedio del panel de avance** (a pedido
+  explícito del usuario, tras plantearle que ponerla en 100% sería una
+  cifra falsa): `overallDevelopmentProgress` ahora promedia solo las 12
+  fases reales de MASTER_SPEC V1, dando 100% honesto; Escala se sigue
+  mostrando aparte con su 0% real. Bug real encontrado durante la propia
+  verificación: con el promedio en 100%, `getByText("100%")` del test del
+  componente colisionaba con múltiples elementos — corregido escopando al
+  `progressbar` único por `aria-label`.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Bug real de CI
+  encontrado por el usuario + Escala excluida del promedio".
+- Validación completa: `pnpm lint`/`typecheck` limpios, `apps/erp-web`
+  20/20 archivos 63/63 tests, CI real verificado verde vía `gh run watch`.
 
 ### Hecho — sesión 36 (Cierre del workstream §17: PII, backfills, module template)
 

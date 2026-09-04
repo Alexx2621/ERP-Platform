@@ -4,6 +4,17 @@ interface RoadmapPhase {
   id: string;
   name: string;
   progress: number;
+  /**
+   * Whether this phase counts toward `overallDevelopmentProgress`. Escala
+   * (Fase 12) is deliberately excluded, not averaged in at 0% — it isn't
+   * "not started", it is formally evaluated and closed "solo por
+   * evidencia" (docs/ROADMAP.md §16, docs/PROJECT_STATE.md "Revisión de
+   * Fase 12"): no read replicas/Kafka/Kubernetes/etc. can be honestly
+   * marked as progress without real production traffic to justify them.
+   * Averaging it in as a 0% would understate the other 12 phases, which
+   * are all genuinely, formally closed. Defaults to true.
+   */
+  includeInOverall?: boolean;
 }
 
 // Temporary, manually maintained snapshot. Keep it aligned with MASTER_SPEC,
@@ -21,12 +32,13 @@ export const developmentRoadmap: readonly RoadmapPhase[] = [
   { id: "phase-9", name: "CRM", progress: 100 },
   { id: "phase-10", name: "Manufactura", progress: 100 },
   { id: "phase-11", name: "Plataforma de plugins", progress: 100 },
-  { id: "phase-12", name: "Escala", progress: 0 },
+  { id: "phase-12", name: "Escala", progress: 0, includeInOverall: false },
 ] as const;
 
+const phasesInOverall = developmentRoadmap.filter((phase) => phase.includeInOverall !== false);
+
 export const overallDevelopmentProgress = Math.round(
-  developmentRoadmap.reduce((total, phase) => total + phase.progress, 0) /
-    developmentRoadmap.length,
+  phasesInOverall.reduce((total, phase) => total + phase.progress, 0) / phasesInOverall.length,
 );
 
 const nextMilestones = [
@@ -147,10 +159,13 @@ export function DevelopmentProgressPanel() {
         <aside className="border-t border-[var(--line)] pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <p className="text-[11px] font-extrabold text-[var(--ink)]">Cómo se calcula</p>
           <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--muted-strong)]">
-            Promedio simple de las 13 fases de MASTER_SPEC. Arquitectura, Foundation, Master Data,
-            Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM, Manufactura y
-            la Plataforma de plugins están cerradas formalmente al 100%; solo Escala permanece en
-            0%, ya que es explícitamente "solo por evidencia".
+            Promedio simple de las 12 fases de MASTER_SPEC V1 — Arquitectura, Foundation, Master
+            Data, Inventario, Ventas y Pagos, Compras, POS, E-commerce, Contabilidad, CRM,
+            Manufactura y la Plataforma de plugins — todas cerradas formalmente al 100%. Escala
+            (Fase 12) se muestra por separado en 0% y queda fuera de este promedio: no está "sin
+            empezar", está evaluada y cerrada formalmente "solo por evidencia" — ninguna iniciativa
+            (read replicas, Kafka, Kubernetes, etc.) tiene tráfico de producción real que la
+            justifique todavía.
           </p>
           <p className="mt-3 text-[10px] font-semibold leading-4 text-[var(--muted)]">
             No representa horas, presupuesto ni fecha de entrega. Es un indicador interno para
