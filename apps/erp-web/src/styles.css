@@ -85,8 +85,17 @@ a:focus-visible {
   outline-offset: 3px;
 }
 
+/* --line-strong (not --accent-soft) on purpose: --accent-soft is derived
+   from the accent color and the OS light/dark scheme only, independent of
+   any custom "Color de fondo" (Apariencia) the user picks — combining it
+   with --ink there produced real, confirmed low-contrast selections (e.g.
+   white text on a near-white accent-soft when a dark custom surface
+   makes --ink white). --line-strong is derived from the same ink/paper
+   pair as --ink itself, so it always sits at a legible mid-contrast
+   point between them, for the default theme and any custom surface
+   color alike. */
 ::selection {
-  background: var(--accent-soft);
+  background: var(--line-strong);
   color: var(--ink);
 }
 
