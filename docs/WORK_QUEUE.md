@@ -8,10 +8,12 @@ abarca arquitectura, backend, frontend, datos, seguridad, pruebas,
 infraestructura, documentación e integración; no existe una división
 permanente por agente. Última actualización técnica: 2026-09-03 (sesión 36:
 Fase 12 — Scale evaluada explícitamente y cerrada formalmente sin
-implementar ninguna iniciativa, por falta de evidencia real; y ADR-001,
+implementar ninguna iniciativa, por falta de evidencia real; ADR-001,
 ADR-002 y ADR-003 ratificados formalmente, cerrando el último ítem de
-mantenimiento pendiente — ambos a pedido explícito del usuario). Modelo
-operativo actualizado: 2026-08-27.
+mantenimiento pendiente; y Command Palette (Ctrl+K) construido como primer
+workstream transversal del `docs/ROADMAP.md` §17 con trabajo real
+entregado — los tres a pedido explícito del usuario). Modelo operativo
+actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -37,11 +39,16 @@ advierte evitar. **ADR-001/002/003 quedaron ratificados formalmente en la
 misma sesión 36** — ver "Hecho — sesión 36 (ADR-001/002/003 ratificados
 formalmente)" abajo — cerrando el último ítem de mantenimiento pendiente
 desde el cierre de Foundation; los 15 ADR de este código base (001-015)
-están todos ratificados, ninguno pendiente. Sin ítem de mantenimiento
-restante conocido: salvo que el usuario aporte evidencia real de
-necesidad de escalar algo específico (Fase 12) o indique otra prioridad,
-no hay un siguiente bloque de trabajo no bloqueado identificado en este
-momento. Alcance deliberadamente fuera de Fase 11 y diferido (no
+están todos ratificados, ninguno pendiente. **El Command Palette (Ctrl+K)
+quedó construido en la misma sesión 36** — ver "Hecho — sesión 36
+(Command Palette / Ctrl+K)" abajo — el primer workstream transversal del
+`docs/ROADMAP.md` §17 con trabajo real entregado (Seguridad,
+Observabilidad/SRE, Data lifecycle y Developer platform siguen sin
+iniciar). Sin ítem de mantenimiento restante conocido: salvo que el
+usuario aporte evidencia real de necesidad de escalar algo específico
+(Fase 12), pida otro workstream del §17, o indique otra prioridad, no hay
+un siguiente bloque de trabajo no bloqueado identificado en este momento.
+Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
 SDK" separado de `@erp/api-client`, rangos SemVer/certificación de
@@ -195,6 +202,68 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (Command Palette / Ctrl+K)
+
+A pedido explícito del usuario ("Continua con la siguiente fase"),
+inmediatamente después de ratificar ADR-001/002/003. Aclarado primero
+(vía pregunta directa) que el roadmap no tiene una Fase 13 — Fase 12 ya
+había quedado cerrada sin evidencia esta misma sesión — el usuario eligió
+avanzar un workstream transversal del `docs/ROADMAP.md` §17 y, dentro de
+ese workstream, específicamente UX/Command Palette, el `Ctrl+K` que
+MASTER_SPEC §72 pide.
+
+- **`apps/erp-web/src/features/command-palette/command-palette.tsx`**
+  (nuevo): montado una sola vez en `App()` (no en `ProductShell`, que no
+  tiene acceso a `selection`/`companyId`), primer listener de teclado
+  global de este frontend. Navegación por alias de palabra clave a los 15+
+  módulos reales (ej. "productos" encuentra "Catálogo") más búsqueda real
+  de Productos/Clientes por nombre, reutilizando `apiClient.listProducts`/
+  `listCustomers` ya existentes (sin backend nuevo — ninguno de los dos
+  soporta búsqueda de texto en el servidor todavía, así que el filtro
+  corre client-side sobre la lista completa, con fetch perezoso: solo se
+  dispara la primera vez que el usuario escribe algo, nunca solo por abrir
+  el buscador). Ver el detalle completo de alcance deliberadamente
+  proporcional (búsqueda de pedidos y un registry de "acciones" quedaron
+  fuera, documentado y no fabricado) en `docs/PROJECT_STATE.md` — "Command
+  Palette (Ctrl+K) — workstream de UX, §17".
+- **Dos bugs reales encontrados y corregidos antes del primer commit**: (1)
+  un límite de 6 resultados se aplicaba incluso sin texto escrito,
+  ocultando 10 de los 16 módulos reales en el caso de uso "menú de
+  navegación completo" — encontrado por el propio test unitario; (2) un
+  bug real de ranking encontrado por el E2E (no por los tests unitarios
+  con mocks): "Punto de venta" declara el alias "ventas" en sus propias
+  keywords, empatando en orden con el módulo "Ventas" mismo y haciendo que
+  `ArrowDown` aterrizara en el módulo equivocado — corregido con un
+  ranking real (coincidencia de label siempre antes que coincidencia de
+  alias).
+- `apps/erp-web/src/app/app.tsx` refactorizado (early-returns → variable
+  `page` + wrapper), mismo comportamiento de rutas exacto, para poder
+  montar `<CommandPalette>` como hermano de cualquier página autenticada
+  con `selection` — remontado vía `key` cuando cambia la compañía activa,
+  y ocultado explícitamente en `/tenants` para no buscar con contexto de
+  compañía obsoleto mientras el usuario cambia de espacio.
+- Tests: 8 tests unitarios nuevos (`command-palette.spec.tsx`) — 63 tests
+  unitarios totales en `apps/erp-web` (antes 55). **E2E real nuevo**
+  (`apps/e2e/tests/command-palette.spec.ts`, Chromium vía Testcontainers):
+  `Ctrl+K` real, confirmación de que todos los módulos aparecen sin texto
+  escrito, alias por palabra clave real, navegación real por click y por
+  teclado completo (incluyendo el escenario exacto que expuso el bug de
+  ranking), botón flotante visible como vía alternativa de apertura, y
+  `Escape` cerrando sin navegar — 19/19 Playwright en total (antes 18, sin
+  regresiones en los 18 preexistentes).
+- Validación completa: `pnpm lint`/`typecheck`/`test`/`build` a nivel de
+  monorepo — 13/13 tareas de lint, 13/13 de typecheck, 9/9 de build,
+  1055/1055 tests de `apps/api` (sin cambios, no tocado), 63/63 de
+  `apps/erp-web`, 23/23 de `@erp/api-client`. `pnpm --filter @erp/e2e
+  test:e2e` completo: 19/19. **Nota operativa, ajena a este bloque**: la
+  corrida de `pnpm test` a nivel de monorepo reveló 2 tests reales
+  fallando por timeout en `apps/storefront/checkout-view.spec.tsx`,
+  reproducible incluso en corrida aislada — confirmado preexistente y sin
+  relación con este trabajo (`git status` sin cambios en `apps/storefront`
+  en toda la sesión, y `apps/storefront` compila limpio con Next.js real).
+  Queda sin diagnosticar ni corregir deliberadamente, para no mezclar un
+  fix ajeno y no solicitado con esta entrega.
 
 ### Hecho — sesión 35 (Plugin Platform — Fase 11, alcance proporcional)
 

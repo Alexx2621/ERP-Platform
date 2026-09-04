@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { TenantSummary } from "@erp/api-client";
 import { useAuth } from "../shared/auth/auth-context";
 import { useRouter } from "../shared/navigation/router";
+import { CommandPalette } from "../features/command-palette/command-palette";
 import { LoginPage } from "../features/auth/login-page";
 import { RegisterPage } from "../features/auth/register-page";
 import { OnboardingPage } from "../features/tenants/onboarding-page";
@@ -80,69 +81,53 @@ export function App() {
     return <OnboardingPage navigate={navigate} onProvisioned={setSelection} />;
   }
 
+  let page: ReactNode = <TenantListPage navigate={navigate} onSelect={setSelection} />;
+
   if (path === "/workspace" && selection) {
-    return <WorkspacePage selection={selection} navigate={navigate} />;
+    page = <WorkspacePage selection={selection} navigate={navigate} />;
+  } else if (path === "/roles" && selection) {
+    page = <RolesPermissionsPage selection={selection} navigate={navigate} />;
+  } else if (path === "/settings" && selection) {
+    page = <SettingsPage selection={selection} navigate={navigate} />;
+  } else if (path === "/apps" && selection) {
+    page = <AppsPage selection={selection} navigate={navigate} />;
+  } else if (path === "/catalog" && selection) {
+    page = <CatalogPage selection={selection} navigate={navigate} />;
+  } else if (path === "/contacts" && selection) {
+    page = <ContactsPage selection={selection} navigate={navigate} />;
+  } else if (path === "/commercial" && selection) {
+    page = <CommercialPage selection={selection} navigate={navigate} />;
+  } else if (path === "/inventory" && selection) {
+    page = <InventoryPage selection={selection} navigate={navigate} />;
+  } else if (path === "/sales" && selection) {
+    page = <SalesPage selection={selection} navigate={navigate} />;
+  } else if (path === "/purchasing" && selection) {
+    page = <PurchasingPage selection={selection} navigate={navigate} />;
+  } else if (path === "/pos" && selection) {
+    page = <PosPage selection={selection} navigate={navigate} />;
+  } else if (path === "/commerce" && selection) {
+    page = <CommercePage selection={selection} navigate={navigate} />;
+  } else if (path === "/accounting" && selection) {
+    page = <AccountingPage selection={selection} navigate={navigate} />;
+  } else if (path === "/crm" && selection) {
+    page = <CrmPage selection={selection} navigate={navigate} />;
+  } else if (path === "/manufacturing" && selection) {
+    page = <ManufacturingPage selection={selection} navigate={navigate} />;
+  } else if (path === "/platform-admin" && session.user.isPlatformAdmin) {
+    page = <PlatformAdminPage navigate={navigate} />;
   }
 
-  if (path === "/roles" && selection) {
-    return <RolesPermissionsPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/settings" && selection) {
-    return <SettingsPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/apps" && selection) {
-    return <AppsPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/catalog" && selection) {
-    return <CatalogPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/contacts" && selection) {
-    return <ContactsPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/commercial" && selection) {
-    return <CommercialPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/inventory" && selection) {
-    return <InventoryPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/sales" && selection) {
-    return <SalesPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/purchasing" && selection) {
-    return <PurchasingPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/pos" && selection) {
-    return <PosPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/commerce" && selection) {
-    return <CommercePage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/accounting" && selection) {
-    return <AccountingPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/crm" && selection) {
-    return <CrmPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/manufacturing" && selection) {
-    return <ManufacturingPage selection={selection} navigate={navigate} />;
-  }
-
-  if (path === "/platform-admin" && session.user.isPlatformAdmin) {
-    return <PlatformAdminPage navigate={navigate} />;
-  }
-
-  return <TenantListPage navigate={navigate} onSelect={setSelection} />;
+  return (
+    <>
+      {page}
+      {selection && path !== "/tenants" ? (
+        <CommandPalette
+          key={selection.companyId ?? selection.tenantId}
+          selection={selection}
+          navigate={navigate}
+          isPlatformAdmin={session.user.isPlatformAdmin}
+        />
+      ) : null}
+    </>
+  );
 }

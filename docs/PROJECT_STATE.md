@@ -2537,6 +2537,99 @@ ratificados, ninguno pendiente. `docs/PROJECT_STATE.md` y
 `docs/WORK_QUEUE.md` actualizados para cerrar la referencia a este ítem de
 mantenimiento en sus respectivas secciones "Pending"/"Próximo".
 
+### Command Palette (Ctrl+K) — workstream de UX, §17 (sesión 36, 2026-09-03)
+
+A pedido explícito del usuario ("Continua con la siguiente fase" → tras
+aclarar que el roadmap no tiene Fase 13, eligió avanzar un workstream
+transversal del `docs/ROADMAP.md` §17 en vez de una fase numerada — y,
+dentro de ese workstream, específicamente UX/Command Palette): primer
+buscador global de la plataforma, exactamente el `Ctrl+K` que MASTER_SPEC
+§72 pide ("buscar: productos, clientes, pedidos, módulos, configuraciones,
+acciones"). `apps/erp-web/src/features/command-palette/command-palette.tsx`
+(nuevo, montado una sola vez en `App()`, no en `ProductShell` — dado que
+`selection`/`navigate` solo viven en el estado local de `App()`), primer
+listener de teclado global de todo este frontend (`window.addEventListener("keydown", ...)`,
+ningún otro componente lo usaba hasta ahora).
+
+**Alcance deliberadamente proporcional, no el §72 completo de una vez**:
+navegación a los 15+ módulos reales (con alias por palabra clave —
+escribir "productos" encuentra "Catálogo", "clientes" encuentra
+"Contactos", etc. — así que el usuario no necesita conocer el nombre
+exacto del módulo) más búsqueda real de Productos/Clientes por nombre
+(reutilizando `apiClient.listProducts`/`listCustomers`, los mismos
+endpoints ya usados por `sales-page.tsx` para sus propios selectores —
+sin backend nuevo, ya que ninguno de los dos endpoint soporta un
+parámetro de búsqueda por texto en el servidor todavía, así que el
+filtro corre client-side sobre la lista completa ya traída, con fetch
+perezoso: solo se dispara la primera vez que el usuario realmente
+escribe algo, nunca solo por abrir el buscador). Deliberadamente **fuera
+de alcance**, documentado aquí y no fabricado: búsqueda de pedidos (Sales
+todavía no tiene un número de orden legible que buscar — el mismo hueco
+ya diferido en ADR-009), y un registry de "acciones" tipo
+"Crear producto" (`docs/PLUGINS.md` §8-§9 ya documenta por qué este
+código base no construye registries de contribución declarativos sin un
+segundo consumidor real que los justifique — aquí tampoco existía uno).
+Selección de un producto/cliente navega al módulo dueño (Catálogo/
+Contactos) — el router de esta app es de rutas planas sin parámetros
+(`apps/erp-web/src/shared/navigation/router.ts`), así que no hay forma
+honesta de "saltar directo" a un registro específico sin construir esa
+capacidad por separado; el subtítulo del resultado lo deja explícito
+("Ir a Catálogo") en vez de fingir un deep-link que no existe.
+
+**Bug real de UX encontrado y corregido antes del primer commit, durante
+la propia escritura de tests**: la primera versión listaba módulos con un
+límite de 6 resultados incluso sin ningún texto escrito, así que abrir el
+buscador y no escribir nada (el caso de uso "menú de navegación completo")
+ocultaba 10 de los 16 módulos reales (Ventas, Compras, POS, Comercio,
+Contabilidad, CRM, Manufactura, Cambiar espacio, Plataforma nunca
+aparecían) — encontrado por el propio test unitario
+("lists every module with no query typed"), corregido para no aplicar el
+límite cuando no hay texto de búsqueda.
+
+**Segundo bug real, esta vez de ranking, encontrado por el E2E real (no
+por los tests unitarios, que usan mocks)**: "Punto de venta" declara
+deliberadamente el alias "ventas" en sus propias palabras clave (un
+cajero real podría buscar "ventas" esperando encontrar el POS) — pero
+esto empataba en orden con el módulo "Ventas" mismo según el orden de
+declaración del array, así que `ArrowDown` desde el resultado ya activo
+aterrizaba en "Punto de venta" en vez de continuar en la lista, un
+comportamiento real y confuso que el E2E (Chromium real, no simulado)
+detectó de inmediato al navegar con teclado de punta a punta. Corregido
+con un ranking real: una coincidencia sobre el propio label del módulo
+(exacta, o que empieza con la búsqueda, o que la contiene) siempre ordena
+antes que una coincidencia que solo viene de un alias en `keywords`,
+sin importar el orden de declaración.
+
+Tests: 8 tests unitarios nuevos (`command-palette.spec.tsx`, Vitest +
+Testing Library, mismo patrón de mocks ya establecido en el resto de
+`apps/erp-web`) — 63 tests unitarios totales en `apps/erp-web` (antes 55).
+**E2E real nuevo** (`apps/e2e/tests/command-palette.spec.ts`, Chromium vía
+Testcontainers): registro y provisioning reales → `Ctrl+K` real abre el
+buscador desde cualquier parte del workspace → confirma que TODOS los
+módulos reales aparecen sin texto escrito (incluyendo los que el primer
+bug ocultaba) → alias por palabra clave real ("productos" → "Catálogo")
+→ navegación real por click → reapertura vía el botón flotante visible
+(no solo el atajo) → navegación real completa por teclado (escribir,
+flecha abajo a "Punto de venta", flecha arriba de vuelta a "Ventas",
+Enter) confirmando el fix de ranking → `Escape` cierra sin navegar — 19/19
+Playwright en total (antes 18, sin ninguna regresión en los 18
+preexistentes, corrida completa verificada).
+
+**Nota operativa (no relacionada con este trabajo, descubierta durante la
+validación de cierre de este bloque)**: `pnpm test` a nivel de monorepo
+reveló 2 tests reales fallando por timeout en `apps/storefront/src/
+components/checkout-view.spec.tsx` (`Test timed out in 5000ms`),
+reproducible incluso en corrida aislada de ese único archivo — no un
+falso positivo por contención de recursos concurrente, el patrón ya
+documentado en sesiones anteriores para otros paquetes. Confirmado que es
+enteramente preexistente y ajeno a este bloque de trabajo: `git status`
+muestra cero cambios en `apps/storefront` en toda esta sesión, y
+`apps/storefront` compila limpio (`pnpm build` real, Next.js real, sin
+errores) — el fallo está acotado a su propia suite de Vitest, no al
+código de producción. Queda sin diagnosticar ni corregir en este bloque
+deliberadamente, para no mezclar un fix no solicitado y ajeno con esta
+entrega; a retomar como su propio ítem si el usuario lo pide.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -2556,10 +2649,16 @@ Ninguno de los tres introduce una decisión nueva: cada uno documenta,
 formaliza y cita evidencia real ya verificada repetidamente a lo largo de
 36 sesiones (patrón composite-FK probado desde RBAC en sesión 5 y
 replicado en los 15 módulos de negocio, `numeric`/Decimal sin excepciones
-en 24+ migraciones, cero fugas cross-tenant encontradas en revisión). Sin
-trabajo en curso — salvo indicación distinta del usuario, el siguiente
-trabajo real depende de evidencia concreta de necesidad de escalar (Fase
-12) o de una nueva prioridad que el usuario indique.
+en 24+ migraciones, cero fugas cross-tenant encontradas en revisión).
+**En la misma sesión 36, a pedido explícito del usuario ("Continua con la
+siguiente fase"), se construyó el Command Palette (Ctrl+K)** — ver
+"Command Palette (Ctrl+K) — workstream de UX, §17" arriba — el primer
+workstream transversal del `docs/ROADMAP.md` §17 con trabajo real
+entregado, elegido explícitamente por el usuario tras aclarar que el
+roadmap no tiene una Fase 13. Sin trabajo en curso — salvo indicación
+distinta del usuario, el siguiente trabajo real depende de evidencia
+concreta de necesidad de escalar (Fase 12), de otro workstream del §17,
+o de una nueva prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 
