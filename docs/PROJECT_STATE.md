@@ -3136,6 +3136,95 @@ borrado jamás.
   monorepo, `apps/worker` unitarios 6/6, `@erp/events` unitarios 33/33,
   `apps/api` integración completa 50/50 contra Postgres real.
 
+### Cierre del workstream §17: PII classification, backfills, module template (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario ("Termina todos los pendientes en una sola
+sesión ya que falta poco por terminar"), inmediatamente después de cerrar
+la retención/purga del outbox. Revisando `docs/ROADMAP.md` §17 completo se
+confirmó que, de sus cinco workstreams, todo lo genuinamente construible
+sin tráfico de producción real (`docs/PROJECT_STATE.md` "Production
+Status": *Not deployed*) ya estaba hecho o era alcanzable en este mismo
+bloque — lo que queda (SLOs/alertas, capacity tests, runbooks/backup/PITR/
+DR drills, previews de PR, export/legal holds) está bloqueado por el mismo
+gate de evidencia que cerró Fase 12, no por falta de tiempo. Ver la
+sección "17. Workstreams transversales" de `docs/ROADMAP.md`, reescrita en
+esta misma sesión con el estado real ítem por ítem, para el detalle
+completo.
+
+**PII classification** (`docs/PRIVACY.md`, nuevo): inventario real de cada
+campo PII en `packages/database/prisma/schema.prisma`, construido leyendo
+el schema completo (2799 líneas) con un grep sistemático de nombres de
+campo típicos de PII (`email`/`phone`/`taxId`/`address`/`displayName`/
+`ipAddress`/`userAgent`/etc.) y verificando cada coincidencia contra su
+modelo real antes de clasificarla — no un catálogo genérico. **Un falso
+positivo real descartado durante la propia construcción**: `QuoteLine.taxId`/
+`SalesOrderLine.taxId` tienen nombre engañoso pero son claves foráneas
+reales hacia `Tax` (una tasa impositiva de la empresa), no un número de
+identificación fiscal de una persona — confirmado leyendo el modelo antes
+de clasificarlo. Clasificación en 5 niveles (Directa/Indirecta/Secreto de
+autenticación/Libre-no-estructurada/No PII) aplicada a los 12 modelos
+reales con campos PII encontrados (`User`, `UserCredential`, `Session`,
+`AuditEntry`, `Notification`, `FileObject`, `Customer`, `Supplier`,
+`Lead`, `Activity`, `CommerceOrder`, más una nota sobre `Payment` — **cero
+campos de tarjeta almacenados, confirmado por lectura directa del
+schema**, consistente con MASTER_SPEC §22/ADR-009). Huecos reales
+documentados sin fabricar nada: sin flujo de acceso/exportación de datos
+personales, sin flujo de anonimización/borrado ("derecho al olvido" —
+requeriría una decisión de producto/legal real que este código base no
+tiene base para inventar, mismo razonamiento que Fase 12), `AuditEntry`
+append-only para siempre por diseño (tensión real y sin resolver entre
+auditabilidad exigida por MASTER_SPEC §10 y minimización de datos, no
+oculta), y campos libres (`Activity.notes`, `originalFilename`,
+`Notification.body`) sin ninguna validación ni escaneo de contenido.
+
+**Auditoría de seeders reentrantes/observables** (`docs/ARCHITECTURE.md`
+§14.4, nueva sección): los 6 seeders reales del código base
+(`AppCatalogSeeder`, `PermissionCatalogSeeder`, `SettingCatalogSeeder`,
+`OwnerRolePermissionSyncSeeder`, `TenantAppEnablementSyncSeeder`,
+`StorefrontSystemUserSeeder`) revisados uno por uno contra dos
+propiedades: reentrante (correr N veces = correr una vez, nunca duplica ni
+falla) y observable (cada corrida real deja una línea de log, sin
+importar si cambió algo). **Bug real encontrado y corregido durante la
+propia auditoría, antes de formalizar la convención**:
+`StorefrontSystemUserSeeder.ensureSeeded()` solo logueaba en la rama de
+creación (`"Storefront system user seeded."`) — su camino de "ya existe"
+(el que corre en *todos* los arranques posteriores al primero) devolvía
+silenciosamente sin ninguna línea de log, a diferencia de los otros 5
+seeders, que siempre confirman su corrida. Un operador mirando los logs
+de arranque no tenía forma de distinguir "el seeder corrió y no había
+nada que hacer" de "el seeder nunca corrió". Corregido con una segunda
+línea de log (`"Storefront system user already seeded."`) en la rama de
+reutilización — verificado con un test nuevo que espía `Logger.prototype.log`
+y confirma ambas ramas (creación vs. reutilización) loguean correctamente.
+
+**Module template** (`docs/MODULE_TEMPLATE.md`, nuevo): la condición
+explícita que el propio `docs/ROADMAP.md` §17 puso ("solo después de
+confirmar el patrón con dos módulos reales") está cumplida 15 veces sobre,
+no fabricada — el documento extrae la forma real y consistente que
+siguieron los 15 módulos de negocio (estructura de carpetas
+domain/application/infrastructure/presentation/test-support, reglas de
+dependencia entre módulos vía `index.ts`, multi-tenancy con FK compuesta
+obligatoria, los dos patrones reales de manejo de Decimal según si el
+módulo calcula o solo persiste, la técnica no interactiva de migraciones
+establecida en la sesión 26, permisos/auditoría, regeneración de
+`@erp/api-client`, los cuatro niveles de testing con la precaución real
+recurrente de `Tabs`/`getByText` en E2E, y el patrón de carga de listas
+compartidas a nivel de página en la UI). Deliberadamente **no** un
+generador de código (`plop`/`hygen`/CLI propio) — nadie lo ha pedido y
+copiar el patrón a mano 15 veces ya demostró ser manejable; construir uno
+ahora habría sido infraestructura sin consumidor real. "Previews" de PR
+(el otro ítem de Developer platform) queda fuera de este bloque,
+documentado como bloqueado por falta de infraestructura de despliegue
+real, mismo gate que Fase 12.
+
+Tests: 1 test nuevo (`storefront-system-user-seeder.spec.ts`, la
+regresión del bug real) — 3/3 en ese archivo (antes 2). Sin cambios de
+conteo en ningún otro paquete — el resto de este bloque es documentación
+pura (`docs/PRIVACY.md`, `docs/MODULE_TEMPLATE.md`,
+`docs/ARCHITECTURE.md` §14.4, `docs/ROADMAP.md` §17 reescrito). Validación
+completa: `pnpm lint`/`typecheck`/`build` limpios en el monorepo,
+`apps/api` unitarios verificados sin regresiones.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -3199,12 +3288,26 @@ nunca había tenido el job de retención/purga que `docs/EVENTS.md` §8.2
 exige desde que se diseñó (ADR-004, sesión 10) — `OutboxPurgeScheduler`
 nuevo, corriendo junto al dispatcher en `apps/worker`, purga
 deliberadamente solo filas `PUBLISHED` más allá de su retención, dejando
-las `FAILED` intactas para revisión de un operador. Sin trabajo en
-curso — salvo indicación distinta del usuario, el siguiente trabajo real
-depende de evidencia concreta de necesidad de escalar (Fase 12), del
-resto de Data lifecycle (PII classification por módulo, no iniciada), de
-otro workstream del §17 (SLOs/alertas, Developer platform), o de una
-nueva prioridad que el usuario indique.
+las `FAILED` intactas para revisión de un operador. **Inmediatamente
+después, a pedido explícito del usuario ("Termina todos los pendientes en
+una sola sesión ya que falta poco por terminar"), se cerró todo lo
+restante de `docs/ROADMAP.md` §17 que era genuinamente construible sin
+tráfico de producción real** — ver "Cierre del workstream §17: PII
+classification, backfills, module template" arriba: `docs/PRIVACY.md`
+nuevo (inventario real de PII por modelo), `docs/ARCHITECTURE.md` §14.4
+nueva (convención de seeders reentrantes/observables, con un bug real
+encontrado y corregido en `StorefrontSystemUserSeeder`), y
+`docs/MODULE_TEMPLATE.md` nuevo (la condición del propio roadmap —
+"confirmar el patrón con dos módulos reales" — cumplida 15 veces sobre).
+`docs/ROADMAP.md` §17 quedó reescrito con el estado real, ítem por ítem,
+de los cinco workstreams. Sin trabajo en curso — lo único que queda de
+todo `docs/ROADMAP.md` §16/§17 está bloqueado por el mismo gate de
+evidencia que cerró Fase 12 (SLOs/alertas, capacity tests, runbooks/
+backup/PITR/DR drills, previews de PR, export/legal holds/derecho al
+olvido) — ninguno tiene un siguiente paso real sin tráfico de producción
+genuino. El siguiente trabajo depende de que el usuario aporte esa
+evidencia, indique otra prioridad, o pida iniciar una fase/ítem
+deliberadamente diferido documentado en "## Pending".
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

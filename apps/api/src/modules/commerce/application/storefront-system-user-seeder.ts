@@ -19,6 +19,13 @@ const SYSTEM_USER_EMAIL = "storefront-system@platform.internal";
  * only `onModuleInit`) so callers never depend on Nest's same-module boot
  * ordering — the same lesson `OwnerRolePermissionSyncSeeder` already
  * applied — and the resolved id is cached after the first real lookup.
+ * Always logs once per boot, whether it created the row or found it
+ * already there — same "log a status line every run, not just on change"
+ * bar the other backfill seeders in this codebase already set
+ * (`TenantAppEnablementSyncSeeder`/`SyncOwnerRolePermissionsUseCase` log
+ * "N of M..." unconditionally); a silent success on the common
+ * already-seeded path would be indistinguishable from the seeder never
+ * running at all.
  */
 @Injectable()
 export class StorefrontSystemUserSeeder implements OnModuleInit {
@@ -39,6 +46,7 @@ export class StorefrontSystemUserSeeder implements OnModuleInit {
     const existing = await this.users.findByEmail(email);
     if (existing) {
       this.systemUserId = existing.id;
+      this.logger.log("Storefront system user already seeded.");
       return existing.id;
     }
     const now = new Date();

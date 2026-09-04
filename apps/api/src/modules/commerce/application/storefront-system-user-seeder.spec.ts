@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { InMemoryUserRepository } from "../../../core/users/test-support/in-memory-user.repository";
 import { StorefrontSystemUserSeeder } from "./storefront-system-user-seeder";
 
@@ -23,5 +24,19 @@ describe("StorefrontSystemUserSeeder", () => {
     const secondSeeder = new StorefrontSystemUserSeeder(users);
     const resolved = await secondSeeder.ensureSeeded();
     expect(resolved).toBe(id);
+  });
+
+  it("logs a status line on every real boot, whether it creates the user or finds it already there", async () => {
+    const logSpy = jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
+    const users = new InMemoryUserRepository();
+
+    await new StorefrontSystemUserSeeder(users).ensureSeeded();
+    expect(logSpy).toHaveBeenCalledWith("Storefront system user seeded.");
+
+    logSpy.mockClear();
+    await new StorefrontSystemUserSeeder(users).ensureSeeded();
+    expect(logSpy).toHaveBeenCalledWith("Storefront system user already seeded.");
+
+    logSpy.mockRestore();
   });
 });

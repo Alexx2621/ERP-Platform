@@ -446,37 +446,81 @@ No es una migración única a “microservices”; cada extracción debe tener o
 
 ## 17. Workstreams transversales
 
-### Seguridad
+**Estado real, sesión 36 (2026-09-04)**: de los cinco workstreams, todo lo
+que era genuinamente construible sin tráfico de producción real está
+hecho. Lo que queda — SLOs/alertas, capacity tests, runbooks/backup/PITR/
+DR drills, "previews" de PR, y retention/archive/export/legal holds más
+allá del outbox — está bloqueado por el mismo gate de evidencia que cerró
+formalmente la Fase 12 (`docs/PROJECT_STATE.md` "Production Status": *Not
+deployed*): fabricar una SLO, una alerta o un runbook sin tráfico real que
+midan sería inventar números sin significado, exactamente lo que
+MASTER_SPEC §90 prohíbe para cualquier otra simulación de este código
+base. Cada ítem queda marcado abajo con su estado real, no aspiracional.
 
-- Threat model por fase.
-- Dependency/container scans, secret detection y patch cadence.
-- MFA/SSO/API keys/service accounts según roadmap y riesgo.
-- Access reviews, support access JIT y incident response antes de enterprise.
+### Seguridad — ✓ avanzado (sesión 36)
 
-### Observabilidad y SRE
+- Threat model por fase — ✓ ya existente por módulo en `docs/SECURITY.md`
+  desde Foundation, mantenido en cada fase.
+- Dependency/container scans, secret detection y patch cadence — ✓ job
+  real de `pnpm audit` en CI, `dependabot.yml`, Dependabot security
+  updates habilitados contra el repo real de GitHub (sesión 36). Sin
+  container scans todavía — cero `Dockerfile` en el repo, nada real que
+  escanear.
+- MFA/SSO/API keys/service accounts según roadmap y riesgo — sin iniciar,
+  MASTER_SPEC §8 los marca "eventual", no requisito de Foundation.
+- Access reviews, support access JIT y incident response antes de
+  enterprise — sin iniciar, condicionado explícitamente a un tramo
+  "enterprise" que no existe todavía.
 
-- SLOs por capability y alertas accionables.
-- Tracing API/worker/integrations.
-- Capacity tests antes de cada lanzamiento mayor.
-- Runbooks, backup/PITR y disaster-recovery drills.
+### Observabilidad y SRE — parcialmente avanzado (sesión 36)
 
-### UX y Design System
+- SLOs por capability y alertas accionables — **bloqueado**: necesita
+  tráfico real para definir umbrales con sentido.
+- Tracing API/worker/integrations — ✓ hecho (sesión 36): `@erp/observability`,
+  propagación W3C real a través del outbox, verificado contra Jaeger real.
+- Capacity tests antes de cada lanzamiento mayor — **bloqueado**: sin
+  producción desplegada, no hay carga real contra la cual dimensionar.
+- Runbooks, backup/PITR y disaster-recovery drills — **bloqueado**: un
+  runbook o un drill de recuperación sin infraestructura de producción
+  real que operar sería un documento ficticio, no una capacidad real.
 
-- Tokens y componentes accesibles desde Foundation.
-- Server-state, form-state y UI-state separados.
-- DataGrid, command palette y dashboards cuando existan casos, no como bloqueo del Core.
+### UX y Design System — ✓ avanzado (sesión 36)
 
-### Data lifecycle
+- Tokens y componentes accesibles desde Foundation — ✓ Design System
+  propio desde Foundation (`shared/ui`).
+- Server-state, form-state y UI-state separados — ✓ ya el patrón
+  establecido en todo `apps/erp-web` (TanStack-style server state vía el
+  SDK, estado de formulario local, sin estado global indiscriminado).
+- DataGrid, command palette y dashboards cuando existan casos — Command
+  Palette (Ctrl+K) ✓ hecho (sesión 36); DataGrid/dashboards siguen sin
+  caso real que los justifique, explícitamente "no como bloqueo del Core".
 
-- Retention, archive, export, privacy y legal holds.
-- PII classification por module.
-- Migrations/backfills reentrantes y observables.
+### Data lifecycle — avanzado (sesión 36)
 
-### Developer platform
+- Retention, archive, export, privacy y legal holds — **parcial**:
+  retención/purga real del outbox ✓ hecho (`OutboxPurgeScheduler`, sesión
+  36); export/legal holds/derecho al olvido siguen **bloqueados** — sin
+  requisito legal/regulatorio real que este código base tenga base para
+  inventar (mismo razonamiento que Fase 12), documentado en detalle en
+  `docs/PRIVACY.md` §4 "Huecos reales".
+- PII classification por module — ✓ hecho (sesión 36): `docs/PRIVACY.md`,
+  inventario real de cada campo PII en el schema real.
+- Migrations/backfills reentrantes y observables — ✓ hecho (sesión 36):
+  convención formalizada en `docs/ARCHITECTURE.md` §14.4 a partir de los 6
+  seeders reales ya existentes, con un bug real encontrado y corregido
+  (`StorefrontSystemUserSeeder` no logueaba nada en su camino silencioso).
 
-- SDK TypeScript desde OpenAPI cuando el contrato se estabilice.
-- Test fixtures, local tooling y previews.
-- Module templates solo después de confirmar el patrón con dos módulos reales.
+### Developer platform — ✓ avanzado (sesión 36)
+
+- SDK TypeScript desde OpenAPI cuando el contrato se estabilice — ✓ hecho
+  desde la sesión 21 (`@erp/api-client`, generado desde el spec real).
+- Test fixtures, local tooling y previews — fixtures/tooling local ✓ ya
+  existentes (test-support en cada módulo, Docker Compose real); previews
+  de PR **bloqueadas** — necesitan infraestructura de despliegue real que
+  este código base no tiene.
+- Module templates solo después de confirmar el patrón con dos módulos
+  reales — ✓ hecho (sesión 36): `docs/MODULE_TEMPLATE.md`, la condición
+  del propio roadmap cumplida 15 veces sobre, no solo dos.
 
 ## 18. Backlog explícitamente diferido
 

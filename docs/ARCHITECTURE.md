@@ -432,6 +432,49 @@ La ubicación exacta puede simplificarse durante bootstrap. Lo obligatorio son l
 - Lint, typecheck, tests, build, `git status` y diff inspeccionados.
 - Security, tenant isolation, performance y observability revisados.
 
+### 14.4 Seeders de catálogo y backfills reentrantes y observables
+
+Formalizado en sesión 36 (2026-09-04, `docs/ROADMAP.md` §17 "Data
+lifecycle") a partir del patrón ya probado, de forma independiente, en 6
+seeders reales de este código base — no un diseño nuevo, una convención
+extraída de código que ya funcionaba así. Todo seeder de catálogo
+code-owned (`AppCatalogSeeder`, `PermissionCatalogSeeder`,
+`SettingCatalogSeeder`) o backfill retroactivo
+(`OwnerRolePermissionSyncSeeder`, `TenantAppEnablementSyncSeeder`,
+`StorefrontSystemUserSeeder`) debe cumplir ambas propiedades:
+
+1. **Reentrante**: correr el seeder N veces produce el mismo resultado
+   final que correrlo una vez — nunca duplica filas, nunca falla en el
+   segundo intento, nunca depende de que sea "la primera vez". Los
+   catálogos usan `upsert` (nunca borra claves existentes); los backfills
+   verifican el estado real antes de escribir y solo tocan lo que
+   genuinamente falta.
+2. **Observable**: cada corrida real (en cada arranque del proceso) deja
+   una línea de log real y explícita, sin importar si cambió algo o no —
+   nunca un éxito silencioso. Un operador mirando los logs de arranque
+   debe poder confirmar que el seeder corrió, no solo inferirlo por
+   ausencia de errores. El formato ya establecido es "`N of M ...`" para
+   backfills sobre una colección (`TenantAppEnablementSyncSeeder`:
+   `"Tenant app enablement sync: N of M active tenant(s) had new apps
+   enabled."`) o una línea de estado fija para seeders de un solo recurso
+   (`StorefrontSystemUserSeeder`: `"... seeded."` la primera vez, `"...
+   already seeded."` en cada corrida posterior — un hueco real de esta
+   última categoría, encontrado y corregido en la misma sesión que
+   formalizó esta convención: antes solo logueaba en la rama de creación,
+   dejando cada arranque posterior completamente silencioso).
+3. **Sin depender del orden de `onModuleInit` entre providers del mismo
+   módulo** cuando un seeder depende de que otro ya haya corrido —
+   `docs/PROJECT_STATE.md` "Corregido durante la implementación de RBAC"
+   documenta el bug real de ciclo de módulos que motivó esta regla: un
+   backfill que necesita el catálogo ya sembrado expone un método público
+   (`seed()`/`ensureSeeded()`, no solo `onModuleInit`) y lo espera
+   explícitamente, en vez de asumir qué provider del mismo módulo Nest
+   instancia primero.
+
+No existe todavía una verificación de CI que falle si un seeder nuevo
+incumple alguna de las tres reglas — el mismo tipo de deuda técnica ya
+aceptada para las architecture fitness functions de §16.
+
 ## 15. Criterios para extraer un microservicio
 
 No se extrae un módulo solo porque exista como bounded context. Deben coincidir varias señales:

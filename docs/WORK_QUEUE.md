@@ -36,9 +36,16 @@ del usuario ("Continúa con Data lifecycle"), el primer bloque real de ese
 workstream — el outbox nunca había tenido el job de retención/purga que
 `docs/EVENTS.md` §8.2 exige desde su diseño (ADR-004, sesión 10);
 `OutboxPurgeScheduler` nuevo purga filas `PUBLISHED` pasada su retención,
-dejando las `FAILED` intactas para revisión de un operador — los ocho
-bloques a pedido explícito del usuario). Modelo operativo actualizado:
-2026-08-27.
+dejando las `FAILED` intactas para revisión de un operador; y, a pedido
+explícito del usuario ("Termina todos los pendientes en una sola sesión ya
+que falta poco por terminar"), el cierre de todo lo restante de
+`docs/ROADMAP.md` §17 genuinamente construible sin tráfico de producción
+real — PII classification (`docs/PRIVACY.md` nuevo), la convención de
+seeders reentrantes/observables formalizada (`docs/ARCHITECTURE.md`
+§14.4, con un bug real corregido en `StorefrontSystemUserSeeder`), y un
+module template real (`docs/MODULE_TEMPLATE.md`, la condición del propio
+roadmap cumplida 15 veces sobre) — los nueve bloques a pedido explícito
+del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -96,14 +103,25 @@ de ese workstream** — ver "Hecho — sesión 36 (Data lifecycle: retención/
 purga real del outbox)" abajo: el outbox nunca había tenido el job de
 retención/purga que `docs/EVENTS.md` §8.2 exige desde su diseño (ADR-004,
 sesión 10) — `OutboxPurgeScheduler` nuevo purga filas `PUBLISHED` pasada
-su retención, dejando las `FAILED` intactas para revisión de un operador
-(PII classification por módulo y una auditoría formal del patrón de
-backfills reentrantes/observables, los otros dos ítems de Data lifecycle,
-siguen sin iniciar). Sin ítem de mantenimiento restante conocido: salvo
-que el usuario aporte evidencia real de necesidad de escalar algo
-específico (Fase 12), pida otro workstream/ítem del §17, o indique otra
-prioridad, no hay un siguiente bloque de trabajo no bloqueado identificado
-en este momento.
+su retención, dejando las `FAILED` intactas para revisión de un operador.
+**Inmediatamente después, a pedido explícito del usuario ("Termina todos
+los pendientes en una sola sesión ya que falta poco por terminar"), se
+cerró todo lo restante de `docs/ROADMAP.md` §17 genuinamente construible
+sin tráfico de producción real** — ver "Hecho — sesión 36 (Cierre del
+workstream §17)" abajo: PII classification (`docs/PRIVACY.md` nuevo), la
+convención de seeders reentrantes/observables formalizada
+(`docs/ARCHITECTURE.md` §14.4, con un bug real corregido en
+`StorefrontSystemUserSeeder`), y un module template real
+(`docs/MODULE_TEMPLATE.md`). `docs/ROADMAP.md` §17 quedó reescrito con el
+estado real, ítem por ítem. **Sin ítem de mantenimiento restante
+conocido, y sin ningún ítem restante de `docs/ROADMAP.md` §16/§17
+genuinamente construible hoy**: lo único que queda (SLOs/alertas, capacity
+tests, runbooks/backup/PITR/DR drills, previews de PR, export/legal
+holds) está bloqueado por el mismo gate de evidencia que cerró Fase 12 —
+ninguno tiene un siguiente paso real sin tráfico de producción genuino.
+El siguiente trabajo depende de que el usuario aporte esa evidencia,
+indique otra prioridad, o pida iniciar algo deliberadamente diferido
+documentado en "## Pending" más abajo.
 Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
@@ -258,6 +276,57 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (Cierre del workstream §17: PII, backfills, module template)
+
+A pedido explícito del usuario ("Termina todos los pendientes en una sola
+sesión ya que falta poco por terminar"), inmediatamente después de cerrar
+la retención/purga del outbox. Revisando `docs/ROADMAP.md` §17 completo,
+todo lo genuinamente construible sin tráfico de producción real quedó
+cerrado en este mismo bloque; lo que no, quedó marcado explícitamente
+como bloqueado por el mismo gate de evidencia de Fase 12, no simulado.
+
+- **`docs/PRIVACY.md`** (nuevo): inventario real de PII por modelo,
+  construido leyendo el schema completo (2799 líneas) y verificando cada
+  candidato antes de clasificarlo — un falso positivo real descartado
+  (`QuoteLine.taxId`/`SalesOrderLine.taxId` son FK hacia `Tax`, no un
+  identificador fiscal personal). Clasificación en 5 niveles aplicada a
+  los 12 modelos reales con PII encontrados. Confirmado por lectura
+  directa: `Payment` no almacena ningún dato de tarjeta. Huecos reales
+  documentados sin fabricar nada: sin flujo de acceso/exportación de
+  datos personales, sin "derecho al olvido" (bloqueado, mismo
+  razonamiento que Fase 12), `AuditEntry` append-only para siempre por
+  diseño (tensión real y sin resolver, no oculta).
+- **`docs/ARCHITECTURE.md` §14.4** (nueva): convención de seeders
+  reentrantes/observables, formalizada a partir de los 6 seeders reales
+  ya existentes (no un diseño nuevo). **Bug real encontrado y corregido
+  durante la propia auditoría**: `StorefrontSystemUserSeeder` solo
+  logueaba en su rama de creación — cada arranque posterior (el camino
+  de "ya existe") era completamente silencioso, a diferencia de los otros
+  5 seeders. Corregido con una segunda línea de log en la rama de
+  reutilización, verificado con un test nuevo que espía
+  `Logger.prototype.log` y confirma ambas ramas.
+- **`docs/MODULE_TEMPLATE.md`** (nuevo): la condición del propio roadmap
+  ("confirmar el patrón con dos módulos reales") cumplida 15 veces sobre.
+  Extrae la forma real y consistente de los 15 módulos de negocio —
+  estructura de carpetas, reglas de dependencia, multi-tenancy con FK
+  compuesta, los dos patrones reales de Decimal, la técnica de
+  migraciones de la sesión 26, permisos/auditoría, regeneración del SDK,
+  los cuatro niveles de testing con la precaución real de `Tabs`/
+  `getByText` en E2E. Deliberadamente **no** un generador de código —
+  nadie lo ha pedido y copiar el patrón a mano 15 veces ya demostró ser
+  manejable.
+- `docs/ROADMAP.md` §17 reescrito con el estado real, ítem por ítem, de
+  los cinco workstreams — Seguridad y UX quedan "✓ avanzado", Data
+  lifecycle y Developer platform "avanzado" con lo que queda bloqueado
+  marcado explícitamente, Observabilidad/SRE "parcialmente avanzado"
+  (tracing hecho, el resto bloqueado).
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Cierre del
+  workstream §17: PII classification, backfills, module template".
+- Tests: 1 test nuevo (la regresión del bug real) — 3/3 en
+  `storefront-system-user-seeder.spec.ts` (antes 2). Sin cambios de
+  conteo en el resto — bloque mayormente documental. Validación completa:
+  `pnpm lint`/`typecheck`/`build` limpios en el monorepo.
 
 ### Hecho — sesión 36 (Data lifecycle: retención/purga real del outbox)
 
