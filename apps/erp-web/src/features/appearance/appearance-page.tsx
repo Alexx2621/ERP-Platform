@@ -28,18 +28,21 @@ const ACCENT_PRESETS: { label: string; hex: string }[] = [
   { label: "Rosa", hex: "#db2777" },
 ];
 
-// A separate, deliberately dark-leaning preset list for the navigation
-// surface — customizing it is meant for the common "dark sidebar over an
-// otherwise light app" pattern, kept fully independent from the accent
-// color so picking a bold accent never accidentally breaks contrast on
-// the nav chrome (the real bug this whole picker exists to prevent).
-const NAV_BACKGROUND_PRESETS: { label: string; hex: string }[] = [
+// A base-color preset list for the whole interface — spanning both dark
+// and light options, since the base color's own luminance decides ink/
+// muted/line automatically (buildSurfacePalette), so either direction
+// works. Kept fully independent from the accent color so picking a bold
+// accent never accidentally breaks contrast on the rest of the UI (the
+// real bug this whole picker exists to prevent).
+const SURFACE_COLOR_PRESETS: { label: string; hex: string }[] = [
   { label: "Pizarra oscura", hex: "#0f172a" },
   { label: "Carbón", hex: "#18181b" },
   { label: "Púrpura oscuro", hex: "#241b3d" },
   { label: "Verde bosque", hex: "#0f291f" },
   { label: "Vino", hex: "#2c1414" },
   { label: "Blanco", hex: "#ffffff" },
+  { label: "Gris claro", hex: "#f4f6f9" },
+  { label: "Crema", hex: "#faf6ef" },
 ];
 
 const LAYOUT_OPTIONS: {
@@ -197,10 +200,10 @@ export function AppearancePage({ selection, navigate }: AppearancePageProps) {
   const {
     accentColor,
     navigationLayout,
-    navBackground,
+    surfaceColor,
     setAccentColor,
     setNavigationLayout,
-    setNavBackground,
+    setSurfaceColor,
     saveError,
     isReady,
   } = useAppearance();
@@ -275,9 +278,9 @@ export function AppearancePage({ selection, navigate }: AppearancePageProps) {
         <section className="rounded-[14px] border border-[var(--line)] bg-[var(--paper)] p-6 shadow-[var(--shadow-sm)]">
           <h2 className="text-[15px] font-extrabold tracking-[-0.01em]">Colores de interfaz</h2>
           <p className="mt-1.5 text-[12.5px] font-medium leading-5 text-[var(--muted-strong)]">
-            El color principal se usa en acciones y selección. El fondo de navegación es
-            independiente, para que puedas oscurecer el menú sin afectar el contraste del resto de
-            la plataforma.
+            El color principal se usa en botones, enlaces y resaltados. El color de fondo es
+            independiente y se aplica a toda la interfaz — página, tarjetas, encabezados y menú de
+            navegación — calculando automáticamente un texto legible sobre él.
           </p>
 
           <div className="mt-5 grid gap-6 lg:grid-cols-2">
@@ -290,14 +293,14 @@ export function AppearancePage({ selection, navigate }: AppearancePageProps) {
               onChange={setAccentColor}
             />
             <ColorPickerField
-              idPrefix="nav-bg"
-              label="Fondo de navegación"
-              helpText="Color de fondo del menú de módulos, independiente del color principal."
-              value={navBackground ?? "#ffffff"}
-              presets={NAV_BACKGROUND_PRESETS}
-              onChange={setNavBackground}
-              onReset={() => setNavBackground(null)}
-              isCustomized={navBackground !== null}
+              idPrefix="surface"
+              label="Color de fondo"
+              helpText="Se aplica a toda la interfaz: página, tarjetas, encabezados y menú de navegación."
+              value={surfaceColor ?? "#ffffff"}
+              presets={SURFACE_COLOR_PRESETS}
+              onChange={setSurfaceColor}
+              onReset={() => setSurfaceColor(null)}
+              isCustomized={surfaceColor !== null}
             />
           </div>
 

@@ -1,6 +1,6 @@
 import {
   buildAccentPalette,
-  buildNavPalette,
+  buildSurfacePalette,
   darken,
   getContrastText,
   isValidHexColor,
@@ -90,20 +90,37 @@ describe("color-utils", () => {
     });
   });
 
-  describe("buildNavPalette", () => {
-    it("derives readable ink/muted/line/hover tones for a dark nav background", () => {
-      const palette = buildNavPalette("#0f172a");
-      expect(palette.navBg).toBe("#0f172a");
-      expect(palette.navInk).toBe("#ffffff");
-      expect(palette.navMuted).not.toBe(palette.navInk);
-      expect(palette.navMuted).not.toBe(palette.navBg);
-      expect(palette.navLine).not.toBe(palette.navBg);
-      expect(palette.navHover).not.toBe(palette.navBg);
+  describe("buildSurfacePalette", () => {
+    it("derives a full, readable interface palette from a dark base color", () => {
+      const palette = buildSurfacePalette("#0f172a");
+      expect(palette.paper).toBe("#0f172a");
+      expect(palette.ink).toBe("#ffffff");
+      expect(palette.navBg).toBe(palette.paper);
+      expect(palette.navInk).toBe(palette.ink);
+      expect(palette.mutedStrong).not.toBe(palette.ink);
+      expect(palette.muted).not.toBe(palette.mutedStrong);
+      expect(palette.line).not.toBe(palette.paper);
+      expect(palette.field).not.toBe(palette.paper);
     });
 
-    it("derives a dark ink for a light nav background", () => {
-      const palette = buildNavPalette("#f5f6f8");
+    it("derives a dark ink for a light base color", () => {
+      const palette = buildSurfacePalette("#f5f6f8");
+      expect(palette.ink).toBe("#101820");
       expect(palette.navInk).toBe("#101820");
+    });
+
+    it("keeps canvas darker than paper regardless of the base color's own lightness — cards must still read as raised", () => {
+      const darkBase = buildSurfacePalette("#0f172a");
+      const lightBase = buildSurfacePalette("#f5f6f8");
+      const relativeLuminance = (hex: string) => {
+        const [r, g, b] = hex
+          .slice(1)
+          .match(/.{2}/g)!
+          .map((channel) => Number.parseInt(channel, 16) / 255);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      expect(relativeLuminance(darkBase.canvas)).toBeLessThan(relativeLuminance(darkBase.paper));
+      expect(relativeLuminance(lightBase.canvas)).toBeLessThan(relativeLuminance(lightBase.paper));
     });
   });
 });

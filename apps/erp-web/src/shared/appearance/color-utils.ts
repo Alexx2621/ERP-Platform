@@ -92,7 +92,16 @@ export function buildAccentPalette(hex: string, scheme: ColorScheme = "light"): 
   };
 }
 
-export interface NavPalette {
+export interface SurfacePalette {
+  canvas: string;
+  paper: string;
+  field: string;
+  fieldHover: string;
+  ink: string;
+  mutedStrong: string;
+  muted: string;
+  line: string;
+  lineStrong: string;
   navBg: string;
   navInk: string;
   navMuted: string;
@@ -101,19 +110,43 @@ export interface NavPalette {
 }
 
 /**
- * Derives readable text/border/hover tones for an arbitrary, user-chosen
- * navigation (sidebar/navbar) background — independent of the accent
- * color and independent of light/dark mode, since the whole point of this
- * picker is to let a user run e.g. a dark sidebar on an otherwise light
- * theme (or vice versa) without fighting contrast by hand.
+ * Derives a full, legible surface palette from a single arbitrary base
+ * color — used when the user wants a custom background to apply to the
+ * *whole* interface (canvas, cards, headers, inputs, borders, and the
+ * nav chrome), not just one component. Every one of those pieces already
+ * reads its color exclusively from the --canvas, --paper, --ink,
+ * --muted(-strong), --line(-strong), --field(-hover) and --nav-* tokens
+ * (verified by grep across this app's components), so overriding this
+ * one set of tokens re-themes the entire UI with no per-component code
+ * needed.
+ *
+ * The base color becomes --paper (the surface everything sits on);
+ * --canvas recedes slightly darker so cards still read as "raised" above
+ * the page — mirroring the same paper-lighter-than-canvas relationship
+ * both the built-in light and dark themes already use, regardless of
+ * whether the chosen base itself is light or dark. Ink/muted/line/field
+ * are derived by contrast against that base, independent of light/dark
+ * mode, the same approach the accent palette uses for its own contrast
+ * color.
  */
-export function buildNavPalette(hex: string): NavPalette {
-  const navInk = getContrastText(hex);
+export function buildSurfacePalette(hex: string): SurfacePalette {
+  const ink = getContrastText(hex);
+  const paper = hex;
+  const canvas = darken(hex, 0.1);
   return {
-    navBg: hex,
-    navInk,
-    navMuted: mixColors(navInk, hex, 0.45),
-    navLine: mixColors(navInk, hex, 0.82),
-    navHover: mixColors(navInk, hex, 0.91),
+    canvas,
+    paper,
+    field: mixColors(ink, paper, 0.94),
+    fieldHover: mixColors(ink, paper, 0.88),
+    ink,
+    mutedStrong: mixColors(ink, paper, 0.35),
+    muted: mixColors(ink, paper, 0.55),
+    line: mixColors(ink, paper, 0.85),
+    lineStrong: mixColors(ink, paper, 0.72),
+    navBg: paper,
+    navInk: ink,
+    navMuted: mixColors(ink, paper, 0.35),
+    navLine: mixColors(ink, paper, 0.85),
+    navHover: mixColors(ink, paper, 0.88),
   };
 }

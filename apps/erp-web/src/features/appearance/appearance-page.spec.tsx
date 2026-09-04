@@ -24,12 +24,12 @@ vi.mock("../../shared/auth/auth-context", () => ({
 const appearanceContext = vi.hoisted(() => ({
   accentColor: "#0070f2",
   navigationLayout: "sidebar" as "sidebar" | "navbar",
-  navBackground: null as string | null,
+  surfaceColor: null as string | null,
   isReady: true,
   saveError: null as string | null,
   setAccentColor: vi.fn(),
   setNavigationLayout: vi.fn(),
-  setNavBackground: vi.fn(),
+  setSurfaceColor: vi.fn(),
 }));
 
 vi.mock("../../shared/appearance/appearance-context", () => ({
@@ -50,12 +50,12 @@ describe("AppearancePage", () => {
     vi.restoreAllMocks();
     appearanceContext.accentColor = "#0070f2";
     appearanceContext.navigationLayout = "sidebar";
-    appearanceContext.navBackground = null;
+    appearanceContext.surfaceColor = null;
     appearanceContext.isReady = true;
     appearanceContext.saveError = null;
     appearanceContext.setAccentColor.mockClear();
     appearanceContext.setNavigationLayout.mockClear();
-    appearanceContext.setNavBackground.mockClear();
+    appearanceContext.setSurfaceColor.mockClear();
   });
 
   it("shows the current accent color and marks the active layout option", () => {
@@ -118,27 +118,27 @@ describe("AppearancePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the navigation background as uncustomized by default, with the reset link disabled", () => {
+  it("shows the surface color as uncustomized by default, with the reset link disabled", () => {
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    expect(screen.getByLabelText("Código hexadecimal para fondo de navegación")).toHaveValue("#ffffff");
+    expect(screen.getByLabelText("Código hexadecimal para color de fondo")).toHaveValue("#ffffff");
     expect(screen.getByRole("button", { name: "Usar tema predeterminado" })).toBeDisabled();
   });
 
-  it("applies a dark preset for the navigation background, independent of the accent color", async () => {
+  it("applies a dark preset for the surface color, independent of the accent color", async () => {
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
     await user.click(
-      screen.getByRole("button", { name: "Usar color Pizarra oscura para fondo de navegación" }),
+      screen.getByRole("button", { name: "Usar color Pizarra oscura para color de fondo" }),
     );
 
-    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith("#0f172a");
+    expect(appearanceContext.setSurfaceColor).toHaveBeenCalledWith("#0f172a");
     expect(appearanceContext.setAccentColor).not.toHaveBeenCalled();
   });
 
-  it("enables the reset link once a navigation background is customized, and clears it on click", async () => {
-    appearanceContext.navBackground = "#0f172a";
+  it("enables the reset link once a surface color is customized, and clears it on click", async () => {
+    appearanceContext.surfaceColor = "#0f172a";
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
@@ -146,18 +146,18 @@ describe("AppearancePage", () => {
     expect(resetButton).toBeEnabled();
 
     await user.click(resetButton);
-    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith(null);
+    expect(appearanceContext.setSurfaceColor).toHaveBeenCalledWith(null);
   });
 
-  it("commits a manually typed navigation background hex on blur", async () => {
+  it("commits a manually typed surface color hex on blur", async () => {
     const user = userEvent.setup();
     render(<AppearancePage selection={selection} navigate={navigate} />);
 
-    const hexInput = screen.getByLabelText("Código hexadecimal para fondo de navegación");
+    const hexInput = screen.getByLabelText("Código hexadecimal para color de fondo");
     await user.clear(hexInput);
     await user.type(hexInput, "#18181b");
     await user.tab();
 
-    expect(appearanceContext.setNavBackground).toHaveBeenCalledWith("#18181b");
+    expect(appearanceContext.setSurfaceColor).toHaveBeenCalledWith("#18181b");
   });
 });

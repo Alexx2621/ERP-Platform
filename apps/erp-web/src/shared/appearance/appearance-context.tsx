@@ -10,7 +10,7 @@ import {
 } from "react";
 import { apiClient } from "../api/client";
 import { useAuth } from "../auth/auth-context";
-import { buildAccentPalette, buildNavPalette, isValidHexColor, type ColorScheme } from "./color-utils";
+import { buildAccentPalette, buildSurfacePalette, isValidHexColor, type ColorScheme } from "./color-utils";
 
 export type NavigationLayout = "sidebar" | "navbar";
 
@@ -19,20 +19,20 @@ const DEFAULT_NAVIGATION_LAYOUT: NavigationLayout = "sidebar";
 
 const ACCENT_COLOR_KEY = "ui.accentColor";
 const NAVIGATION_LAYOUT_KEY = "ui.navigationLayout";
-const NAV_BACKGROUND_KEY = "ui.navBackground";
+const SURFACE_COLOR_KEY = "ui.surfaceColor";
 /** Persisted alongside a real hex value to mean "explicitly cleared, follow the theme default". */
-const NAV_BACKGROUND_AUTO = "auto";
+const SURFACE_COLOR_AUTO = "auto";
 
 interface AppearanceContextValue {
   accentColor: string;
   navigationLayout: NavigationLayout;
-  /** null = not customized, sidebar/navbar follow the theme's own surface color (light or dark). */
-  navBackground: string | null;
+  /** null = not customized, the whole interface follows the theme's own light/dark surface colors. */
+  surfaceColor: string | null;
   isReady: boolean;
   saveError: string | null;
   setAccentColor: (hex: string) => void;
   setNavigationLayout: (layout: NavigationLayout) => void;
-  setNavBackground: (hex: string | null) => void;
+  setSurfaceColor: (hex: string | null) => void;
 }
 
 // Defaults to a real, working value (not null) — ProductShell reads this
@@ -45,12 +45,12 @@ interface AppearanceContextValue {
 const DEFAULT_CONTEXT_VALUE: AppearanceContextValue = {
   accentColor: DEFAULT_ACCENT_COLOR,
   navigationLayout: DEFAULT_NAVIGATION_LAYOUT,
-  navBackground: null,
+  surfaceColor: null,
   isReady: true,
   saveError: null,
   setAccentColor: () => {},
   setNavigationLayout: () => {},
-  setNavBackground: () => {},
+  setSurfaceColor: () => {},
 };
 
 const AppearanceContext = createContext<AppearanceContextValue>(DEFAULT_CONTEXT_VALUE);
@@ -79,27 +79,52 @@ function applyAccentColor(hex: string, scheme: ColorScheme): void {
   root.setProperty("--accent-contrast", palette.accentContrast);
 }
 
+const SURFACE_PROPERTIES = [
+  "--canvas",
+  "--paper",
+  "--field",
+  "--field-hover",
+  "--ink",
+  "--muted-strong",
+  "--muted",
+  "--line",
+  "--line-strong",
+  "--nav-bg",
+  "--nav-ink",
+  "--nav-muted",
+  "--nav-line",
+  "--nav-hover",
+] as const;
+
 /**
- * Applies (or clears) a custom sidebar/navbar background. Unlike the
- * accent color, this is scheme-independent by design — the whole point is
- * letting a user run e.g. a dark sidebar regardless of whether the rest
- * of the theme is light or dark, the same way the reference product
- * screenshot the user shared does with its own separate "Fondo de
- * navegación" swatches. Clearing removes the inline overrides entirely so
- * the CSS defaults (--nav-bg: var(--paper), etc. — already theme-aware)
- * take back over, rather than reapplying some other hardcoded value.
+ * Applies (or clears) a custom base color for the *entire* interface —
+ * canvas, cards, headers, inputs, borders and the nav chrome, since every
+ * one of those already reads its color exclusively from this same token
+ * set (see buildSurfacePalette's own docstring). Scheme-independent by
+ * design, same reasoning as the accent color's own contrast derivation:
+ * the chosen base's own luminance decides whether ink comes out light or
+ * dark, regardless of whether the OS is in light or dark mode. Clearing
+ * removes every inline override so the CSS theme defaults (light/dark
+ * media query) take back over, rather than reapplying a hardcoded value.
  */
-function applyNavBackground(hex: string | null): void {
+function applySurfaceColor(hex: string | null): void {
   const root = document.documentElement.style;
   if (!hex) {
-    root.removeProperty("--nav-bg");
-    root.removeProperty("--nav-ink");
-    root.removeProperty("--nav-muted");
-    root.removeProperty("--nav-line");
-    root.removeProperty("--nav-hover");
+    for (const property of SURFACE_PROPERTIES) {
+      root.removeProperty(property);
+    }
     return;
   }
-  const palette = buildNavPalette(hex);
+  const palette = buildSurfacePalette(hex);
+  root.setProperty("--canvas", palette.canvas);
+  root.setProperty("--paper", palette.paper);
+  root.setProperty("--field", palette.field);
+  root.setProperty("--field-hover", palette.fieldHover);
+  root.setProperty("--ink", palette.ink);
+  root.setProperty("--muted-strong", palette.mutedStrong);
+  root.setProperty("--muted", palette.muted);
+  root.setProperty("--line", palette.line);
+  root.setProperty("--line-strong", palette.lineStrong);
   root.setProperty("--nav-bg", palette.navBg);
   root.setProperty("--nav-ink", palette.navInk);
   root.setProperty("--nav-muted", palette.navMuted);
@@ -113,7 +138,7 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
   const [navigationLayout, setNavigationLayoutState] = useState<NavigationLayout>(
     DEFAULT_NAVIGATION_LAYOUT,
   );
-  const [navBackground, setNavBackgroundState] = useState<string | null>(null);
+  const [surfaceColor, setSurfaceColorState] = useState<string | null>(null);
   const [colorScheme, setColorScheme] = useState<ColorScheme>(readColorScheme);
   const [isReady, setIsReady] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -134,15 +159,15 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
   }, [accentColor, colorScheme]);
 
   useEffect(() => {
-    applyNavBackground(navBackground);
-  }, [navBackground]);
+    applySurfaceColor(surfaceColor);
+  }, [surfaceColor]);
 
   useEffect(() => {
     if (!session) {
       loadedForUserIdRef.current = null;
       setAccentColorState(DEFAULT_ACCENT_COLOR);
       setNavigationLayoutState(DEFAULT_NAVIGATION_LAYOUT);
-      setNavBackgroundState(null);
+      setSurfaceColorState(null);
       setIsReady(true);
       return;
     }
@@ -161,8 +186,8 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
         const storedLayout = preferences.find(
           (preference) => preference.key === NAVIGATION_LAYOUT_KEY,
         )?.value;
-        const storedNavBackground = preferences.find(
-          (preference) => preference.key === NAV_BACKGROUND_KEY,
+        const storedSurfaceColor = preferences.find(
+          (preference) => preference.key === SURFACE_COLOR_KEY,
         )?.value;
         if (typeof storedAccent === "string" && isValidHexColor(storedAccent)) {
           setAccentColorState(storedAccent);
@@ -170,8 +195,8 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
         if (storedLayout === "sidebar" || storedLayout === "navbar") {
           setNavigationLayoutState(storedLayout);
         }
-        if (typeof storedNavBackground === "string" && isValidHexColor(storedNavBackground)) {
-          setNavBackgroundState(storedNavBackground);
+        if (typeof storedSurfaceColor === "string" && isValidHexColor(storedSurfaceColor)) {
+          setSurfaceColorState(storedSurfaceColor);
         }
       } catch {
         // Keep defaults — the appearance page can still be used to set
@@ -218,13 +243,13 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     [persist],
   );
 
-  const setNavBackground = useCallback(
+  const setSurfaceColor = useCallback(
     (hex: string | null) => {
       if (hex !== null && !isValidHexColor(hex)) {
         return;
       }
-      setNavBackgroundState(hex);
-      persist(NAV_BACKGROUND_KEY, hex ?? NAV_BACKGROUND_AUTO);
+      setSurfaceColorState(hex);
+      persist(SURFACE_COLOR_KEY, hex ?? SURFACE_COLOR_AUTO);
     },
     [persist],
   );
@@ -233,22 +258,22 @@ export function AppearanceProvider({ children }: PropsWithChildren) {
     () => ({
       accentColor,
       navigationLayout,
-      navBackground,
+      surfaceColor,
       isReady,
       saveError,
       setAccentColor,
       setNavigationLayout,
-      setNavBackground,
+      setSurfaceColor,
     }),
     [
       accentColor,
       navigationLayout,
-      navBackground,
+      surfaceColor,
       isReady,
       saveError,
       setAccentColor,
       setNavigationLayout,
-      setNavBackground,
+      setSurfaceColor,
     ],
   );
 

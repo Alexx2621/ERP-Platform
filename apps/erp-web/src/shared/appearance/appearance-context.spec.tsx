@@ -176,37 +176,38 @@ describe("AppearanceProvider", () => {
     await waitFor(() => expect(result.current.saveError).not.toBeNull());
   });
 
-  it("loads a real user's stored custom navigation background", async () => {
+  it("loads a real user's stored custom surface color", async () => {
     authContext.session = activeSession;
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([
-      { key: "ui.navBackground", value: "#0f172a", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { key: "ui.surfaceColor", value: "#0f172a", updatedAt: "2026-01-01T00:00:00.000Z" },
     ]);
 
     const { result } = renderHook(() => useAppearance(), { wrapper });
 
     await waitFor(() => expect(result.current.isReady).toBe(true));
-    expect(result.current.navBackground).toBe("#0f172a");
+    expect(result.current.surfaceColor).toBe("#0f172a");
+    expect(document.documentElement.style.getPropertyValue("--paper")).toBe("#0f172a");
     expect(document.documentElement.style.getPropertyValue("--nav-bg")).toBe("#0f172a");
   });
 
-  it("ignores a malformed stored navigation background and leaves it uncustomized", async () => {
+  it("ignores a malformed stored surface color and leaves it uncustomized", async () => {
     authContext.session = activeSession;
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([
-      { key: "ui.navBackground", value: "not-a-hex-color", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { key: "ui.surfaceColor", value: "not-a-hex-color", updatedAt: "2026-01-01T00:00:00.000Z" },
     ]);
 
     const { result } = renderHook(() => useAppearance(), { wrapper });
 
     await waitFor(() => expect(result.current.isReady).toBe(true));
-    expect(result.current.navBackground).toBeNull();
-    expect(document.documentElement.style.getPropertyValue("--nav-bg")).toBe("");
+    expect(result.current.surfaceColor).toBeNull();
+    expect(document.documentElement.style.getPropertyValue("--paper")).toBe("");
   });
 
-  it("applies and persists a custom navigation background, deriving readable nav tokens", async () => {
+  it("applies and persists a custom surface color to the whole interface, not just the nav", async () => {
     authContext.session = activeSession;
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([]);
     const setPreference = vi.spyOn(apiClient, "setUserPreference").mockResolvedValue({
-      key: "ui.navBackground",
+      key: "ui.surfaceColor",
       value: "#0f172a",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -214,22 +215,30 @@ describe("AppearanceProvider", () => {
     const { result } = renderHook(() => useAppearance(), { wrapper });
     await waitFor(() => expect(result.current.isReady).toBe(true));
 
-    act(() => result.current.setNavBackground("#0f172a"));
+    act(() => result.current.setSurfaceColor("#0f172a"));
 
-    expect(result.current.navBackground).toBe("#0f172a");
-    expect(document.documentElement.style.getPropertyValue("--nav-bg")).toBe("#0f172a");
-    expect(document.documentElement.style.getPropertyValue("--nav-ink")).not.toBe("");
-    expect(document.documentElement.style.getPropertyValue("--nav-hover")).not.toBe("");
+    expect(result.current.surfaceColor).toBe("#0f172a");
+    const style = document.documentElement.style;
+    // The whole surface set — not only the nav-specific tokens.
+    expect(style.getPropertyValue("--paper")).toBe("#0f172a");
+    expect(style.getPropertyValue("--canvas")).not.toBe("");
+    expect(style.getPropertyValue("--canvas")).not.toBe("#0f172a");
+    expect(style.getPropertyValue("--ink")).not.toBe("");
+    expect(style.getPropertyValue("--muted-strong")).not.toBe("");
+    expect(style.getPropertyValue("--line")).not.toBe("");
+    expect(style.getPropertyValue("--field")).not.toBe("");
+    expect(style.getPropertyValue("--nav-bg")).toBe("#0f172a");
+    expect(style.getPropertyValue("--nav-ink")).not.toBe("");
     await waitFor(() =>
-      expect(setPreference).toHaveBeenCalledWith("access-token", "ui.navBackground", "#0f172a"),
+      expect(setPreference).toHaveBeenCalledWith("access-token", "ui.surfaceColor", "#0f172a"),
     );
   });
 
-  it("clears a custom navigation background back to the theme default", async () => {
+  it("clears a custom surface color back to the theme default across every token it set", async () => {
     authContext.session = activeSession;
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([]);
     const setPreference = vi.spyOn(apiClient, "setUserPreference").mockResolvedValue({
-      key: "ui.navBackground",
+      key: "ui.surfaceColor",
       value: "auto",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -237,26 +246,30 @@ describe("AppearanceProvider", () => {
     const { result } = renderHook(() => useAppearance(), { wrapper });
     await waitFor(() => expect(result.current.isReady).toBe(true));
 
-    act(() => result.current.setNavBackground("#0f172a"));
-    expect(document.documentElement.style.getPropertyValue("--nav-bg")).toBe("#0f172a");
+    act(() => result.current.setSurfaceColor("#0f172a"));
+    expect(document.documentElement.style.getPropertyValue("--paper")).toBe("#0f172a");
 
-    act(() => result.current.setNavBackground(null));
+    act(() => result.current.setSurfaceColor(null));
 
-    expect(result.current.navBackground).toBeNull();
-    expect(document.documentElement.style.getPropertyValue("--nav-bg")).toBe("");
+    expect(result.current.surfaceColor).toBeNull();
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue("--paper")).toBe("");
+    expect(style.getPropertyValue("--canvas")).toBe("");
+    expect(style.getPropertyValue("--ink")).toBe("");
+    expect(style.getPropertyValue("--nav-bg")).toBe("");
     await waitFor(() =>
-      expect(setPreference).toHaveBeenCalledWith("access-token", "ui.navBackground", "auto"),
+      expect(setPreference).toHaveBeenCalledWith("access-token", "ui.surfaceColor", "auto"),
     );
   });
 
-  it("ignores an invalid hex when setting a navigation background instead of applying it", async () => {
+  it("ignores an invalid hex when setting a surface color instead of applying it", async () => {
     const setPreference = vi.spyOn(apiClient, "setUserPreference");
     const { result } = renderHook(() => useAppearance(), { wrapper });
     await waitFor(() => expect(result.current.isReady).toBe(true));
 
-    act(() => result.current.setNavBackground("not-a-color"));
+    act(() => result.current.setSurfaceColor("not-a-color"));
 
-    expect(result.current.navBackground).toBeNull();
+    expect(result.current.surfaceColor).toBeNull();
     expect(setPreference).not.toHaveBeenCalled();
   });
 
