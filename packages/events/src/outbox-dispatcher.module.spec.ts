@@ -6,6 +6,8 @@ import { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
 import { DomainEventBus } from "./application/domain-event-bus";
 import { DispatchOutboxBatchUseCase } from "./application/use-cases/dispatch-outbox-batch.use-case";
 import { INBOX_MESSAGE_REPOSITORY } from "./domain/inbox-message.repository";
+import { PurgePublishedOutboxMessagesUseCase } from "./application/use-cases/purge-published-outbox-messages.use-case";
+import { OutboxPurgeScheduler } from "./application/outbox-purge.scheduler";
 
 @Global()
 @Module({
@@ -21,7 +23,14 @@ describe("OutboxDispatcherModule wiring", () => {
         ConfigModule.forRoot({
           isGlobal: true,
           ignoreEnvFile: true,
-          load: [() => ({ OUTBOX_DISPATCH_INTERVAL_MS: 60_000 })],
+          load: [
+            () => ({
+              OUTBOX_DISPATCH_INTERVAL_MS: 60_000,
+              OUTBOX_PURGE_INTERVAL_MS: 60_000,
+              OUTBOX_PURGE_RETENTION_DAYS: 30,
+              OUTBOX_PURGE_BATCH_SIZE: 500,
+            }),
+          ],
         }),
         StubPrismaModule,
         OutboxDispatcherModule,
@@ -31,6 +40,10 @@ describe("OutboxDispatcherModule wiring", () => {
     expect(moduleRef.get(DomainEventBus)).toBeInstanceOf(DomainEventBus);
     expect(moduleRef.get(DispatchOutboxBatchUseCase)).toBeInstanceOf(DispatchOutboxBatchUseCase);
     expect(moduleRef.get(INBOX_MESSAGE_REPOSITORY)).toBeDefined();
+    expect(moduleRef.get(PurgePublishedOutboxMessagesUseCase)).toBeInstanceOf(
+      PurgePublishedOutboxMessagesUseCase,
+    );
+    expect(moduleRef.get(OutboxPurgeScheduler)).toBeInstanceOf(OutboxPurgeScheduler);
 
     await moduleRef.close();
   });

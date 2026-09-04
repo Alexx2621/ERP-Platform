@@ -6,6 +6,8 @@ import { PrismaInboxMessageRepository } from "./infrastructure/prisma-inbox-mess
 import { DomainEventBus } from "./application/domain-event-bus";
 import { DispatchOutboxBatchUseCase } from "./application/use-cases/dispatch-outbox-batch.use-case";
 import { OutboxDispatcherScheduler } from "./application/outbox-dispatcher.scheduler";
+import { PurgePublishedOutboxMessagesUseCase } from "./application/use-cases/purge-published-outbox-messages.use-case";
+import { OutboxPurgeScheduler } from "./application/outbox-purge.scheduler";
 
 /**
  * The consuming app (`apps/worker`) must provide `PRISMA_CLIENT` (see
@@ -20,6 +22,11 @@ import { OutboxDispatcherScheduler } from "./application/outbox-dispatcher.sched
  * module) so any future `DomainEventBus.subscribe` handler registered by a
  * consuming app can inject it directly, alongside `DomainEventBus` itself —
  * the two are used together by construction (docs/EVENTS.md §9).
+ *
+ * `OutboxPurgeScheduler` runs alongside the dispatcher — the retention/purge
+ * job docs/EVENTS.md §8.2 has always required but was never built until this
+ * module gained it. Both schedulers operate on the same table from the same
+ * process; splitting purge into its own module would only add indirection.
  */
 @Module({
   providers: [
@@ -28,6 +35,8 @@ import { OutboxDispatcherScheduler } from "./application/outbox-dispatcher.sched
     DomainEventBus,
     DispatchOutboxBatchUseCase,
     OutboxDispatcherScheduler,
+    PurgePublishedOutboxMessagesUseCase,
+    OutboxPurgeScheduler,
   ],
   exports: [DomainEventBus, DispatchOutboxBatchUseCase, INBOX_MESSAGE_REPOSITORY],
 })

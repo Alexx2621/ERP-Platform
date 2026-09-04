@@ -59,6 +59,26 @@ export class PrismaOutboxMessageRepository implements OutboxMessageRepository {
     });
   }
 
+  /**
+   * Two-step select-then-delete, same shape as `claimBatch`'s
+   * select-then-update — `deleteMany` has no `LIMIT` clause in Prisma's
+   * query builder, so the batch boundary is enforced by first selecting
+   * the candidate IDs via `findMany({ take: limit })`.
+   */
+  async deletePublishedBefore(cutoff: Date, limit: number): Promise<number> {
+    const candidates = await this.prisma.outboxMessage.findMany({
+      where: { status: "PUBLISHED", publishedAt: { lt: cutoff } },
+      select: { id: true },
+      take: limit,
+    });
+    if (candidates.length === 0) return 0;
+
+    const result = await this.prisma.outboxMessage.deleteMany({
+      where: { id: { in: candidates.map((row) => row.id) } },
+    });
+    return result.count;
+  }
+
   private toDomain(record: PrismaOutboxMessage): OutboxMessage {
     return OutboxMessage.create({
       id: record.id,

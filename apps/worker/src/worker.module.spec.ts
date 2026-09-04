@@ -1,5 +1,10 @@
 import { Test } from "@nestjs/testing";
-import { DomainEventBus, DispatchOutboxBatchUseCase } from "@erp/events";
+import {
+  DomainEventBus,
+  DispatchOutboxBatchUseCase,
+  OutboxPurgeScheduler,
+  PurgePublishedOutboxMessagesUseCase,
+} from "@erp/events";
 import { RequestNotificationUseCase } from "@erp/notifications";
 import { WorkerModule } from "./worker.module";
 import { PrismaService } from "./shared/prisma/prisma.service";
@@ -26,6 +31,10 @@ describe("WorkerModule wiring", () => {
     expect(moduleRef.get(TenantProvisionedNotificationHandler)).toBeInstanceOf(
       TenantProvisionedNotificationHandler,
     );
+    expect(moduleRef.get(PurgePublishedOutboxMessagesUseCase)).toBeInstanceOf(
+      PurgePublishedOutboxMessagesUseCase,
+    );
+    expect(moduleRef.get(OutboxPurgeScheduler)).toBeInstanceOf(OutboxPurgeScheduler);
 
     await moduleRef.close();
   });

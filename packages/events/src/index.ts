@@ -26,6 +26,15 @@ export {
   OutboxDispatcherScheduler,
   type OutboxDispatcherEnvironment,
 } from "./application/outbox-dispatcher.scheduler";
+export {
+  PurgePublishedOutboxMessagesUseCase,
+  type PurgePublishedOutboxMessagesInput,
+  type PurgePublishedOutboxMessagesResult,
+} from "./application/use-cases/purge-published-outbox-messages.use-case";
+export {
+  OutboxPurgeScheduler,
+  type OutboxPurgeEnvironment,
+} from "./application/outbox-purge.scheduler";
 export { PrismaOutboxMessageRepository } from "./infrastructure/prisma-outbox-message.repository";
 export { PRISMA_CLIENT } from "./infrastructure/prisma-client.token";
 export { OutboxDispatcherModule } from "./outbox-dispatcher.module";

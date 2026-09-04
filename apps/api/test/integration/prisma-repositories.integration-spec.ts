@@ -798,6 +798,82 @@ describe("Prisma repositories against PostgreSQL", () => {
     expect(recovered[0].id).toBe(message.id);
   });
 
+  it("purges only PUBLISHED rows past retention, leaving recent PUBLISHED, PENDING and FAILED rows untouched", async () => {
+    const prisma = asRepositoryClient(harness.prisma);
+    const outbox = new PrismaOutboxMessageRepository(prisma);
+    const now = new Date("2026-09-04T00:00:00.000Z");
+
+    const oldPublished = await appendOutboxMessage(prisma, {
+      tenantId: null,
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: newId(),
+      payload: {},
+      correlationId: "purge-old-published",
+      actor: null,
+    });
+    const recentPublished = await appendOutboxMessage(prisma, {
+      tenantId: null,
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: newId(),
+      payload: {},
+      correlationId: "purge-recent-published",
+      actor: null,
+    });
+    const oldFailed = await appendOutboxMessage(prisma, {
+      tenantId: null,
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: newId(),
+      payload: {},
+      correlationId: "purge-old-failed",
+      actor: null,
+    });
+    const pending = await appendOutboxMessage(prisma, {
+      tenantId: null,
+      eventType: "tenancy.tenant.provisioned.v1",
+      eventVersion: 1,
+      aggregateType: "Tenant",
+      aggregateId: newId(),
+      payload: {},
+      correlationId: "purge-pending",
+      actor: null,
+    });
+
+    await prisma.outboxMessage.update({
+      where: { id: oldPublished.id },
+      data: { status: "PUBLISHED", publishedAt: new Date("2026-07-01T00:00:00.000Z") },
+    });
+    await prisma.outboxMessage.update({
+      where: { id: recentPublished.id },
+      data: { status: "PUBLISHED", publishedAt: new Date("2026-09-01T00:00:00.000Z") },
+    });
+    await prisma.outboxMessage.update({
+      where: { id: oldFailed.id },
+      data: { status: "FAILED", publishedAt: null, lastErrorCode: "downstream unavailable" },
+    });
+
+    const purgedCount = await outbox.deletePublishedBefore(
+      new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      100,
+    );
+
+    expect(purgedCount).toBe(1);
+    const remainingIds = (
+      await prisma.outboxMessage.findMany({
+        where: { id: { in: [oldPublished.id, recentPublished.id, oldFailed.id, pending.id] } },
+        select: { id: true },
+      })
+    ).map((row) => row.id);
+    expect(new Set(remainingIds)).toEqual(
+      new Set([recentPublished.id, oldFailed.id, pending.id]),
+    );
+  });
+
   it("uploads, downloads and soft-deletes a file with real tenant/company/owner FKs and cross-tenant isolation", async () => {
     const prisma = asRepositoryClient(harness.prisma);
     const users = new PrismaUserRepository(prisma);

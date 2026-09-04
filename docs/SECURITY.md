@@ -456,10 +456,18 @@ claims/publishes/marks outbox rows. See ADR-004's amendment
   the dispatcher's own tick logs (`Outbox dispatch tick failed`), not in
   `/health`'s response. Acceptable for Foundation; revisit if this process
   is ever put behind an orchestrator that acts on health check failures.
-- **No retention/purge policy** for `PUBLISHED`/`FAILED` rows — the table
-  grows unbounded. `docs/EVENTS.md` §8.2 calls for retention/purge as an
-  "operative job, audited, not ad-hoc deletion" — not built yet, since
-  Foundation-scale data volume does not need it today.
+- ~~No retention/purge policy for `PUBLISHED`/`FAILED` rows — the table
+  grows unbounded.~~ **Built 2026-09-04** (`OutboxPurgeScheduler`,
+  `PurgePublishedOutboxMessagesUseCase`, `@erp/events`), satisfying
+  `docs/EVENTS.md` §8.2's "operative job, audited, not ad-hoc deletion"
+  requirement: `PUBLISHED` rows past `OUTBOX_PURGE_RETENTION_DAYS`
+  (default 30) are deleted on an interval alongside the dispatcher in
+  `apps/worker`. `FAILED` (dead-letter) rows are deliberately **never**
+  auto-purged — they exist for operator investigation
+  (`docs/EVENTS.md` §11) and this codebase has no automatic-recovery
+  mechanism for them yet; auto-deleting a dead-letter row would destroy
+  the only record of what went wrong. A dead-letter retention/review
+  policy remains a real, separate gap.
 - **No observability beyond application logs.** `docs/EVENTS.md` §15 asks
   for outbox pending count/age, throughput, DLQ growth, etc. as metrics —
   none are exported yet; only structured `Logger` calls exist

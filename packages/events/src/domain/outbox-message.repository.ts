@@ -20,4 +20,12 @@ export interface OutboxMessageRepository {
    */
   claimBatch(options: ClaimOutboxBatchOptions): Promise<OutboxMessage[]>;
   save(message: OutboxMessage): Promise<void>;
+  /**
+   * Deletes up to `limit` PUBLISHED rows whose `publishedAt` is older than
+   * `cutoff` (docs/EVENTS.md §8.2: "Retención y purga son jobs operativos
+   * auditados; no borrado ad hoc"). Deliberately never touches FAILED
+   * (dead-letter) rows — those need operator investigation, not automatic
+   * deletion. Returns the number of rows actually deleted.
+   */
+  deletePublishedBefore(cutoff: Date, limit: number): Promise<number>;
 }

@@ -28,6 +28,19 @@ export class InMemoryOutboxMessageRepository implements OutboxMessageRepository 
     this.byId.set(message.id, message);
   }
 
+  async deletePublishedBefore(cutoff: Date, limit: number): Promise<number> {
+    const candidates = [...this.byId.values()]
+      .filter((message) => {
+        const props = message.toProps();
+        return props.status === "PUBLISHED" && !!props.publishedAt && props.publishedAt < cutoff;
+      })
+      .slice(0, limit);
+    for (const message of candidates) {
+      this.byId.delete(message.id);
+    }
+    return candidates.length;
+  }
+
   /** Test-only helper: insert a message directly, bypassing appendOutboxMessage's transactional-write concern. */
   seed(message: OutboxMessage): void {
     this.byId.set(message.id, message);

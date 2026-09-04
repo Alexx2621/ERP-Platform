@@ -3068,6 +3068,74 @@ total (paquete nuevo de infraestructura de test). Validación completa:
 `pnpm lint`/`typecheck`/`build` limpios en el monorepo, `apps/erp-web`
 verificado con la suite existente sin cambios necesarios.
 
+### Data lifecycle — retención/purga real del outbox (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario ("Continúa con Data lifecycle"), el
+workstream de `docs/ROADMAP.md` §17 que quedaba sin iniciar. De sus tres
+ítems (retention/archive/export/legal holds, PII classification por
+módulo, migrations/backfills reentrantes y observables), el primero con
+un gap real, concreto y ya documentado — no inventado para esta sesión —
+era la retención/purga del outbox: `docs/EVENTS.md` §8.2 exige
+explícitamente "Retención y purga son jobs operativos auditados; no
+borrado ad hoc" desde que el outbox se diseñó (ADR-004, sesión 10), y
+`docs/SECURITY.md` "Event Bus" ya documentaba el hueco ("No retention/
+purge policy... the table grows unbounded") — nunca implementado en 36
+sesiones. Confirmado con el propio log de arranque de esta sesión que el
+problema es real, no teórico: la base de desarrollo persistente acumula
+filas `outbox_messages` desde la sesión 10 sin que ninguna se haya
+borrado jamás.
+
+- **`packages/events`**: `OutboxMessageRepository.deletePublishedBefore(cutoff,
+  limit)` (nuevo método de interfaz, implementado en
+  `PrismaOutboxMessageRepository` — select-then-delete de dos pasos, mismo
+  patrón que `claimBatch`, ya que `deleteMany` de Prisma no soporta
+  `LIMIT` — y en `InMemoryOutboxMessageRepository` para tests),
+  `PurgePublishedOutboxMessagesUseCase` (nuevo, mismo shape que
+  `PurgeDeletedFilesUseCase` de Files, sesión 20) y `OutboxPurgeScheduler`
+  (nuevo, mismo `setInterval` + ciclo de vida de Nest que
+  `OutboxDispatcherScheduler`/`FilePurgeScheduler`), ambos agregados a
+  `OutboxDispatcherModule` — corren junto al dispatcher, dentro de
+  `apps/worker`, el mismo proceso y la misma tabla. **Deliberadamente solo
+  purga filas `PUBLISHED`** — las `FAILED` (dead-letter) se dejan
+  intactas sin importar su antigüedad, ya que existen específicamente
+  para revisión de un operador (`docs/EVENTS.md` §11) y este código base
+  no tiene todavía ningún mecanismo de recuperación automática para
+  ellas; borrarlas automáticamente destruiría la única evidencia de qué
+  salió mal. `apps/worker` gana 3 variables de entorno nuevas
+  (`OUTBOX_PURGE_INTERVAL_MS` default 1h,
+  `OUTBOX_PURGE_RETENTION_DAYS` default 30,
+  `OUTBOX_PURGE_BATCH_SIZE` default 500 — mismos valores de
+  `FILES_PURGE_*` por consistencia, salvo el batch, mayor aquí porque una
+  fila de outbox es mucho más liviana que un objeto de archivo).
+- Sin migración de base de datos — reutiliza `outbox_messages`, tabla ya
+  existente desde ADR-004 (sesión 10).
+- Tests: 5 tests unitarios nuevos
+  (`purge-published-outbox-messages.use-case.spec.ts`) — 33/33 en total en
+  `@erp/events` (antes 28). `outbox-dispatcher.module.spec.ts` y
+  `apps/worker/src/worker.module.spec.ts` ampliados con aserciones de que
+  `PurgePublishedOutboxMessagesUseCase`/`OutboxPurgeScheduler` resuelven
+  dentro del grafo real de DI — 6/6 en `apps/worker` (sin cambio de
+  conteo de archivos, mismos 2 suites ampliados). 1 escenario de
+  integración nuevo contra Postgres real
+  (`prisma-repositories.integration-spec.ts`): cuatro filas reales
+  (`PUBLISHED` antigua, `PUBLISHED` reciente, `FAILED` antigua, `PENDING`)
+  confirmando que solo la primera se purga — 50/50 en total (antes 49).
+- Alcance deliberadamente fuera de este bloque, per §17, sin fabricar
+  nada: PII classification por módulo (documentación real pendiente, no
+  iniciada), export/legal holds/retención general más allá del outbox
+  (`docs/SECURITY.md` ya documenta el mismo hueco para `inbox_messages`,
+  pero esa tabla no tiene todavía ningún productor/consumidor real en
+  producción — purgarla ahora sería limpiar una tabla que nadie ha
+  llenado nunca fuera de tests, un problema distinto al del outbox, que sí
+  acumula filas reales cada sesión), y una auditoría formal del patrón
+  reentrante/observable de los seeders de backfill ya existentes
+  (`OwnerRolePermissionSyncSeeder`, `TenantAppEnablementSyncSeeder`) —
+  ambos ya siguen el patrón correctamente por inspección directa, pero no
+  se escribió un documento formal confirmándolo como convención.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en el
+  monorepo, `apps/worker` unitarios 6/6, `@erp/events` unitarios 33/33,
+  `apps/api` integración completa 50/50 contra Postgres real.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -3124,11 +3192,19 @@ el hallazgo del string vacío en `current_setting` tras un `SET LOCAL`) y
 un spike real de BullMQ contra Redis, ninguno de los dos había sido
 siquiera intentado antes pese a que el cierre formal de Fase 0 (sesión 22)
 los daba por hechos. `Arquitectura` en el panel de avance pasó de 85% a
-100%. Sin trabajo en curso — salvo indicación distinta del usuario, el
-siguiente trabajo real depende de evidencia concreta de necesidad de
-escalar (Fase 12), de otro workstream del §17 (SLOs/alertas, Data
-lifecycle, Developer platform), o de una nueva prioridad que el usuario
-indique.
+100%. **Inmediatamente después, a pedido explícito del usuario ("Continúa
+con Data lifecycle"), se cerró el primer gap real de ese workstream** —
+ver "Data lifecycle — retención/purga real del outbox" arriba: el outbox
+nunca había tenido el job de retención/purga que `docs/EVENTS.md` §8.2
+exige desde que se diseñó (ADR-004, sesión 10) — `OutboxPurgeScheduler`
+nuevo, corriendo junto al dispatcher en `apps/worker`, purga
+deliberadamente solo filas `PUBLISHED` más allá de su retención, dejando
+las `FAILED` intactas para revisión de un operador. Sin trabajo en
+curso — salvo indicación distinta del usuario, el siguiente trabajo real
+depende de evidencia concreta de necesidad de escalar (Fase 12), del
+resto de Data lifecycle (PII classification por módulo, no iniciada), de
+otro workstream del §17 (SLOs/alertas, Developer platform), o de una
+nueva prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

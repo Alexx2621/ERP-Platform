@@ -31,8 +31,14 @@ regresiones; y, a pedido explícito del usuario tras revisar el panel
 Fase 0 (`docs/ROADMAP.md` §4) que nunca se habían ejecutado de verdad —
 RLS y BullMQ — corridos por primera vez contra Postgres/Redis reales,
 cerrando genuinamente Fase 0 (un cierre formal previo, sesión 22, había
-dado ambos por hechos sin haberlos corrido nunca) — los siete bloques a
-pedido explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+dado ambos por hechos sin haberlos corrido nunca); y, a pedido explícito
+del usuario ("Continúa con Data lifecycle"), el primer bloque real de ese
+workstream — el outbox nunca había tenido el job de retención/purga que
+`docs/EVENTS.md` §8.2 exige desde su diseño (ADR-004, sesión 10);
+`OutboxPurgeScheduler` nuevo purga filas `PUBLISHED` pasada su retención,
+dejando las `FAILED` intactas para revisión de un operador — los ocho
+bloques a pedido explícito del usuario). Modelo operativo actualizado:
+2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -84,9 +90,18 @@ se habían corrido de verdad** — ver "Hecho — sesión 36 (Fase 0: spikes de
 RLS y BullMQ, cierre genuino)" abajo: RLS y BullMQ, ninguno probado antes
 pese a que el cierre formal de Fase 0 (sesión 22) los daba por hechos —
 Fase 0 queda ahora genuinamente completa, `Arquitectura` pasó de 85% a
-100% en el panel de avance. Sin ítem de mantenimiento restante conocido:
-salvo que el usuario aporte evidencia real de necesidad de escalar algo
-específico (Fase 12), pida otro workstream del §17, o indique otra
+100% en el panel de avance. **Inmediatamente después, a pedido explícito
+del usuario ("Continúa con Data lifecycle"), se cerró el primer gap real
+de ese workstream** — ver "Hecho — sesión 36 (Data lifecycle: retención/
+purga real del outbox)" abajo: el outbox nunca había tenido el job de
+retención/purga que `docs/EVENTS.md` §8.2 exige desde su diseño (ADR-004,
+sesión 10) — `OutboxPurgeScheduler` nuevo purga filas `PUBLISHED` pasada
+su retención, dejando las `FAILED` intactas para revisión de un operador
+(PII classification por módulo y una auditoría formal del patrón de
+backfills reentrantes/observables, los otros dos ítems de Data lifecycle,
+siguen sin iniciar). Sin ítem de mantenimiento restante conocido: salvo
+que el usuario aporte evidencia real de necesidad de escalar algo
+específico (Fase 12), pida otro workstream/ítem del §17, o indique otra
 prioridad, no hay un siguiente bloque de trabajo no bloqueado identificado
 en este momento.
 Alcance deliberadamente fuera de Fase 11 y diferido (no
@@ -243,6 +258,47 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (Data lifecycle: retención/purga real del outbox)
+
+A pedido explícito del usuario ("Continúa con Data lifecycle"), el
+workstream de `docs/ROADMAP.md` §17 que quedaba sin iniciar. De sus tres
+ítems, el que tenía un gap real y ya documentado — no inventado — era la
+retención/purga del outbox: `docs/EVENTS.md` §8.2 la exige explícitamente
+desde el diseño original (ADR-004, sesión 10), y `docs/SECURITY.md`
+"Event Bus" ya documentaba el hueco, nunca implementado en 36 sesiones —
+confirmado real, no teórico, con el propio log de la base de desarrollo
+persistente acumulando filas sin purgar desde entonces.
+
+- **`packages/events`**: `OutboxMessageRepository.deletePublishedBefore`
+  (nuevo, select-then-delete de dos pasos igual que `claimBatch`),
+  `PurgePublishedOutboxMessagesUseCase` (mismo shape que
+  `PurgeDeletedFilesUseCase` de Files, sesión 20) y `OutboxPurgeScheduler`
+  (mismo `setInterval` que `OutboxDispatcherScheduler`/
+  `FilePurgeScheduler`), ambos agregados a `OutboxDispatcherModule` —
+  corren junto al dispatcher en `apps/worker`. **Solo purga filas
+  `PUBLISHED`** — las `FAILED` (dead-letter) quedan intactas sin importar
+  su antigüedad, ya que existen para revisión de un operador
+  (`docs/EVENTS.md` §11) y no hay mecanismo de recuperación automática
+  para ellas todavía; auto-purgarlas destruiría la única evidencia de qué
+  falló. 3 variables de entorno nuevas en `apps/worker`
+  (`OUTBOX_PURGE_INTERVAL_MS` 1h, `OUTBOX_PURGE_RETENTION_DAYS` 30,
+  `OUTBOX_PURGE_BATCH_SIZE` 500).
+- Sin migración — reutiliza `outbox_messages`, tabla ya existente.
+- Tests: 5 unitarios nuevos — 33/33 en `@erp/events` (antes 28).
+  `outbox-dispatcher.module.spec.ts`/`worker.module.spec.ts` ampliados
+  con aserciones de resolución en el grafo real de DI — 6/6 en
+  `apps/worker`. 1 escenario de integración nuevo contra Postgres real
+  (cuatro filas reales: `PUBLISHED` antigua/reciente, `FAILED` antigua,
+  `PENDING` — solo la primera se purga) — 50/50 en `apps/api` (antes 49).
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Data lifecycle —
+  retención/purga real del outbox" y `docs/SECURITY.md` "Event Bus".
+- Alcance deliberadamente fuera de este bloque, sin fabricar nada: PII
+  classification por módulo y una auditoría formal del patrón reentrante/
+  observable de los seeders de backfill ya existentes — ambos reales,
+  ambos sin iniciar.
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en el
+  monorepo.
 
 ### Hecho — sesión 36 (Fase 0: spikes de RLS y BullMQ, cierre genuino)
 

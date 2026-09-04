@@ -18,6 +18,21 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(100)
   OUTBOX_DISPATCH_INTERVAL_MS: number = 2000;
+
+  /** How often the outbox purge job runs (docs/EVENTS.md §8.2: retention/purge as an audited operational job). */
+  @IsInt()
+  @Min(1000)
+  OUTBOX_PURGE_INTERVAL_MS: number = 3_600_000;
+
+  /** How long a PUBLISHED outbox row survives before it becomes eligible for purge. */
+  @IsInt()
+  @Min(1)
+  OUTBOX_PURGE_RETENTION_DAYS: number = 30;
+
+  /** Max rows the purge job deletes per tick. */
+  @IsInt()
+  @Min(1)
+  OUTBOX_PURGE_BATCH_SIZE: number = 500;
 }
 
 /**
