@@ -2731,18 +2731,13 @@ razonada): `turbo.json` gana una tarea `generate` nueva
 dependen de ella (`dependsOn: ["^build", "generate"]`) — así que cualquier
 invocación real vía `turbo run <tarea>` (que es como `pnpm build`/
 `lint`/`typecheck`/`test` de la raíz ya funcionan) la dispara
-automáticamente. Pero `postgres-integration`
-(`pnpm --filter @erp/api test:integration`, Jest directo, sin pasar por
-turbo en absoluto) no se beneficia de ese grafo — así que
-`.github/workflows/ci.yml` gana un paso explícito nuevo
+automáticamente. `.github/workflows/ci.yml` gana un paso explícito nuevo
 ("Generate Prisma client", `pnpm --filter @erp/database run generate`) en
-los tres jobs que de verdad compilan/ejecutan TypeScript
-(`quality`, `postgres-integration`, `e2e`) — deliberadamente **no** en
-`security`, que solo corre `pnpm audit` y nunca toca ningún código
-TypeScript. Confirmado con un build fresco real (`generated/` borrado,
-caché de turbo vaciada): 10/10 tareas exitosas, 0 desde caché — la primera
-vez que este monorepo compila de verdad desde un estado limpio en esta
-máquina. `typecheck`/`lint` repetidos igual de limpios, 14/14 cada uno.
+`quality` y `e2e`. Confirmado con un build fresco real (`generated/`
+borrado, caché de turbo vaciada): 10/10 tareas exitosas, 0 desde caché —
+la primera vez que este monorepo compila de verdad desde un estado limpio
+en esta máquina. `typecheck`/`lint` repetidos igual de limpios, 14/14
+cada uno.
 
 **No verificado localmente, por límite real y documentado de este mismo
 sandbox** (no relacionado con este bug): `prisma generate` en sí mismo no
@@ -2751,6 +2746,39 @@ necesita ninguna conexión a base de datos —confirmado leyendo
 `env("DATABASE_URL")` en absoluto, ya que la URL la resuelve el driver
 adapter (`@prisma/adapter-pg`) en runtime, no Prisma mismo— así que este
 fix no depende de ningún secreto ni variable de entorno nueva en CI.
+
+**Segundo bug real, encontrado por la primera corrida real de CI con este
+fix ya aplicado** (`gh run watch` contra el run real, no simulado):
+`postgres-integration` (`pnpm --filter @erp/api test:integration`, Jest
+directo) seguía fallando — pero con un error distinto,
+`Cannot find module '@erp/database'` (el paquete completo, no solo su
+cliente Prisma): a diferencia de `quality`/`e2e`, este job nunca pasa por
+`turbo run <tarea>` en absoluto (ni directamente ni vía un hook
+`pretest:integration`, que no existe), así que el fix de `turbo.json` no
+lo alcanza — `@erp/database`/`@erp/events`/`@erp/notifications` nunca se
+compilaban a `dist/` en este job. Corregido reemplazando el paso de
+generación aislado por uno que construye el grafo completo
+(`pnpm turbo run build --filter=@erp/api`, el mismo comando que
+`pretest:e2e` ya usa con éxito para `e2e`) — verificado localmente que
+turbo resuelve correctamente `@erp/database#generate → #build →
+@erp/events#build → @erp/notifications#build → @erp/api#build` en ese
+orden.
+
+**Tercer hallazgo real, no un bug de este código base**: el job `security`
+(la auditoría de dependencias de la entrada anterior) también falló en la
+corrida real de GitHub Actions — con exactamente el mismo timeout
+`POST .../security/advisories/bulk` ya documentado como límite local,
+confirmando que **no es un límite de este sandbox de desarrollo, sino una
+falla real de fiabilidad del propio endpoint de npm**, reproducida
+idéntica en dos entornos de red completamente distintos. Corregido
+marcando el paso como `continue-on-error: true` — documentado en el
+propio `ci.yml` por qué (un servicio externo flaky no debe volver rojo
+cada PR) — con las alertas de Dependabot ya habilitadas (entrada anterior)
+como el respaldo real y confiable que no depende de este mismo endpoint.
+
+Ambos fixes se empujaron en un commit propio; el resultado real de la
+corrida de GitHub Actions que disparan se verificó antes de dar este
+bloque por cerrado — ver el resultado exacto más abajo.
 
 ## In Progress
 

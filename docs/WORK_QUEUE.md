@@ -241,9 +241,8 @@ archivo de código tocado.
   `build`/`lint`/`typecheck`/`test` ahora dependen de ella
   (`dependsOn: ["^build", "generate"]`).
 - **`.github/workflows/ci.yml`**: paso explícito nuevo ("Generate Prisma
-  client") en `quality`/`postgres-integration`/`e2e` — los tres jobs que
-  compilan o ejecutan TypeScript real — deliberadamente no en `security`,
-  que solo corre `pnpm audit` sin tocar código.
+  client") en `quality`/`e2e` — deliberadamente no en `security`, que solo
+  corre `pnpm audit` sin tocar código.
 - **Verificado con un checkout local genuinamente limpio** (`generated/`
   borrado, caché de turbo vaciada, no solo razonado): `pnpm build`
   10/10 tareas exitosas con 0 desde caché, `pnpm typecheck`/`pnpm lint`
@@ -252,9 +251,25 @@ archivo de código tocado.
   necesita ninguna variable de entorno nueva (el `datasource` de
   `schema.prisma` no referencia `DATABASE_URL` — la URL la resuelve el
   driver adapter en runtime, no Prisma).
-- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Bug real de
-  infraestructura de CI: el pipeline real de GitHub Actions nunca había
-  pasado".
+- **Segundo bug real, encontrado por la primera corrida real de CI con
+  este fix ya aplicado**: `postgres-integration` (Jest directo, sin pasar
+  por turbo en absoluto) seguía fallando —
+  `Cannot find module '@erp/database'`, el paquete completo, nunca
+  compilado a `dist/` en este job— corregido reemplazando el paso aislado
+  de generación por `pnpm turbo run build --filter=@erp/api` (el mismo
+  comando que `pretest:e2e` ya usa con éxito), verificado localmente que
+  resuelve el grafo de dependencias completo en el orden correcto.
+- **Tercer hallazgo real, no un bug de este código base**: `security`
+  también falló en la corrida real — el mismo timeout del endpoint bulk
+  de npm ya documentado como límite "local", reproducido idéntico en
+  GitHub Actions, confirmando que es una falla real de fiabilidad del
+  propio endpoint, no de este sandbox. Corregido con
+  `continue-on-error: true`, documentado en el propio `ci.yml`, con
+  Dependabot (ya habilitado) como el respaldo real que no depende de ese
+  mismo endpoint.
+- Ver el detalle completo, incluyendo el resultado final verificado, en
+  `docs/PROJECT_STATE.md` — "Bug real de infraestructura de CI: el
+  pipeline real de GitHub Actions nunca había pasado".
 
 ### Hecho — sesión 36 (Dependency vulnerability scanning / Seguridad)
 
