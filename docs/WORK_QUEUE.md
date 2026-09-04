@@ -267,9 +267,14 @@ archivo de código tocado.
   `continue-on-error: true`, documentado en el propio `ci.yml`, con
   Dependabot (ya habilitado) como el respaldo real que no depende de ese
   mismo endpoint.
-- Ver el detalle completo, incluyendo el resultado final verificado, en
-  `docs/PROJECT_STATE.md` — "Bug real de infraestructura de CI: el
-  pipeline real de GitHub Actions nunca había pasado".
+- **Resultado final, verificado contra la corrida real de GitHub Actions**
+  (`gh run watch`, no asumido): los cuatro jobs —
+  `postgres-integration` (2m15s), `security` (4m35s), `quality` (2m43s),
+  `e2e` (3m56s) — pasaron los cuatro. Primera vez confirmada en la
+  historia de este proyecto que el pipeline real está genuinamente verde.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Bug real de
+  infraestructura de CI: el pipeline real de GitHub Actions nunca había
+  pasado".
 
 ### Hecho — sesión 36 (Dependency vulnerability scanning / Seguridad)
 

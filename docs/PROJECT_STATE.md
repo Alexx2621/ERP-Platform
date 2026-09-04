@@ -2776,9 +2776,15 @@ propio `ci.yml` por qué (un servicio externo flaky no debe volver rojo
 cada PR) — con las alertas de Dependabot ya habilitadas (entrada anterior)
 como el respaldo real y confiable que no depende de este mismo endpoint.
 
-Ambos fixes se empujaron en un commit propio; el resultado real de la
-corrida de GitHub Actions que disparan se verificó antes de dar este
-bloque por cerrado — ver el resultado exacto más abajo.
+Ambos fixes se empujaron en un commit propio (`24b5c5c`). **Resultado
+final, verificado contra la corrida real de GitHub Actions que ese commit
+disparó** (`gh run watch` contra el run 33828891257, no asumido): los
+cuatro jobs de `ci.yml` — `postgres-integration` (2m15s),
+`security` (4m35s, el endpoint de npm respondió a tiempo en esta corrida —
+`continue-on-error` queda como red de seguridad para la próxima vez que no
+lo haga), `quality` (2m43s), `e2e` (3m56s) — **pasaron los cuatro**.
+Primera vez confirmada en la historia de este proyecto que el pipeline
+real de GitHub Actions está genuinamente verde de punta a punta.
 
 ## In Progress
 
