@@ -1,7 +1,9 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { apiClient } from "../api/client";
 import { AuthProvider, useAuth } from "./auth-context";
+
+const REFRESH_TOKEN_STORAGE_KEY = "erp.refreshToken";
 
 const expiredSession = {
   accessToken: "expired-access",
@@ -96,5 +98,54 @@ describe("AuthProvider", () => {
       await expect(result.current.getAccessToken()).rejects.toThrow("refresh rejected");
     });
     expect(result.current.session).toBeNull();
+  });
+
+  it("persists the refresh token to sessionStorage after login, and clears it on logout", async () => {
+    vi.spyOn(apiClient, "login").mockResolvedValue(refreshedSession);
+    vi.spyOn(apiClient, "logout").mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.login({ email: "ana@example.com", password: "Password1" });
+    });
+    expect(window.sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBe(
+      refreshedSession.refreshToken,
+    );
+
+    await act(async () => {
+      await result.current.logout();
+    });
+    expect(window.sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it("starts without bootstrapping when no refresh token was stored", () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.isBootstrapping).toBe(false);
+    expect(result.current.session).toBeNull();
+  });
+
+  it("silently restores a session from a stored refresh token on mount", async () => {
+    window.sessionStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, "refresh-1");
+    const refreshMock = vi.spyOn(apiClient, "refresh").mockResolvedValue(refreshedSession);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.isBootstrapping).toBe(true);
+
+    await waitFor(() => expect(result.current.isBootstrapping).toBe(false));
+
+    expect(refreshMock).toHaveBeenCalledWith("refresh-1");
+    expect(result.current.session).toEqual(refreshedSession);
+  });
+
+  it("clears a stale stored refresh token when the bootstrap refresh fails", async () => {
+    window.sessionStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, "refresh-stale");
+    vi.spyOn(apiClient, "refresh").mockRejectedValue(new Error("expired"));
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isBootstrapping).toBe(false));
+
+    expect(result.current.session).toBeNull();
+    expect(window.sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBeNull();
   });
 });

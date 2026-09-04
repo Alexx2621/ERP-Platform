@@ -29,12 +29,15 @@ interface WorkspaceSelection extends TenantSummary {
 }
 
 export function App() {
-  const { session } = useAuth();
+  const { session, isBootstrapping } = useAuth();
   const { path, navigate } = useRouter();
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null);
   const isAuthPath = path === "/login" || path === "/register";
 
   useEffect(() => {
+    if (isBootstrapping) {
+      return;
+    }
     if (!session && !isAuthPath) {
       navigate("/login", true);
       return;
@@ -67,7 +70,17 @@ export function App() {
     if (session && path === "/platform-admin" && !session.user.isPlatformAdmin) {
       navigate("/tenants", true);
     }
-  }, [isAuthPath, navigate, path, selection, session]);
+  }, [isAuthPath, isBootstrapping, navigate, path, selection, session]);
+
+  if (isBootstrapping) {
+    return (
+      <main className="grid min-h-[100dvh] place-items-center bg-[var(--paper)]">
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--muted)]">
+          Cargando…
+        </p>
+      </main>
+    );
+  }
 
   if (!session) {
     return path === "/register" ? (

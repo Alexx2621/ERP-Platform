@@ -13,4 +13,5 @@ configure({ asyncUtilTimeout: 15_000 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.sessionStorage.clear();
 });
