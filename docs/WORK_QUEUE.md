@@ -284,6 +284,40 @@ primer commit, pero seguían sin su propio documento numerado.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
 
+### Hecho — sesión 36 (persistencia de sesión al recargar + bug real del dev server de ts-node)
+
+A pedido explícito del usuario ("Cuando recargo la página en cualquier
+módulo que estoy me saca de la sesión, eso es normal?"). Confirmado que
+era el comportamiento esperado (ADR-006, tokens en memoria únicamente) y
+presentado el trade-off — el usuario eligió persistir el refresh token.
+
+- **`auth-context.tsx`**: solo el refresh token (nunca el access token)
+  se persiste en `sessionStorage`; `AuthProvider` intenta un refresh
+  silencioso al montar si hay un token guardado, expuesto vía
+  `isBootstrapping` para que `app.tsx` no redirija a `/login` mientras
+  se resuelve.
+- Tests: 4 unitarios nuevos (67/67 en `apps/erp-web`, antes 63). **E2E
+  real nuevo** (`apps/e2e/tests/session-persistence.spec.ts`): reload
+  real dispara un refresh real y la app se queda en el módulo (no
+  `/login`); limpiar el token guardado sí redirige a login — 20/20
+  Playwright en total (antes 19).
+- **Segundo bug real, encontrado por accidente al reiniciar los
+  servidores persistentes con el fix ya aplicado, ajeno a este cambio**:
+  `pnpm --filter @erp/api run start:dev` fallaba con un `TSError` real
+  (`Property 'tenantContext' does not exist on type 'Request'`) —
+  `tenant-request.ts` declara esa augmentation vía `declare module
+  "express"` pero nunca se importa en ningún lugar, así que `tsc`
+  (compila todo el `include`) la recoge pero `ts-node` (solo alcanzable
+  desde `main.ts`) no. Corregido con `"ts-node": { "files": true }` en
+  `apps/api/tsconfig.json` — la opción documentada de ts-node
+  exactamente para este caso.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Persistencia de
+  sesión al recargar la página".
+- Validación completa: `pnpm lint`/`typecheck`/`build` limpios en
+  `apps/erp-web`/`apps/api`, `apps/erp-web` 67/67, `apps/e2e` 20/20
+  Playwright contra infraestructura efímera real, y los tres procesos
+  persistentes de desarrollo reiniciados y verificados con ambos fixes.
+
 ### Hecho — sesión 36 (bug real de CI + Escala excluida del promedio)
 
 A pedido explícito del usuario, que compartió capturas reales de GitHub

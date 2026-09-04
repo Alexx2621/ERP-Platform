@@ -3321,6 +3321,94 @@ los 4 jobs — `Lint, types, unit tests and build`,
 pasaron los cuatro, incluyendo el job de E2E que venía fallando en cada
 push anterior de esta misma sesión.
 
+### Persistencia de sesión al recargar la página (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario ("Cuando recargo la página en cualquier
+módulo que estoy me saca de la sesión, eso es normal?"). Investigado antes
+de responder: `apps/erp-web/src/shared/auth/auth-context.tsx` guardaba la
+sesión únicamente en estado de React (`useState`/`useRef`, sin
+`localStorage`/`sessionStorage`/cookies), decisión de seguridad explícita
+desde ADR-006 (Foundation) para minimizar la exposición de tokens ante
+XSS — así que cualquier recarga reinicia ese estado a `null` y
+`app.tsx` redirige de inmediato a `/login`, en todos los módulos por
+igual. Confirmado que el propio ADR-006 dejaba la puerta abierta
+("revisit this ADR if a first-party cookie session turns out to be worth
+the added CSRF-handling complexity"). Presentado el trade-off al usuario
+vía pregunta explícita (mantener el in-memory estricto vs. persistir el
+refresh token) — eligió persistir el refresh token.
+
+- **`auth-context.tsx`**: solo el refresh token (single-use, nunca el
+  access token) se escribe en `sessionStorage` (se borra al cerrar la
+  pestaña, nunca compartido entre pestañas) — `replaceSession` lo
+  persiste/limpia en cada cambio de sesión. Un `useEffect` nuevo en el
+  montaje de `AuthProvider` intenta silenciosamente `apiClient.refresh()`
+  contra el token guardado antes de que la app decida redirigir,
+  expuesto vía un `isBootstrapping` nuevo en el contrato del contexto.
+  Si el refresh falla (token vencido/revocado), se limpia el storage y
+  la sesión queda `null` como antes — la persistencia nunca sustituye
+  una autenticación real.
+- **`app.tsx`**: el efecto de redirección y el `if (!session)` inicial
+  ahora esperan a `isBootstrapping` antes de decidir, evitando un flash
+  a `/login` mientras se resuelve el refresh silencioso; mientras
+  bootstrapea se muestra una pantalla mínima "Cargando…" con los mismos
+  tokens de color ya usados en el resto de la app.
+- **Límite conocido, no resuelto en este bloque**: `selection` (la
+  empresa/tenant activo dentro de `App()`) sigue siendo estado de React
+  puro, así que una recarga dentro de un módulo (`/sales`, `/inventory`,
+  etc.) ya no expulsa al login, pero sí aterriza en `/tenants` para
+  volver a resolver la empresa — el mismo flujo de auto-selección ya
+  construido en la sesión 28 (`TenantListPage.openTenant()`), no un
+  error nuevo. Persistir también la selección de empresa no se pidió ni
+  se implementó en este bloque.
+- Tests: 4 tests unitarios nuevos en `auth-context.spec.tsx` (persiste y
+  limpia el refresh token en `sessionStorage`; sin bootstrap cuando no
+  hay token guardado; restaura la sesión silenciosamente desde un token
+  guardado real; limpia un token guardado inválido cuando el refresh
+  falla) — 67/67 en `apps/erp-web` (antes 63). `apps/erp-web/src/test/setup.ts`
+  gana `window.sessionStorage.clear()` en cada `afterEach` para evitar
+  fuga de estado entre tests. **E2E real nuevo**
+  (`apps/e2e/tests/session-persistence.spec.ts`, Chromium vía
+  Testcontainers): registro real → `page.reload()` real dispara un
+  `POST /api/v1/auth/refresh` real y la app permanece en `/onboarding`
+  (nunca `/login`) → limpiar manualmente el token guardado y recargar sí
+  redirige a `/login`, confirmando que la persistencia depende
+  genuinamente del token guardado y no es un bypass — 20/20 Playwright
+  en total (antes 19), suite completa verificada sin regresiones.
+
+**Segundo bug real, encontrado por accidente al reiniciar los servidores
+persistentes de desarrollo con el fix ya aplicado, ajeno a este cambio**:
+`pnpm --filter @erp/api run start:dev` (el script real de desarrollo
+iterativo, `ts-node`) fallaba con un `TSError` real —
+`Property 'tenantContext' does not exist on type 'Request'` — confirmado
+con `git status` que nada de `apps/api` había sido tocado en esta sesión,
+así que no era una regresión de este bloque. **Causa raíz real**:
+`tenant-request.ts` declara `Request.tenantContext` vía
+`declare module "express"` pero **nunca se importa en ningún lugar** —
+`tsc -p tsconfig.build.json` (usado por `pnpm build`, CI, y el propio
+`pretest:e2e` de este arnés) lo recoge porque compila todo el glob
+`include` del proyecto, pero `ts-node` con su comportamiento por defecto
+solo type-checkea los archivos alcanzables desde el grafo de imports de
+`src/main.ts` — y nadie importa `tenant-request.ts`, ni siquiera por
+efecto lateral. Confirmado que otros tres archivos `declare module`/
+`declare global` de `apps/api` (`auth-request.ts`, `commerce-request.ts`,
+`correlation-id.middleware.ts`) estaban igualmente expuestos al mismo
+hueco — cuál de los cuatro fallara primero era cuestión de cuál guard se
+cargara antes en el grafo de imports real. Corregido con
+`"ts-node": { "files": true }` en `apps/api/tsconfig.json` — la opción
+documentada de ts-node exactamente para este caso, que hace que cargue
+de forma eager todo lo que coincide con `include`, igual que `tsc`, en
+vez de solo lo alcanzable desde el entrypoint. Verificado que el servidor
+de desarrollo arranca limpio con el fix, y que `tsc`
+(`typecheck`/`build`/`lint`, que nunca tuvieron este problema) siguen sin
+cambios.
+
+Validación completa de ambos bloques: `pnpm lint`/`typecheck`/`build`
+limpios en `apps/erp-web` y `apps/api`, `apps/erp-web` 20/20 archivos
+67/67 tests, `apps/e2e` 20/20 Playwright contra infraestructura efímera
+real, y los tres procesos persistentes de desarrollo
+(`apps/api`/`apps/worker`/`apps/erp-web`) reiniciados con ambos fixes
+aplicados y confirmados arriba (`curl` real contra los tres puertos).
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
