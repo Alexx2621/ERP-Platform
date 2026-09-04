@@ -3409,6 +3409,29 @@ real, y los tres procesos persistentes de desarrollo
 (`apps/api`/`apps/worker`/`apps/erp-web`) reiniciados con ambos fixes
 aplicados y confirmados arriba (`curl` real contra los tres puertos).
 
+**Tercer bug real, encontrado por la corrida real de CI que estos cambios
+dispararon, no por la validación local**: el job `Lint, types, unit tests
+and build` falló con `pnpm run typecheck exited (2)` dentro de
+`apps/e2e` — `tests/session-persistence.spec.ts(41,29): error TS2304:
+Cannot find name 'window'`. El nuevo test usa
+`page.evaluate(() => window.sessionStorage.removeItem(...))`, el primer
+`page.evaluate` de toda la suite de `apps/e2e` que referencia un global
+del navegador dentro del cuerpo del callback — ese cuerpo se ejecuta en
+el navegador real, pero TypeScript lo type-checkea contra el
+`tsconfig.json` de este paquete, que solo declara `"lib": ["ES2022"]`
+(heredado de `tsconfig.base.json`, correcto para un paquete que corre
+bajo Node) sin `"dom"`. Reproducido localmente
+(`pnpm --filter @erp/e2e run typecheck`, nunca ejecutado antes de este
+bloque como parte de la validación local) y corregido agregando
+`"lib": ["ES2022", "dom"]` como override en `apps/e2e/tsconfig.json` —
+la recomendación oficial de Playwright para exactamente este caso.
+Verificado con `pnpm turbo run lint typecheck build` sobre el monorepo
+completo (31/31 tareas) y re-ejecutando el E2E real antes de volver a
+empujar. **Verificado contra una segunda corrida real de GitHub Actions**
+(`gh run watch`): los 4 jobs pasaron, incluyendo `Lint, types, unit tests
+and build` (el que había fallado) y el propio `session-persistence.spec.ts`
+dentro del job de E2E.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

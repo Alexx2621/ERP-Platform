@@ -284,7 +284,7 @@ primer commit, pero seguían sin su propio documento numerado.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
 
-### Hecho — sesión 36 (persistencia de sesión al recargar + bug real del dev server de ts-node)
+### Hecho — sesión 36 (persistencia de sesión al recargar + dos bugs reales de tooling encontrados de paso)
 
 A pedido explícito del usuario ("Cuando recargo la página en cualquier
 módulo que estoy me saca de la sesión, eso es normal?"). Confirmado que
@@ -313,10 +313,22 @@ presentado el trade-off — el usuario eligió persistir el refresh token.
   exactamente para este caso.
 - Ver el detalle completo en `docs/PROJECT_STATE.md` — "Persistencia de
   sesión al recargar la página".
+- **Tercer bug real, encontrado por la corrida real de CI que este
+  trabajo disparó, no por la validación local**: el job
+  `Lint, types, unit tests and build` falló con `pnpm run typecheck
+  exited (2)` en `apps/e2e` — `Cannot find name 'window'` en el nuevo
+  `page.evaluate(() => window.sessionStorage...)`, el primer uso de un
+  global del navegador dentro de un `page.evaluate` de toda la suite.
+  Corregido agregando `"lib": ["ES2022", "dom"]` en
+  `apps/e2e/tsconfig.json` — la recomendación oficial de Playwright.
+  Verificado con `pnpm turbo run lint typecheck build` (31/31) y una
+  segunda corrida real de CI, esta vez verde.
 - Validación completa: `pnpm lint`/`typecheck`/`build` limpios en
-  `apps/erp-web`/`apps/api`, `apps/erp-web` 67/67, `apps/e2e` 20/20
-  Playwright contra infraestructura efímera real, y los tres procesos
-  persistentes de desarrollo reiniciados y verificados con ambos fixes.
+  `apps/erp-web`/`apps/api`/`apps/e2e`, `apps/erp-web` 67/67, `apps/e2e`
+  20/20 Playwright contra infraestructura efímera real, dos corridas
+  reales de GitHub Actions verificadas (la primera falló por el tercer
+  bug, la segunda verde), y los tres procesos persistentes de desarrollo
+  reiniciados y verificados con los tres fixes.
 
 ### Hecho — sesión 36 (bug real de CI + Escala excluida del promedio)
 
