@@ -3555,6 +3555,88 @@ reportado por el usuario. Pulir el detalle visual de paneles individuales
 (densidad de tablas, badges de estado con color semántico consistente,
 etc.) queda como trabajo incremental futuro si el usuario lo pide.
 
+### Módulo "Apariencia": color de acento personalizable + layout sidebar/navbar (sesión 36, 2026-09-04)
+
+A pedido explícito del usuario, inmediatamente después del rediseño de UI
+("crea un módulo llamado Apariencia dónde el usuario pueda cambiar los
+colores y estilo de la interfaz gráfica... selector de color... cambiar de
+sidebar a navbar... si se selecciona navbar deben poder seleccionarse los
+modulos separados por categorias con dropdowns").
+
+- **`shared/appearance/color-utils.ts`** (nuevo, sin dependencias): valida
+  hex, deriva `--accent-hover`/`--accent-light`/`--accent-soft` mezclando
+  hacia negro/blanco, y calcula `--accent-contrast` (blanco o tinta oscura)
+  por luminancia relativa — para que cualquier color que el usuario elija
+  siga siendo legible en botones primarios y el badge de marca.
+- **`shared/appearance/appearance-context.tsx`** (nuevo): persiste
+  `ui.accentColor`/`ui.navigationLayout` a través del mecanismo real de
+  `UserPreference` ya existente desde Foundation
+  (`GET/PUT /api/v1/preferences`) — **sin ningún endpoint nuevo de
+  backend**, exactamente el propósito para el que ese mecanismo se
+  construyó. Aplica la paleta derivada como propiedades CSS en
+  `document.documentElement` de forma optimista (inmediata) y persiste en
+  segundo plano; un fallo de guardado se muestra como aviso no bloqueante
+  sin revertir el color ya aplicado. **Decisión de diseño real, no
+  trivial**: el contexto expone un valor por defecto real (azul SAP,
+  sidebar) en vez de lanzar una excepción cuando no hay `AppearanceProvider`
+  ancestro — `ProductShell` ahora lee este contexto en cada página, y ~15
+  archivos de test de página ya existentes lo renderizan sin envolver en
+  el provider; a diferencia de `useAuth()` (donde no existe un valor por
+  defecto seguro para "¿hay sesión?"), sí existe uno seguro para "¿de qué
+  color es la barra lateral?" — evitando así editar esos 15 archivos.
+- **`shared/ui/nav-dropdown.tsx`** (nuevo): menú de disclosure autónomo
+  (cierra con click-afuera o Escape) para los grupos de categoría del modo
+  navbar — no existía un primitivo de menú compartido, y una sola vía de
+  uso no justificaba una dependencia nueva.
+- **`ProductShell`**: ahora bifurca según `navigationLayout` — sidebar
+  (sin cambios) o una fila de navbar construida desde los mismos grupos de
+  `module-nav.ts`, renderizando cada categoría multi-ítem como un
+  `NavDropdown` y el grupo "General" (un solo ítem, "Inicio") como enlace
+  plano. **Mobile siempre usa el mismo drawer existente sin importar el
+  layout elegido para desktop** — ni una barra lateral fija ni una barra
+  ancha con dropdowns caben en una pantalla de teléfono, así que la
+  preferencia solo tiene efecto real en `lg:` (1024px) y superior.
+- **`features/appearance/appearance-page.tsx`** (nuevo, ruta `/appearance`,
+  agregado a `module-nav.ts` bajo "Administración"): `<input type="color">`
+  nativo + campo hexadecimal + 8 swatches de colores sugeridos (Azul, Verde,
+  Púrpura, Naranja, Rojo, Pizarra, Turquesa, Rosa); dos tarjetas
+  seleccionables para el layout, con el texto explicando el comportamiento
+  mobile cuando "Barra superior" está activa.
+
+**Bug real encontrado y corregido durante la propia verificación visual
+contra el dev server real, no por inspección**: la fila del navbar usaba
+`overflow-x-auto` (para scroll horizontal en desktops angostos), pero por
+la propia especificación de CSS, fijar solo `overflow-x` a un valor
+distinto de `visible` obliga al navegador a calcular `overflow-y` también
+como `auto` — un elemento no puede tener un eje "visible" y el otro
+recortado. Esto recortaba verticalmente el panel del dropdown, dejándolo
+invisible pese a abrirse correctamente (confirmado con una captura real
+mostrando el botón en estado "abierto" pero sin ningún ítem visible).
+Corregido reemplazando `overflow-x-auto` por `flex-wrap`, dejando que las
+categorías salten a una segunda línea en vez de recortarse — verificado
+con una segunda captura real mostrando el menú completo.
+
+**Verificado visualmente contra el dev server real** (script de Playwright
+ad hoc, no comiteado): re-tematizado en vivo con presets y un hex
+personalizado (naranja `#E8720C`), apertura y navegación real desde un
+dropdown de categoría en modo navbar, y **una recarga completa de página
+real confirmando que ambas preferencias (color Y layout) sobreviven** —
+prueba directa de que la persistencia es real contra el backend, no solo
+aplicada en el cliente.
+
+Tests: 27 tests unitarios nuevos (`color-utils.spec.ts` 5,
+`appearance-context.spec.tsx` 7, `nav-dropdown.spec.tsx` 4,
+`appearance-page.spec.tsx` 6, `product-shell.spec.tsx` 4 nuevo — cubre
+explícitamente el modo navbar, algo que ningún test anterior ejercitaba) —
+94/94 en `apps/erp-web` (antes 67), **sin modificar ninguno de los 15
+archivos de test de página ya existentes**, confirmando que la decisión de
+valor-por-defecto-seguro del contexto funcionó según lo previsto. Validación
+completa: `pnpm turbo run lint typecheck build` (31/31), `apps/e2e` 20/20
+Playwright contra infraestructura efímera real (sin ninguna modificación de
+test E2E necesaria), y una corrida real de GitHub Actions confirmada verde
+vía `gh run watch`. Los tres procesos persistentes de desarrollo reiniciados
+y verificados con el build final.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

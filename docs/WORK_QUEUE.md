@@ -284,6 +284,41 @@ primer commit, pero seguían sin su propio documento numerado.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
 
+### Hecho — sesión 36 (módulo Apariencia: color de acento + layout sidebar/navbar)
+
+A pedido explícito del usuario, inmediatamente después del rediseño de UI
+("crea un módulo llamado Apariencia... selector de color... cambiar de
+sidebar a navbar... si se selecciona navbar deben poder seleccionarse los
+modulos separados por categorias con dropdowns").
+
+- **`shared/appearance/color-utils.ts`**: hex validation + lighten/darken +
+  contraste por luminancia, deriva toda la paleta de acento desde un solo
+  color.
+- **`shared/appearance/appearance-context.tsx`**: persiste
+  `ui.accentColor`/`ui.navigationLayout` vía el `UserPreference` real ya
+  existente (`GET/PUT /api/v1/preferences`) — sin backend nuevo. Expone un
+  valor por defecto real (no lanza excepción) para no romper los ~15 tests
+  de página existentes que no envuelven en el provider.
+- **`shared/ui/nav-dropdown.tsx`** (nuevo): menú desplegable con
+  click-afuera/Escape para las categorías del modo navbar.
+- **`ProductShell`**: bifurca sidebar vs. navbar (dropdowns agrupados por
+  categoría) según la preferencia; mobile siempre usa el mismo drawer.
+- **`features/appearance/appearance-page.tsx`** (ruta `/appearance`):
+  selector de color nativo + hex + 8 presets, y dos tarjetas para elegir
+  layout.
+- **Bug real encontrado durante la verificación visual**: `overflow-x-auto`
+  en la fila del navbar recortaba el dropdown verticalmente también (CSS
+  fuerza `overflow-y: auto` cuando solo se fija `overflow-x`) —
+  corregido con `flex-wrap`.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Módulo
+  'Apariencia'".
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 94/94 tests (27 nuevos, cero tests existentes
+  modificados), `apps/e2e` 20/20 Playwright (sin cambios), verificación
+  visual real contra el dev server (re-temado en vivo, dropdowns del
+  navbar, y una recarga real confirmando persistencia de ambas
+  preferencias), y una corrida real de CI confirmada verde.
+
 ### Hecho — sesión 36 (rediseño de UI: sidebar persistente + paleta clara estilo SAP Fiori)
 
 A pedido explícito del usuario ("rediseñes toda la UI, se ve muy generico
