@@ -2683,6 +2683,75 @@ dependencias/imágenes en CI todavía".
   GitHub Actions tras el push (ver commit/PR de esta sesión para el
   resultado real de la primera corrida), no simulada ni asumida.
 
+### Bug real de infraestructura de CI: el pipeline real de GitHub Actions nunca había pasado (sesión 36, 2026-09-03)
+
+Encontrado por accidente, no buscado: al verificar el resultado real de la
+corrida de GitHub Actions disparada por el push del job `security` (ver
+entrada anterior), descubrí con `gh run view` contra el repo real que las
+**dos corridas anteriores de esta misma sesión también habían fallado**
+(`docs(decisions): formally ratify ADR-001...` y
+`feat(erp-web): add a Ctrl+K command palette...`) — la primera de ellas un
+commit **puramente de documentación**, sin un solo archivo de código
+tocado. Esto era imposible de explicar como una regresión de mi propio
+trabajo, así que investigué la causa raíz real en vez de asumir.
+
+**Causa raíz real**: `packages/database/generated/prisma/` (el cliente de
+Prisma generado, requerido por `@erp/database` y transitivamente por casi
+todo el monorepo) está en `.gitignore`
+(`packages/database/.gitignore:5`) — nunca se ha commiteado, por diseño
+correcto (es un artefacto generado, no código fuente). Pero **ni
+`turbo.json` ni `.github/workflows/ci.yml` invocaban jamás
+`prisma generate`** — `turbo.json` solo declaraba `dependsOn: ["^build"]`
+para `build`/`lint`/`typecheck`/`test`, sin ninguna tarea `generate` en el
+grafo. En este entorno de desarrollo local, esto nunca se notó en 36
+sesiones porque el directorio `generated/prisma/` se creó una sola vez,
+hace mucho, y ha persistido sin tocarse en este mismo disco desde
+entonces — ningún comando local (`pnpm build`/`typecheck`/`test`) necesitó
+jamás regenerarlo. **Un checkout genuinamente limpio — exactamente lo que
+cada corrida real de GitHub Actions ejecuta — nunca tuvo esa suerte**:
+`Cannot find module '../generated/prisma/client'` desde el primer
+`tsc -p tsconfig.json` de `@erp/database#build`, en cascada sobre
+prácticamente cualquier job.
+
+**Verificado directamente que esto no es nuevo de esta sesión**: es
+estructural desde que `@erp/database` existe (Foundation, sesión 1-2) —
+ninguna sesión de las 36 documentadas en este archivo verificó jamás el
+resultado real de una corrida de GitHub Actions con `gh run view`/`gh run
+list`; cada "todo verde" registrado en este documento y en
+`docs/WORK_QUEUE.md` se basó exclusivamente en la ejecución local de
+`pnpm lint`/`typecheck`/`test`/`build`, que nunca partía de un checkout
+genuinamente limpio en esta máquina. Esta es la primera vez que alguien
+—en este caso, esta sesión— efectivamente miró el resultado real del
+pipeline en `github.com/Alexx2621/ERP-Platform/actions`.
+
+**Corrección real, verificada con un checkout local genuinamente limpio**
+(`rm -rf packages/database/generated` + caché de turbo limpiada, no solo
+razonada): `turbo.json` gana una tarea `generate` nueva
+(`outputs: ["generated/**"]`) y `build`/`lint`/`typecheck`/`test` ahora
+dependen de ella (`dependsOn: ["^build", "generate"]`) — así que cualquier
+invocación real vía `turbo run <tarea>` (que es como `pnpm build`/
+`lint`/`typecheck`/`test` de la raíz ya funcionan) la dispara
+automáticamente. Pero `postgres-integration`
+(`pnpm --filter @erp/api test:integration`, Jest directo, sin pasar por
+turbo en absoluto) no se beneficia de ese grafo — así que
+`.github/workflows/ci.yml` gana un paso explícito nuevo
+("Generate Prisma client", `pnpm --filter @erp/database run generate`) en
+los tres jobs que de verdad compilan/ejecutan TypeScript
+(`quality`, `postgres-integration`, `e2e`) — deliberadamente **no** en
+`security`, que solo corre `pnpm audit` y nunca toca ningún código
+TypeScript. Confirmado con un build fresco real (`generated/` borrado,
+caché de turbo vaciada): 10/10 tareas exitosas, 0 desde caché — la primera
+vez que este monorepo compila de verdad desde un estado limpio en esta
+máquina. `typecheck`/`lint` repetidos igual de limpios, 14/14 cada uno.
+
+**No verificado localmente, por límite real y documentado de este mismo
+sandbox** (no relacionado con este bug): `prisma generate` en sí mismo no
+necesita ninguna conexión a base de datos —confirmado leyendo
+`schema.prisma`, cuyo bloque `datasource` no referencia
+`env("DATABASE_URL")` en absoluto, ya que la URL la resuelve el driver
+adapter (`@prisma/adapter-pg`) en runtime, no Prisma mismo— así que este
+fix no depende de ningún secreto ni variable de entorno nueva en CI.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -2713,11 +2782,18 @@ sesión 36 ("continua con lo siguiente"), se avanzó el workstream de
 Seguridad** — ver "Dependency vulnerability scanning — workstream de
 Seguridad, §17" arriba: job de auditoría real en CI, `dependabot.yml`
 nuevo, y Dependabot security updates/automated fixes habilitados de
-verdad contra el repo real de GitHub. Sin trabajo en curso — salvo
-indicación distinta del usuario, el siguiente trabajo real depende de
-evidencia concreta de necesidad de escalar (Fase 12), de otro workstream
-del §17 (Observabilidad/OpenTelemetry, Data lifecycle, Developer
-platform), o de una nueva prioridad que el usuario indique.
+verdad contra el repo real de GitHub. **Verificando esa propia corrida de
+CI con `gh run view` contra el repo real, se descubrió que el pipeline de
+GitHub Actions llevaba fallando desde siempre** — ver "Bug real de
+infraestructura de CI: el pipeline real de GitHub Actions nunca había
+pasado" arriba para el detalle completo — corregido en la misma sesión
+(`turbo.json` gana una tarea `generate` real, `ci.yml` gana un paso
+explícito de generación de Prisma en los tres jobs que compilan código).
+Sin trabajo en curso — salvo indicación distinta del usuario, el
+siguiente trabajo real depende de evidencia concreta de necesidad de
+escalar (Fase 12), de otro workstream del §17 (Observabilidad/
+OpenTelemetry, Data lifecycle, Developer platform), o de una nueva
+prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

@@ -12,10 +12,15 @@ implementar ninguna iniciativa, por falta de evidencia real; ADR-001,
 ADR-002 y ADR-003 ratificados formalmente, cerrando el último ítem de
 mantenimiento pendiente; Command Palette (Ctrl+K) construido como primer
 workstream transversal del `docs/ROADMAP.md` §17 con trabajo real
-entregado; y el workstream de Seguridad del mismo §17 avanzado — job real
+entregado; el workstream de Seguridad del mismo §17 avanzado — job real
 de auditoría de dependencias en CI, `dependabot.yml` y Dependabot security
 updates habilitados de verdad contra el repo real de GitHub — los cuatro a
-pedido explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+pedido explícito del usuario; y, encontrado por accidente al verificar esa
+propia corrida de CI contra el repo real, un bug real corregido: el
+pipeline de GitHub Actions llevaba fallando desde siempre por falta de un
+paso de `prisma generate`, nunca detectado en 36 sesiones porque ninguna
+había verificado antes el resultado real de una corrida de CI). Modelo
+operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -209,6 +214,47 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (bug real: el pipeline de GitHub Actions nunca había pasado)
+
+Encontrado por accidente al verificar contra el repo real (`gh run view`)
+el resultado de la propia corrida de CI disparada por el trabajo de
+Seguridad de esta sesión — no buscado, y confirmado que no era una
+regresión mía: las dos corridas anteriores de esta misma sesión también
+habían fallado, incluyendo una puramente de documentación sin un solo
+archivo de código tocado.
+
+- **Causa raíz real**: `packages/database/generated/prisma/` (cliente de
+  Prisma generado) está en `.gitignore` por diseño correcto, pero ni
+  `turbo.json` ni `.github/workflows/ci.yml` invocaban jamás `prisma
+  generate` — así que cualquier checkout genuinamente limpio (exactamente
+  lo que cada corrida real de GitHub Actions ejecuta) fallaba desde el
+  primer `tsc` de `@erp/database#build` con
+  `Cannot find module '../generated/prisma/client'`, en cascada sobre
+  prácticamente todos los jobs. Estructural desde que `@erp/database`
+  existe — nunca notado en 36 sesiones porque el directorio generado se
+  creó una sola vez en esta máquina, hace mucho, y persistió sin tocarse
+  desde entonces; ninguna sesión anterior había verificado el resultado
+  real de una corrida de GitHub Actions con `gh run view`/`gh run list`,
+  solo la ejecución local de `pnpm lint`/`typecheck`/`test`/`build`.
+- **`turbo.json`**: tarea `generate` nueva (`outputs: ["generated/**"]`),
+  `build`/`lint`/`typecheck`/`test` ahora dependen de ella
+  (`dependsOn: ["^build", "generate"]`).
+- **`.github/workflows/ci.yml`**: paso explícito nuevo ("Generate Prisma
+  client") en `quality`/`postgres-integration`/`e2e` — los tres jobs que
+  compilan o ejecutan TypeScript real — deliberadamente no en `security`,
+  que solo corre `pnpm audit` sin tocar código.
+- **Verificado con un checkout local genuinamente limpio** (`generated/`
+  borrado, caché de turbo vaciada, no solo razonado): `pnpm build`
+  10/10 tareas exitosas con 0 desde caché, `pnpm typecheck`/`pnpm lint`
+  14/14 cada uno — la primera vez que este monorepo compila de verdad
+  desde cero en esta máquina. Confirmado además que `prisma generate` no
+  necesita ninguna variable de entorno nueva (el `datasource` de
+  `schema.prisma` no referencia `DATABASE_URL` — la URL la resuelve el
+  driver adapter en runtime, no Prisma).
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Bug real de
+  infraestructura de CI: el pipeline real de GitHub Actions nunca había
+  pasado".
 
 ### Hecho — sesión 36 (Dependency vulnerability scanning / Seguridad)
 
