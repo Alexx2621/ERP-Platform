@@ -3293,6 +3293,34 @@ exacto). Validación completa: `pnpm lint`/`typecheck` limpios en el
 monorepo, `apps/erp-web` 20/20 archivos, 63/63 tests, y la corrida real
 de CI confirmada verde vía `gh run watch`.
 
+**Tercer bug real de CI, encontrado por la corrida real disparada por el
+propio commit de la exclusión de Escala** (no local, no simulado): pese a
+que el fix anterior de `testTimeout: 20_000` había dejado la corrida de
+CI genuinamente verde una vez, `gh run view --log-failed` contra la
+siguiente corrida real (commit `2136358`) mostró `inventory-page.spec.tsx`
+fallando de nuevo — pero esta vez con un error real distinto,
+`TestingLibraryElementError: Unable to find an element with the text:
+Todavía no hay existencias registradas`, y fallando a solo ~1553ms de
+haber empezado, muy por debajo del nuevo presupuesto de 20s. **Causa
+raíz real, un segundo mecanismo de timeout completamente independiente
+del primero**: `testTimeout`/`hookTimeout` de Vitest (lo que se corrigió
+antes) gobierna cuánto puede durar un test completo, pero
+`@testing-library/react`'s propio polling interno de `findBy*`/`waitFor`
+tiene su propio timeout separado (`asyncUtilTimeout`, default ~1000ms) —
+antes invisible porque el timeout de Vitest, más corto, siempre disparaba
+primero y enmascaraba el error real de Testing Library. Al subir el
+timeout de Vitest, el segundo timeout, más corto, quedó expuesto por
+primera vez bajo la contención real de un runner de 2 cores de GitHub
+Actions. Corregido con `configure({ asyncUtilTimeout: 15_000 })`
+(`apps/erp-web/src/test/setup.ts`, `@testing-library/react`), aplicado
+globalmente a toda la suite. **Verificado contra una corrida real nueva
+de GitHub Actions disparada por este fix** (`gh run watch`, no asumido):
+los 4 jobs — `Lint, types, unit tests and build`,
+`Browser E2E with api+worker, PostgreSQL, Redis and MinIO`,
+`Dependency vulnerability audit`, `PostgreSQL repository integration` —
+pasaron los cuatro, incluyendo el job de E2E que venía fallando en cada
+push anterior de esta misma sesión.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

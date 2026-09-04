@@ -314,10 +314,22 @@ mostrando CI fallando en `develop`. Investigado con `gh run view
   verificación: con el promedio en 100%, `getByText("100%")` del test del
   componente colisionaba con múltiples elementos — corregido escopando al
   `progressbar` único por `aria-label`.
+- **Tercer bug real de CI**, encontrado por la siguiente corrida real
+  (commit `2136358`, el de la exclusión de Escala): `inventory-page.spec.tsx`
+  volvió a fallar, esta vez con `TestingLibraryElementError` a ~1553ms —
+  un segundo timeout, completamente independiente del primero: el propio
+  polling de `findBy*`/`waitFor` de `@testing-library/react` tiene su
+  propio `asyncUtilTimeout` (default ~1000ms), antes enmascarado por el
+  `testTimeout` de Vitest (más corto) que siempre disparaba primero.
+  Corregido con `configure({ asyncUtilTimeout: 15_000 })` en
+  `apps/erp-web/src/test/setup.ts`. Verificado con una corrida real nueva
+  de GitHub Actions (`gh run watch`): los 4 jobs pasaron, incluyendo el de
+  E2E que venía fallando en cada push anterior.
 - Ver el detalle completo en `docs/PROJECT_STATE.md` — "Bug real de CI
   encontrado por el usuario + Escala excluida del promedio".
 - Validación completa: `pnpm lint`/`typecheck` limpios, `apps/erp-web`
-  20/20 archivos 63/63 tests, CI real verificado verde vía `gh run watch`.
+  20/20 archivos 63/63 tests, CI real verificado verde vía `gh run watch`
+  (dos corridas reales sucesivas, cada una confirmando el fix del momento).
 
 ### Hecho — sesión 36 (Cierre del workstream §17: PII, backfills, module template)
 
