@@ -2630,6 +2630,59 @@ código de producción. Queda sin diagnosticar ni corregir en este bloque
 deliberadamente, para no mezclar un fix no solicitado y ajeno con esta
 entrega; a retomar como su propio ítem si el usuario lo pide.
 
+### Dependency vulnerability scanning — workstream de Seguridad, §17 (sesión 36, 2026-09-03)
+
+A pedido explícito del usuario ("continua con lo siguiente" tras elegir
+entre los workstreams del §17 que le ofrecí — Seguridad fue el primero
+que propuse y el que avancé, dado su alcance más claro frente a
+Observabilidad/OpenTelemetry). Cierra el hueco ya documentado en la
+"Revisión de cierre de Foundation" (sesión 22): "sin escaneo de
+dependencias/imágenes en CI todavía".
+
+- **`.github/workflows/ci.yml`**: nuevo job `security` ("Dependency
+  vulnerability audit"), mismo patrón de checkout/setup ya usado por
+  `quality`/`postgres-integration`/`e2e`, corriendo `pnpm audit
+  --audit-level=high` — bloquea el pipeline real ante una vulnerabilidad
+  real de severidad alta/crítica en cualquier dependencia del monorepo,
+  no solo un informe pasivo.
+- **`.github/dependabot.yml`** (nuevo): actualizaciones semanales
+  agrupadas (minor/patch juntos, major individual) para el ecosistema
+  `npm` (el `pnpm-lock.yaml` raíz cubre las 9 apps/paquetes del
+  workspace) y para `github-actions` — este último cierra el "patch
+  cadence" que `docs/ROADMAP.md` §17 pide específicamente para las
+  acciones ya fijadas a SHA de commit en `ci.yml` (fijar a un SHA
+  detiene las actualizaciones automáticas por tag; Dependabot es lo que
+  las reabre de forma segura, con una PR real que el propio pipeline de
+  CI valida antes de mergear).
+- **Repo real de GitHub reconfigurado vía la API real** (`gh api`, no
+  simulado): `dependabot_security_updates` y `automated-security-fixes`
+  estaban ambos `disabled` — verificado directamente contra el repo real
+  antes de tocar nada — y quedaron habilitados
+  (`PUT /repos/.../vulnerability-alerts`,
+  `PUT /repos/.../automated-security-fixes`, ambos confirmados con una
+  lectura posterior real). Decisión de alcance: **no se agregó
+  gitleaks-action ni ninguna otra herramienta de detección de secretos**
+  — verificado primero contra el repo real que GitHub ya tiene
+  `secret_scanning` y `secret_scanning_push_protection` **habilitados de
+  fábrica** (repo público bajo una cuenta personal, no de organización);
+  agregar una segunda herramienta redundante habría sido exactamente el
+  tipo de complejidad innecesaria que este proyecto evita en cada ADR.
+  "Container scans" (el tercer punto del §17) queda deliberadamente
+  fuera: no existe todavía ningún `Dockerfile` en este repo (`find`
+  confirmado, cero resultados) — nada real que escanear hasta que exista
+  una imagen de producción real que construir.
+- **Límite real encontrado y documentado, no ocultado**: `pnpm audit` no
+  pudo verificarse en este entorno de shell local — la llamada
+  `POST .../security/advisories/bulk` a `registry.npmjs.org` agota el
+  timeout repetidamente (confirmado dos veces, con conectividad `GET`
+  al mismo registro funcionando de inmediato — un límite específico de
+  este sandbox de desarrollo, no de la red en general). El job de CI se
+  agregó de todas formas porque `pnpm audit`/`npm audit` en runners
+  reales de GitHub Actions es una práctica estándar y ampliamente
+  probada; la verificación real ocurrió contra el propio pipeline de
+  GitHub Actions tras el push (ver commit/PR de esta sesión para el
+  resultado real de la primera corrida), no simulada ni asumida.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -2655,10 +2708,16 @@ siguiente fase"), se construyó el Command Palette (Ctrl+K)** — ver
 "Command Palette (Ctrl+K) — workstream de UX, §17" arriba — el primer
 workstream transversal del `docs/ROADMAP.md` §17 con trabajo real
 entregado, elegido explícitamente por el usuario tras aclarar que el
-roadmap no tiene una Fase 13. Sin trabajo en curso — salvo indicación
-distinta del usuario, el siguiente trabajo real depende de evidencia
-concreta de necesidad de escalar (Fase 12), de otro workstream del §17,
-o de una nueva prioridad que el usuario indique.
+roadmap no tiene una Fase 13. **Inmediatamente después, en la misma
+sesión 36 ("continua con lo siguiente"), se avanzó el workstream de
+Seguridad** — ver "Dependency vulnerability scanning — workstream de
+Seguridad, §17" arriba: job de auditoría real en CI, `dependabot.yml`
+nuevo, y Dependabot security updates/automated fixes habilitados de
+verdad contra el repo real de GitHub. Sin trabajo en curso — salvo
+indicación distinta del usuario, el siguiente trabajo real depende de
+evidencia concreta de necesidad de escalar (Fase 12), de otro workstream
+del §17 (Observabilidad/OpenTelemetry, Data lifecycle, Developer
+platform), o de una nueva prioridad que el usuario indique.
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

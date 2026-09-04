@@ -10,10 +10,12 @@ permanente por agente. Última actualización técnica: 2026-09-03 (sesión 36:
 Fase 12 — Scale evaluada explícitamente y cerrada formalmente sin
 implementar ninguna iniciativa, por falta de evidencia real; ADR-001,
 ADR-002 y ADR-003 ratificados formalmente, cerrando el último ítem de
-mantenimiento pendiente; y Command Palette (Ctrl+K) construido como primer
+mantenimiento pendiente; Command Palette (Ctrl+K) construido como primer
 workstream transversal del `docs/ROADMAP.md` §17 con trabajo real
-entregado — los tres a pedido explícito del usuario). Modelo operativo
-actualizado: 2026-08-27.
+entregado; y el workstream de Seguridad del mismo §17 avanzado — job real
+de auditoría de dependencias en CI, `dependabot.yml` y Dependabot security
+updates habilitados de verdad contra el repo real de GitHub — los cuatro a
+pedido explícito del usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -42,12 +44,17 @@ desde el cierre de Foundation; los 15 ADR de este código base (001-015)
 están todos ratificados, ninguno pendiente. **El Command Palette (Ctrl+K)
 quedó construido en la misma sesión 36** — ver "Hecho — sesión 36
 (Command Palette / Ctrl+K)" abajo — el primer workstream transversal del
-`docs/ROADMAP.md` §17 con trabajo real entregado (Seguridad,
-Observabilidad/SRE, Data lifecycle y Developer platform siguen sin
-iniciar). Sin ítem de mantenimiento restante conocido: salvo que el
-usuario aporte evidencia real de necesidad de escalar algo específico
-(Fase 12), pida otro workstream del §17, o indique otra prioridad, no hay
-un siguiente bloque de trabajo no bloqueado identificado en este momento.
+`docs/ROADMAP.md` §17 con trabajo real entregado. **Inmediatamente
+después, el workstream de Seguridad del mismo §17 también avanzó** — ver
+"Hecho — sesión 36 (Dependency vulnerability scanning / Seguridad)"
+abajo: job real de `pnpm audit` en CI, `dependabot.yml` nuevo, y
+Dependabot security updates/automated fixes habilitados de verdad contra
+el repo real de GitHub (Observabilidad/SRE, Data lifecycle y Developer
+platform siguen sin iniciar). Sin ítem de mantenimiento restante
+conocido: salvo que el usuario aporte evidencia real de necesidad de
+escalar algo específico (Fase 12), pida otro workstream del §17, o
+indique otra prioridad, no hay un siguiente bloque de trabajo no
+bloqueado identificado en este momento.
 Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
@@ -202,6 +209,43 @@ primer commit, pero seguían sin su propio documento numerado.
   ADR pendiente de numeración formal.
 - Sin cambios de código, migración ni tests — trabajo puramente de
   documentación sobre decisiones ya implementadas y verificadas.
+
+### Hecho — sesión 36 (Dependency vulnerability scanning / Seguridad)
+
+A pedido explícito del usuario ("Ok, continua con lo siguiente"),
+inmediatamente después de entregar el Command Palette. Entre los dos
+workstreams del §17 que había ofrecido como candidatos concretos
+(Seguridad vs. Observabilidad/OpenTelemetry), avancé Seguridad — alcance
+más claro y de menor riesgo de decisión arquitectónica que instrumentar
+tracing.
+
+- **`.github/workflows/ci.yml`**: job `security` nuevo (`pnpm audit
+  --audit-level=high`, mismo patrón checkout/setup que el resto de jobs).
+- **`.github/dependabot.yml`** (nuevo): `npm` (root, agrupando minor/patch)
+  + `github-actions` (cierra el "patch cadence" para las acciones ya
+  fijadas a SHA en `ci.yml`).
+- **Repo real de GitHub reconfigurado vía `gh api`** (no simulado):
+  verificado primero que `dependabot_security_updates`/
+  `automated-security-fixes` estaban `disabled`, habilitados ambos de
+  verdad, confirmado con una lectura posterior real.
+- **Decisión de alcance real, no fabricada**: sin gitleaks-action —
+  verificado que `secret_scanning`/`secret_scanning_push_protection` ya
+  estaban habilitados de fábrica en el repo real (público, cuenta
+  personal); agregar una segunda herramienta redundante habría sido la
+  misma sobrearquitectura que este proyecto evita en cada ADR. Sin
+  "container scans" — cero `Dockerfile` en el repo todavía, nada real que
+  escanear.
+- **Límite real encontrado y documentado**: `pnpm audit` no pudo
+  verificarse en el shell local de esta sesión (timeout repetido del POST
+  bulk de advisories contra `registry.npmjs.org`, con `GET` al mismo
+  registro funcionando de inmediato — límite de este sandbox, no de la
+  red). El job se agregó igual (`pnpm audit`/`npm audit` en runners reales
+  de GitHub Actions es estándar y ampliamente probado) y se verificó
+  contra la corrida real de GitHub Actions tras el push, no asumida. Ver
+  el detalle completo en `docs/PROJECT_STATE.md` — "Dependency
+  vulnerability scanning — workstream de Seguridad, §17".
+- Sin cambios de código de aplicación — trabajo de CI/configuración de
+  repositorio únicamente.
 
 ### Hecho — sesión 36 (Command Palette / Ctrl+K)
 

@@ -1,0 +1,23 @@
+version: 2
+
+updates:
+  # pnpm workspace dependencies (root pnpm-lock.yaml covers every package
+  # under apps/* and packages/*; Dependabot resolves it as npm-ecosystem).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Keeps the SHA-pinned actions in .github/workflows/ci.yml current —
+  # docs/SECURITY.md/PROJECT_STATE.md already require pinning to commit SHA,
+  # not a floating tag, so those pins need their own update path.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

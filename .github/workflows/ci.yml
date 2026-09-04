@@ -51,6 +51,29 @@ jobs:
       - name: Build
         run: pnpm build
 
+  security:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm and Node.js
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@24
+          cache: true
+          install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies for known high/critical vulnerabilities
+        run: pnpm audit --audit-level=high
+
   postgres-integration:
     name: PostgreSQL repository integration
     runs-on: ubuntu-latest
