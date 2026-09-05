@@ -45,7 +45,9 @@ test("runs the full PurchaseOrder -> Confirm -> partial Receipt -> Return -> Sup
 
   // --- A real tracked-inventory product from Catálogo ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  // exact: true — the home dashboard's own "Productos activos" widget caption
+  // ("N en el catálogo") would otherwise substring-match "Catálogo" too.
+  await page.getByRole("button", { name: "Catálogo", exact: true }).click();
   await page.getByRole("tab", { name: "Unidades" }).click();
   await page.getByRole("button", { name: "Nueva unidad de medida" }).click();
   const uomDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
@@ -84,7 +86,10 @@ test("runs the full PurchaseOrder -> Confirm -> partial Receipt -> Return -> Sup
 
   // --- Compras: PurchaseOrder ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Compras" }).click();
+  // exact: true — the home dashboard's own "Compras pendientes" widget
+  // button would otherwise substring-match "Compras" too (Playwright's
+  // default name matching is substring-based).
+  await page.getByRole("button", { name: "Compras", exact: true }).click();
   await expect(page).toHaveURL(/\/purchasing$/);
   await expect(page.getByRole("heading", { name: "Compras", exact: true })).toBeVisible();
 
@@ -138,7 +143,10 @@ test("runs the full PurchaseOrder -> Confirm -> partial Receipt -> Return -> Sup
 
   // --- Return: a real ISSUE movement (goods going back to the supplier) reduces stock ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Compras" }).click();
+  // exact: true — the home dashboard's own "Compras pendientes" widget
+  // button would otherwise substring-match "Compras" too (Playwright's
+  // default name matching is substring-based).
+  await page.getByRole("button", { name: "Compras", exact: true }).click();
   await page.getByRole("tab", { name: "Devoluciones" }).click();
   await page.getByRole("button", { name: "Nueva devolución" }).click();
   const returnDialog = page.getByRole("dialog", { name: "Nueva devolución" });
@@ -162,7 +170,10 @@ test("runs the full PurchaseOrder -> Confirm -> partial Receipt -> Return -> Sup
 
   // --- Supplier invoice, recorded as its own document, then cancelled ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Compras" }).click();
+  // exact: true — the home dashboard's own "Compras pendientes" widget
+  // button would otherwise substring-match "Compras" too (Playwright's
+  // default name matching is substring-based).
+  await page.getByRole("button", { name: "Compras", exact: true }).click();
   await page.getByRole("tab", { name: "Facturas de proveedor" }).click();
   await page.getByRole("button", { name: "Nueva factura" }).click();
   const invoiceDialog = page.getByRole("dialog", { name: "Nueva factura de proveedor" });

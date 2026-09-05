@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "jest",
-    "test:integration": "jest --config jest.integration.config.js --runInBand"
+    "test:integration": "jest --config jest.integration.config.js --runInBand",
+    "seed:demo": "ts-node --transpile-only scripts/seed-demo-data.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.906.0",

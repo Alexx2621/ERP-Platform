@@ -61,6 +61,7 @@ describe("ProvisionTenantUseCase", () => {
     expect(result.ownerMembership.tenantId).toBe(result.tenant.id);
     expect(result.organization.tenantId).toBe(result.tenant.id);
     expect(result.company?.organizationId).toBe(result.organization.id);
+    expect(result.wasReplayed).toBe(false);
   });
 
   it("is idempotent for the same natural provisioning identity", async () => {
@@ -84,6 +85,13 @@ describe("ProvisionTenantUseCase", () => {
 
     expect(retry.tenant.id).toBe(first.tenant.id);
     expect(retry.ownerMembership.id).toBe(first.ownerMembership.id);
+    // Regression test for a real bug found while seeding demo data: the
+    // controller used to run seedOwnerRole/enableAllCatalogApps/audit
+    // unconditionally on every successful provision, crashing with an
+    // unhandled unique-constraint violation on a genuine replay. The
+    // controller now branches on this flag — see TenantsController.provision().
+    expect(first.wasReplayed).toBe(false);
+    expect(retry.wasReplayed).toBe(true);
   });
 
   it("does not let another user claim an existing tenant slug", async () => {

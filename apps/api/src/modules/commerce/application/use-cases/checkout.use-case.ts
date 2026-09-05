@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { newId } from "@erp/database";
 import {
@@ -114,7 +115,14 @@ export class CheckoutUseCase {
       customer = await this.createCustomer.execute({
         tenantId: input.storefront.tenantId,
         companyId: input.storefront.companyId,
-        code: `GUEST-${newId().replace(/-/g, "").slice(0, 10).toUpperCase()}`,
+        // Real bug found via a demo-data seed script running several guest
+        // checkouts back to back: UUIDv7's first 48 bits are a millisecond
+        // timestamp (RFC 9562), so slicing the first 10 hex chars off
+        // newId() carried almost no randomness — two checkouts within the
+        // same coarse time bucket produced the identical "random" code and
+        // the second one failed with a real 409. randomBytes is unrelated
+        // to time and doesn't have this failure mode.
+        code: `GUEST-${randomBytes(5).toString("hex").toUpperCase()}`,
         name: input.guestName.trim() || guestEmail,
         email: guestEmail,
       });

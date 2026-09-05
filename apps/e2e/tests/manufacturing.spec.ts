@@ -33,7 +33,9 @@ test("runs the full BillOfMaterial -> ProductionOrder -> Confirm -> partial Issu
   await expect(page).toHaveURL(/\/workspace$/);
 
   // --- Two real, inventory-tracked products from Catálogo: a finished good and a component ---
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  // exact: true — the home dashboard's own "Productos activos" widget caption
+  // ("N en el catálogo") would otherwise substring-match "Catálogo" too.
+  await page.getByRole("button", { name: "Catálogo", exact: true }).click();
   await page.getByRole("tab", { name: "Unidades" }).click();
   await page.getByRole("button", { name: "Nueva unidad de medida" }).click();
   const uomDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });

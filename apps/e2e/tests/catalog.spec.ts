@@ -30,7 +30,10 @@ test("manages units of measure, categories, brands, and products with variants",
   expect((await provisioningResponse).status()).toBe(201);
   await expect(page).toHaveURL(/\/workspace$/);
 
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  // exact: true — the home dashboard's own "Productos activos" widget caption
+  // ("N en el catálogo") would otherwise substring-match "Catálogo" too
+  // (Playwright's default name matching is substring-based).
+  await page.getByRole("button", { name: "Catálogo", exact: true }).click();
   await expect(page).toHaveURL(/\/catalog$/);
   await expect(page.getByRole("heading", { name: "Catálogo", exact: true })).toBeVisible();
 

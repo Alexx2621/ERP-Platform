@@ -32,7 +32,22 @@ export class ProvisionTenantUseCase {
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
   ) {}
 
-  async execute(input: ProvisionTenantInput): Promise<ProvisionedTenant> {
+  /**
+   * `wasReplayed: true` means this call found an already-provisioned tenant
+   * matching the exact same natural identity (slug + owner + organization/
+   * company codes) and returned it as-is, without touching the database —
+   * the retry-safety `findExisting` exists for. The caller (TenantsController)
+   * must skip every post-provisioning side effect (Owner role seeding, app
+   * catalog enablement, audit entries) on a replay: a real bug found while
+   * seeding demo data confirmed those side effects were running
+   * unconditionally, so retrying a provisioning request that had actually
+   * already succeeded crashed with an unhandled unique-constraint violation
+   * (SeedOwnerRoleUseCase trying to insert a second "Owner" role for the
+   * same tenant) instead of idempotently returning the original result —
+   * exactly the class of bug ADR-009/ADR-011's `wasReplayed` pattern for
+   * CapturePaymentUseCase/CheckoutUseCase already exists to prevent.
+   */
+  async execute(input: ProvisionTenantInput): Promise<ProvisionedTenant & { wasReplayed: boolean }> {
     const user = await this.users.findById(input.ownerUserId);
     if (!user?.isActive()) throw new ProvisioningUserUnavailableError(input.ownerUserId);
 
@@ -48,7 +63,7 @@ export class ProvisionTenantUseCase {
         organizationCode,
         companyCode,
       });
-      if (existing) return existing;
+      if (existing) return { ...existing, wasReplayed: true };
       throw new TenantSlugAlreadyInUseError(slug);
     }
 
@@ -97,6 +112,6 @@ export class ProvisionTenantUseCase {
     tenant.activate();
     const provisioned = { tenant, ownerMembership, organization, company };
     await this.provisioning.create(provisioned, { correlationId: input.correlationId });
-    return provisioned;
+    return { ...provisioned, wasReplayed: false };
   }
 }

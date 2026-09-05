@@ -75,26 +75,23 @@ test("completes onboarding, RBAC and the authenticated session lifecycle", async
 
   await expect(page).toHaveURL(/\/workspace$/);
   await expect(page.getByRole("heading", { name: tenantName, exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Preparado para los módulos ERP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Avance del desarrollo" })).toBeVisible();
-  await expect(page.getByText("Roadmap total del producto")).toBeVisible();
-  // Deliberately a range check, not an exact match — an exact hardcoded
-  // value here broke CI twice within minutes (91 -> 92 -> excluding
-  // Escala from the average entirely) every time developmentRoadmap in
-  // apps/erp-web/.../development-progress-panel.tsx legitimately changed,
-  // found via `gh run view --log-failed` against the real repo, not
-  // assumed. This test's real job is confirming the panel renders real,
-  // live-computed data — a plausible non-zero percentage is exactly that
-  // signal, without coupling this E2E assertion to bookkeeping that
-  // belongs to the component's own dynamic unit test
-  // (development-progress-panel.spec.tsx already asserts the exact value).
-  const overallProgress = await page
-    .getByRole("progressbar", { name: "Avance total estimado" })
-    .getAttribute("aria-valuenow");
-  expect(Number(overallProgress)).toBeGreaterThanOrEqual(80);
-  expect(Number(overallProgress)).toBeLessThanOrEqual(100);
-  await expect(page.getByText("Contexto activo")).toBeVisible();
   await expect(page.getByText(tenantSlug, { exact: false })).toBeVisible();
+  // The home dashboard's widgets compute real, live metrics from the API —
+  // a freshly provisioned tenant with no customers yet renders an honest
+  // "0", not a placeholder or a dev-only progress indicator. Locating by
+  // the title text (not the containing button's own accessible name) on
+  // purpose: each card's resize/remove buttons ("Cambiar tamaño de
+  // Clientes activos"/"Quitar Clientes activos") also match a substring/
+  // regex search for the title — a real strict-mode violation found by
+  // this very test's first run — and the button's own accessible name
+  // changes once real data loads (title text concatenates with the
+  // freshly rendered value/caption), so even an exact match against the
+  // button breaks the instant the widget stops loading — found by this
+  // same test's second run.
+  const customersTitle = page.getByText("Clientes activos", { exact: true });
+  await expect(customersTitle).toBeVisible();
+  const customersWidget = customersTitle.locator("xpath=ancestor::button");
+  await expect(customersWidget).toContainText("0");
 
   const definitionsResponsePromise = page.waitForResponse(
     (response) =>
@@ -293,12 +290,13 @@ test("reopening an existing tenant from the tenant list resolves its company aut
   await page.getByRole("button", { name: new RegExp(tenantName) }).click();
   expect((await companiesResponse).status()).toBe(200);
   await expect(page).toHaveURL(/\/workspace$/);
-  await expect(page.getByText("Sin selección específica")).not.toBeVisible();
 
   // Confirm the resolved company actually reaches a company-scoped module —
   // real content, not the "selecciona una empresa" guard those modules show
-  // with no companyId.
-  await page.getByRole("button", { name: "Ventas" }).click();
+  // with no companyId. `exact: true` because the home dashboard's own
+  // "Ventas POS de hoy" widget button would otherwise substring-match
+  // "Ventas" too (Playwright's default name matching is substring-based).
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await expect(page).toHaveURL(/\/sales$/);
   await expect(
     page.getByText("Selecciona una empresa desde el selector de tenant para administrar ventas."),

@@ -30,7 +30,9 @@ test("publishes a real product to a real storefront in the ERP admin, then a rea
   await expect(page).toHaveURL(/\/workspace$/);
 
   // --- A real sellable product from Catálogo ---
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  // exact: true — the home dashboard's own "Productos activos" widget caption
+  // ("N en el catálogo") would otherwise substring-match "Catálogo" too.
+  await page.getByRole("button", { name: "Catálogo", exact: true }).click();
   await page.getByRole("tab", { name: "Unidades" }).click();
   await page.getByRole("button", { name: "Nueva unidad de medida" }).click();
   const uomDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });

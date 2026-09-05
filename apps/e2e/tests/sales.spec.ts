@@ -44,7 +44,9 @@ test("runs the full Quote -> SalesOrder -> Confirm -> Fulfill -> Payment -> Retu
 
   // --- A real tracked-inventory product from Catálogo ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Catálogo" }).click();
+  // exact: true — the home dashboard's own "Productos activos" widget caption
+  // ("N en el catálogo") would otherwise substring-match "Catálogo" too.
+  await page.getByRole("button", { name: "Catálogo", exact: true }).click();
   await page.getByRole("tab", { name: "Unidades" }).click();
   await page.getByRole("button", { name: "Nueva unidad de medida" }).click();
   const uomDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
@@ -97,7 +99,10 @@ test("runs the full Quote -> SalesOrder -> Confirm -> Fulfill -> Payment -> Retu
 
   // --- Ventas: Quote -> SalesOrder ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Ventas" }).click();
+  // exact: true — the home dashboard's own "Ventas POS de hoy" widget button
+  // would otherwise substring-match "Ventas" too (Playwright's default name
+  // matching is substring-based).
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await expect(page).toHaveURL(/\/sales$/);
   await expect(page.getByRole("heading", { name: "Ventas", exact: true })).toBeVisible();
 
@@ -168,7 +173,10 @@ test("runs the full Quote -> SalesOrder -> Confirm -> Fulfill -> Payment -> Retu
 
   // --- Return: a real RETURN movement restores stock ---
   await page.getByRole("button", { name: "Volver al workspace" }).click();
-  await page.getByRole("button", { name: "Ventas" }).click();
+  // exact: true — the home dashboard's own "Ventas POS de hoy" widget button
+  // would otherwise substring-match "Ventas" too (Playwright's default name
+  // matching is substring-based).
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await page.getByRole("tab", { name: "Devoluciones" }).click();
   const fulfilledOrdersResponse = page.waitForResponse(
     (response) => response.url().includes("/api/v1/sales/orders?") && response.request().method() === "GET",

@@ -77,10 +77,10 @@ export interface AccentPalette {
  *
  * accentSoftText/accentSoftMuted are a second, broader contrast bug fix:
  * many components draw text directly on top of an --accent-soft
- * background (e.g. DevelopmentProgressPanel's whole "Estimación
- * temporal" card, or a selected option card in Apariencia) — some of
- * that text in --accent itself, but just as often in --ink/--muted-
- * strong, the *surface* palette's own contrast pair. Both patterns
+ * background (e.g. a home dashboard widget's icon badge, or a selected
+ * option card in Apariencia) — some of that text in --accent itself, but
+ * just as often in --ink/--muted-strong, the *surface* palette's own
+ * contrast pair. Both patterns
  * silently assume the surface/accent tokens agree on which end of the
  * lightness scale is "dark" — true only by coincidence for the default
  * theme, and false in general: --accent-soft is derived from the accent

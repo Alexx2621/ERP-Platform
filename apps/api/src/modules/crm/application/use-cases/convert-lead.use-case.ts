@@ -1,5 +1,5 @@
+import { randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
-import { newId } from "@erp/database";
 import { CreateCustomerUseCase, Customer, FindCustomerByEmailUseCase } from "../../../customers";
 import { Lead } from "../../domain/lead.entity";
 import { LEAD_REPOSITORY, LeadRepository } from "../../domain/lead.repository";
@@ -57,7 +57,14 @@ export class ConvertLeadUseCase {
       customer = await this.createCustomer.execute({
         tenantId: input.tenantId,
         companyId: input.companyId,
-        code: `LEAD-${newId().slice(0, 8)}`,
+        // Same real bug already found and fixed in Commerce's CheckoutUseCase:
+        // UUIDv7's first 32 bits (the first 8 hex characters before the
+        // first dash) are a millisecond timestamp (RFC 9562), so slicing
+        // them off newId() carried almost no randomness — two leads
+        // converted close together in time produced the identical "random"
+        // code and the second one failed with a real 409. randomBytes is
+        // unrelated to time and doesn't have this failure mode.
+        code: `LEAD-${randomBytes(4).toString("hex")}`,
         name: lead.companyName ?? lead.name,
         email: lead.email ?? undefined,
         phone: lead.phone ?? undefined,

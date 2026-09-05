@@ -77,42 +77,55 @@ export class TenantsController {
         company: dto.company,
         correlationId: request.correlationId,
       });
-      await this.recordAuditEntry.execute({
-        userId: auth.user.id,
-        tenantId: result.tenant.id,
-        action: "tenant.provisioned",
-        resource: "Tenant",
-        resourceId: result.tenant.id,
-        newValues: {
-          slug: result.tenant.slug,
-          name: result.tenant.name,
-          organizationId: result.organization.id,
-          companyId: result.company?.id ?? null,
-        },
-        ipAddress: request.ip,
-        userAgent: request.header("user-agent"),
-        correlationId: request.correlationId,
-      });
 
-      await this.seedOwnerRole.execute(result.tenant.id, result.ownerMembership.id);
-      await this.recordAuditEntry.execute({
-        userId: null,
-        tenantId: result.tenant.id,
-        action: "access_control.owner_role.seeded",
-        resource: "RoleAssignment",
-        newValues: { membershipId: result.ownerMembership.id },
-        correlationId: request.correlationId,
-      });
+      // A real bug, found while seeding demo data: retrying a provisioning
+      // request with the exact same natural identity (slug + owner +
+      // organization/company codes) is a documented, tested idempotent path
+      // in ProvisionTenantUseCase — but every step below used to run
+      // unconditionally regardless, so a replay crashed with an unhandled
+      // unique-constraint violation trying to seed a second "Owner" role for
+      // an already-provisioned tenant. `wasReplayed` mirrors the same
+      // pattern already fixed for CapturePaymentUseCase (ADR-009) and
+      // CheckoutUseCase (ADR-011): skip every post-provisioning side effect
+      // and just return the original result again.
+      if (!result.wasReplayed) {
+        await this.recordAuditEntry.execute({
+          userId: auth.user.id,
+          tenantId: result.tenant.id,
+          action: "tenant.provisioned",
+          resource: "Tenant",
+          resourceId: result.tenant.id,
+          newValues: {
+            slug: result.tenant.slug,
+            name: result.tenant.name,
+            organizationId: result.organization.id,
+            companyId: result.company?.id ?? null,
+          },
+          ipAddress: request.ip,
+          userAgent: request.header("user-agent"),
+          correlationId: request.correlationId,
+        });
 
-      const enabledAppKeys = await this.enableAllCatalogApps.execute(result.tenant.id);
-      await this.recordAuditEntry.execute({
-        userId: null,
-        tenantId: result.tenant.id,
-        action: "app_registry.tenant_apps.bulk_enabled",
-        resource: "TenantApp",
-        newValues: { keys: enabledAppKeys },
-        correlationId: request.correlationId,
-      });
+        await this.seedOwnerRole.execute(result.tenant.id, result.ownerMembership.id);
+        await this.recordAuditEntry.execute({
+          userId: null,
+          tenantId: result.tenant.id,
+          action: "access_control.owner_role.seeded",
+          resource: "RoleAssignment",
+          newValues: { membershipId: result.ownerMembership.id },
+          correlationId: request.correlationId,
+        });
+
+        const enabledAppKeys = await this.enableAllCatalogApps.execute(result.tenant.id);
+        await this.recordAuditEntry.execute({
+          userId: null,
+          tenantId: result.tenant.id,
+          action: "app_registry.tenant_apps.bulk_enabled",
+          resource: "TenantApp",
+          newValues: { keys: enabledAppKeys },
+          correlationId: request.correlationId,
+        });
+      }
 
       return ProvisionedTenantResponseDto.fromResult(result);
     } catch (error) {

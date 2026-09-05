@@ -110,7 +110,10 @@ test("every catalog app starts enabled for a new tenant, and disabling one for r
   const blockedQuotesResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/sales/quotes") && response.request().method() === "GET",
   );
-  await page.getByRole("button", { name: "Ventas" }).click();
+  // exact: true — the home dashboard's own "Ventas POS de hoy" widget button
+  // would otherwise substring-match "Ventas" too (Playwright's default name
+  // matching is substring-based).
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
   expect((await blockedQuotesResponse).status()).toBe(403);
   await expect(page.getByText('App "sales" is not enabled for this tenant.').first()).toBeVisible();
 
@@ -137,7 +140,10 @@ test("every catalog app starts enabled for a new tenant, and disabling one for r
   const restoredQuotesResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/sales/quotes") && response.request().method() === "GET",
   );
-  await page.getByRole("button", { name: "Ventas" }).click();
+  // exact: true — the home dashboard's own "Ventas POS de hoy" widget button
+  // would otherwise substring-match "Ventas" too (Playwright's default name
+  // matching is substring-based).
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
   expect((await restoredQuotesResponse).status()).toBe(200);
   await expect(page.getByText("Todavía no hay cotizaciones", { exact: false })).toBeVisible();
 });
