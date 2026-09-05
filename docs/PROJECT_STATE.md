@@ -4076,6 +4076,61 @@ reiniciados y verificados con el build final, y el tenant "Demo ERP"
 queda sembrado y disponible para explorar
 (`demo-owner@erp-platform.local` / `DemoErp9!Platform`).
 
+### Datos de verificación: 3 tenants con ≥10 registros en cada módulo (sesión 36, 2026-09-05)
+
+A pedido explícito del usuario, inmediatamente después del bloque
+anterior: *"Ahora crea un minimo de 10 registros en cada modulo en 3
+diferentes tenant para verificar que todo funciona correctamente"*.
+
+`apps/api/scripts/seed-demo-data.ts` pasó de sembrar un solo tenant a ser
+parametrizado por tenant (`TenantConfig` + un arreglo `TENANTS`), sembrando
+**3 tenants reales y separados** — el ya existente "Demo ERP" más dos
+nuevos, "Ferretería La Central" (`ferreteria-central`) y "Boutique Aurora"
+(`boutique-aurora`), cada uno con su propio owner real y su propia empresa.
+Cada paso transaccional pasó de un puñado de llamadas literales a un bucle
+de 12 iteraciones (pedidos de venta/pagos/devoluciones, órdenes de
+compra/recepciones/facturas, ventas POS/devoluciones, checkouts de
+Comercio, asientos contables, prospectos/oportunidades/actividades de CRM,
+y órdenes de producción), y la master data se escaló a 10 registros cada
+una (clientes, proveedores, bodegas, impuestos, ítems de lista de precios)
+vía el mismo `findOrCreate` ya existente — así que re-correr contra un
+tenant ya parcialmente sembrado (como Demo ERP) lo completa en vez de
+fallar por códigos duplicados.
+
+**Conteos reales verificados contra la API tras la corrida** (los 15
+módulos de negocio, en los 3 tenants, todos ≥10): productos 13, clientes
+26 (los 10 base más los creados de verdad por conversión de prospectos y
+por checkout de invitado), proveedores 10, impuestos 10, bodegas 10, ítems
+de lista de precios 10, movimientos de inventario 145-200, pedidos de
+venta 37-99, pagos 27-75, órdenes de compra 12-48, ventas POS 12-24,
+pedidos de comercio 12-17, asientos contables 12-20, prospectos 12-22,
+oportunidades 12-16, órdenes de producción 12-14. Verificado además por
+navegador real contra los dos tenants nuevos: el dashboard de Inicio
+muestra cifras propias y distintas por tenant (aislamiento real, no
+compartido), y las pantallas de Ventas y CRM renderizan sus registros
+reales — los 12 prospectos con los 4 convertidos marcados como
+"CONVERTIDO", exactamente como el script los creó.
+
+**Dos bugs reales encontrados y corregidos al correr el script escalado
+contra la API, ambos acotados a la lógica del propio script** (ninguno de
+código de aplicación esta vez): (1) el ring-up de POS usaba un
+`amountTendered` fijo de 500.00, insuficiente para varias combinaciones de
+precio × cantidad que el bucle ahora genera (un producto de 599.00 × 3) —
+un `400` real de la validación de `amountTendered`; (2) re-correr el
+script contra una caja con un turno ya `OPEN` (dejado abierto por la
+corrida fallida anterior, que cayó antes de llegar al cierre) fallaba con
+el rechazo real de la regla de negocio "a lo sumo un turno abierto por
+caja" — el script ahora busca un turno abierto existente y lo reutiliza,
+la misma propiedad de reentrancia que `findOrCreate` ya daba a toda la
+master data.
+
+Validación: `pnpm turbo run lint typecheck` (26/26 tareas) y una corrida
+real de GitHub Actions confirmada `"conclusion":"success"` tras el push a
+`develop`. Credenciales de los tres tenants:
+`demo-owner@erp-platform.local` / `DemoErp9!Platform`,
+`central-owner@erp-platform.local` / `CentralErp9!Platform`,
+`aurora-owner@erp-platform.local` / `AuroraErp9!Platform`.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

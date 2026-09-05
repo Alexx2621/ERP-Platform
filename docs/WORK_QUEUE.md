@@ -224,6 +224,39 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (3 tenants con ≥10 registros en cada módulo)
+
+A pedido explícito del usuario: *"Ahora crea un minimo de 10 registros en
+cada modulo en 3 diferentes tenant para verificar que todo funciona
+correctamente"*.
+
+- `apps/api/scripts/seed-demo-data.ts` pasó de un solo tenant a estar
+  parametrizado por tenant (`TenantConfig` + arreglo `TENANTS`), sembrando
+  3 tenants reales y separados: "Demo ERP" (ya existente) más "Ferretería
+  La Central" y "Boutique Aurora", cada uno con su propio owner y empresa.
+- Cada paso transaccional pasó a un bucle de 12 iteraciones y la master
+  data se escaló a 10 registros cada una, reutilizando el `findOrCreate`
+  ya existente para que re-correr complete en vez de fallar.
+- **Conteos reales verificados contra la API**: los 15 módulos de negocio,
+  en los 3 tenants, todos ≥10 (productos 13, clientes 26, proveedores 10,
+  impuestos 10, bodegas 10, ítems de lista de precios 10, movimientos de
+  inventario 145-200, pedidos de venta 37-99, pagos 27-75, órdenes de
+  compra 12-48, ventas POS 12-24, pedidos de comercio 12-17, asientos
+  contables 12-20, prospectos 12-22, oportunidades 12-16, órdenes de
+  producción 12-14). Verificado además por navegador real en los dos
+  tenants nuevos (dashboard con cifras propias y distintas por tenant,
+  pantallas de Ventas y CRM con sus registros reales).
+- **Dos bugs reales encontrados y corregidos**, ambos en la lógica del
+  propio script (ninguno de código de aplicación): un `amountTendered`
+  fijo de 500.00 insuficiente para los productos más caros del bucle
+  (`400` real de validación), y la re-apertura de un turno POS sobre una
+  caja que ya tenía uno abierto (rechazo real de la regla "a lo sumo un
+  turno abierto por caja") — ahora reutiliza el turno abierto existente.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Datos de
+  verificación: 3 tenants con ≥10 registros en cada módulo".
+- Validación: `pnpm turbo run lint typecheck` (26/26) y una corrida real
+  de GitHub Actions confirmada verde tras el push a `develop`.
+
 ### Hecho — sesión 36 (home dashboard drag-and-drop + datos de demostración)
 
 A pedido explícito del usuario, tras compartir la captura de un dashboard
