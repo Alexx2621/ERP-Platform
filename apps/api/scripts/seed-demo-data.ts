@@ -1,7 +1,8 @@
 /**
- * Fills a brand-new, separate "Demo ERP" tenant with realistic records
- * across every business module, so a fresh viewer of the platform (or the
- * new home dashboard's widgets) has real, non-zero content to look at.
+ * Fills 3 separate, real tenants with at least 10 records in each of the
+ * platform's 15 business modules, so tenant isolation and every module's
+ * screens/dashboard widgets can be verified against real, non-trivial data
+ * rather than a single lightly-seeded demo account.
  *
  * Deliberately talks to a real, running `apps/api` over plain HTTP (native
  * `fetch`, mirroring exactly what `@erp/api-client`'s own `request()` does)
@@ -15,18 +16,72 @@
  * without needing a second module system in this app.
  *
  * Run with `pnpm --filter @erp/api run seed:demo` against a locally running
- * API (`SEED_API_BASE_URL`, default `http://localhost:3000/api/v1`).
+ * API (`SEED_API_BASE_URL`, default `http://localhost:3000/api/v1`). Seeds
+ * all 3 tenants in `TENANTS` below, sequentially.
  *
- * Re-running is not guaranteed idempotent — a demo fill only needs to run
- * once; a second run will hit real 409s on unique codes (products,
- * customers, etc.) and stop. That's acceptable for a one-off seed, not a
- * production backfill.
+ * Master-data steps (unique `code`/`name`) are reentrant via `findOrCreate`
+ * — a real requirement, not speculative: an earlier run of this script
+ * failed partway through on a real backend bug, and the re-run needed to
+ * skip everything already created. Transactional steps (orders, leads,
+ * journal entries, ...) are not idempotent by design — re-running adds
+ * more real records on top, which is the intended behavior for "at least
+ * N records", not a bug to guard against.
  */
 
 const BASE_URL = process.env.SEED_API_BASE_URL ?? "http://localhost:3000/api/v1";
-const OWNER_EMAIL = "demo-owner@erp-platform.local";
-const OWNER_PASSWORD = "DemoErp9!Platform";
-const TENANT_SLUG = "demo-erp";
+
+interface TenantConfig {
+  ownerEmail: string;
+  ownerPassword: string;
+  ownerName: string;
+  tenantSlug: string;
+  tenantName: string;
+  orgCode: string;
+  orgName: string;
+  companyCode: string;
+  companyName: string;
+  /** Storefront.code is globally unique across every tenant (ADR, same precedent as Tenant.slug) — never reuse across tenants. */
+  storefrontCode: string;
+}
+
+const TENANTS: TenantConfig[] = [
+  {
+    ownerEmail: "demo-owner@erp-platform.local",
+    ownerPassword: "DemoErp9!Platform",
+    ownerName: "Propietaria Demo ERP",
+    tenantSlug: "demo-erp",
+    tenantName: "Demo ERP",
+    orgCode: "DEMOORG",
+    orgName: "Demo ERP Holdings",
+    companyCode: "DEMOCO",
+    companyName: "Demo ERP Comercial, S.A.",
+    storefrontCode: "tienda-demo",
+  },
+  {
+    ownerEmail: "central-owner@erp-platform.local",
+    ownerPassword: "CentralErp9!Platform",
+    ownerName: "Propietario Ferretería Central",
+    tenantSlug: "ferreteria-central",
+    tenantName: "Ferretería La Central",
+    orgCode: "FERCENTORG",
+    orgName: "Ferretería La Central Holdings",
+    companyCode: "FERCENTCO",
+    companyName: "Ferretería La Central, S.A.",
+    storefrontCode: "tienda-ferreteria-central",
+  },
+  {
+    ownerEmail: "aurora-owner@erp-platform.local",
+    ownerPassword: "AuroraErp9!Platform",
+    ownerName: "Propietaria Boutique Aurora",
+    tenantSlug: "boutique-aurora",
+    tenantName: "Boutique Aurora",
+    orgCode: "AURORAORG",
+    orgName: "Boutique Aurora Holdings",
+    companyCode: "AURORACO",
+    companyName: "Boutique Aurora, S.A.",
+    storefrontCode: "tienda-boutique-aurora",
+  },
+];
 
 interface ApiErrorBody {
   statusCode: number;
@@ -81,75 +136,76 @@ async function api<T = unknown>(
   return payload as T;
 }
 
-function log(step: string, message: string): void {
-  console.log(`[seed-demo-data] ${step}: ${message}`);
+function log(tenantSlug: string, step: string, message: string): void {
+  console.log(`[seed-demo-data:${tenantSlug}] ${step}: ${message}`);
 }
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-// --- Step 1-2: identity + tenant -------------------------------------------------
+// --- Identity + tenant -------------------------------------------------
 
-async function registerOrLoginOwner(): Promise<{ accessToken: string }> {
+async function registerOrLoginOwner(config: TenantConfig): Promise<{ accessToken: string }> {
   try {
     const session = await api<{ accessToken: string }>("POST", "/auth/register", {
-      body: { email: OWNER_EMAIL, password: OWNER_PASSWORD, displayName: "Propietaria Demo ERP" },
+      body: { email: config.ownerEmail, password: config.ownerPassword, displayName: config.ownerName },
     });
-    log("auth", `owner account created (${OWNER_EMAIL})`);
+    log(config.tenantSlug, "auth", `owner account created (${config.ownerEmail})`);
     return session;
   } catch (error) {
     if (error instanceof DemoSeedError && error.statusCode === 409) {
       const session = await api<{ accessToken: string }>("POST", "/auth/login", {
-        body: { email: OWNER_EMAIL, password: OWNER_PASSWORD },
+        body: { email: config.ownerEmail, password: config.ownerPassword },
       });
-      log("auth", `owner account already existed, logged in instead (${OWNER_EMAIL})`);
+      log(config.tenantSlug, "auth", `owner account already existed, logged in instead (${config.ownerEmail})`);
       return session;
     }
     throw error;
   }
 }
 
-async function provisionOrReuseTenant(accessToken: string): Promise<{ companyId: string }> {
+async function provisionOrReuseTenant(config: TenantConfig, accessToken: string): Promise<{ companyId: string }> {
   try {
     const provisioned = await api<{ company?: { id: string } }>("POST", "/tenants", {
       accessToken,
       body: {
-        slug: TENANT_SLUG,
-        name: "Demo ERP",
-        organization: { code: "DEMOORG", name: "Demo ERP Holdings" },
-        company: { code: "DEMOCO", name: "Demo ERP Comercial, S.A." },
+        slug: config.tenantSlug,
+        name: config.tenantName,
+        organization: { code: config.orgCode, name: config.orgName },
+        company: { code: config.companyCode, name: config.companyName },
       },
     });
     if (!provisioned.company) throw new Error("Provisioning did not return a company.");
-    log("tenant", `provisioned "Demo ERP" (${TENANT_SLUG}), companyId=${provisioned.company.id}`);
+    log(config.tenantSlug, "tenant", `provisioned "${config.tenantName}", companyId=${provisioned.company.id}`);
     return { companyId: provisioned.company.id };
   } catch (error) {
     if (error instanceof DemoSeedError && error.statusCode === 409) {
       const companies = await api<Array<{ id: string }>>("GET", "/tenants/companies", {
         accessToken,
-        tenantSlug: TENANT_SLUG,
+        tenantSlug: config.tenantSlug,
       });
       const companyId = companies[0]?.id;
       if (!companyId) {
         throw new Error("Tenant already provisioned but has no company to reuse.", { cause: error });
       }
-      log("tenant", `"Demo ERP" already provisioned, reusing companyId=${companyId}`);
+      log(config.tenantSlug, "tenant", `"${config.tenantName}" already provisioned, reusing companyId=${companyId}`);
       return { companyId };
     }
     throw error;
   }
 }
 
-// --- Step 3: master data -----------------------------------------------------
+// --- Master data -----------------------------------------------------
 
 interface Ctx {
+  tenantSlug: string;
   accessToken: string;
   companyId: string;
 }
 
 function auth(ctx: Ctx) {
-  return { accessToken: ctx.accessToken, tenantSlug: TENANT_SLUG, companyId: ctx.companyId };
+  return { accessToken: ctx.accessToken, tenantSlug: ctx.tenantSlug, companyId: ctx.companyId };
 }
 
 /**
@@ -189,7 +245,7 @@ async function seedUnitsOfMeasure(ctx: Ctx) {
     name: "Caja",
     symbol: "cj",
   });
-  log("master-data", "2 units of measure ready");
+  log(ctx.tenantSlug, "master-data", "2 units of measure ready");
   return { unitId: unit.id };
 }
 
@@ -210,7 +266,7 @@ async function seedCategories(ctx: Ctx) {
     code: "HOGAR",
     name: "Hogar",
   });
-  log("master-data", "3 categories ready");
+  log(ctx.tenantSlug, "master-data", "3 categories ready");
   return { electronicsId: electronics.id, clothingId: clothing.id, homeId: home.id };
 }
 
@@ -223,7 +279,7 @@ async function seedBrands(ctx: Ctx) {
     code: "ANDINA",
     name: "Andina",
   });
-  log("master-data", "2 brands ready");
+  log(ctx.tenantSlug, "master-data", "2 brands ready");
   return { auroraId: aurora.id, andinaId: andina.id };
 }
 
@@ -233,6 +289,20 @@ interface ProductRef {
   hasVariants: boolean;
   variantIds: string[];
 }
+
+/** The 10 simple, sellable+purchasable products every transactional loop cycles through. */
+const SIMPLE_PRODUCT_KEYS = [
+  "audifonos",
+  "parlante",
+  "cargador",
+  "chaqueta",
+  "sabanas",
+  "ollas",
+  "lampara",
+  "mochila",
+  "teclado",
+  "silla",
+] as const;
 
 async function seedProducts(
   ctx: Ctx,
@@ -259,6 +329,8 @@ async function seedProducts(
     { key: "ollas", code: "POT-001", name: "Set de ollas", categoryId: categories.homeId, brandId: brands.auroraId, basePrice: "599.0000", baseCost: "320.0000" },
     { key: "lampara", code: "LAMP-001", name: "Lámpara de escritorio", categoryId: categories.homeId, brandId: brands.andinaId, basePrice: "149.0000", baseCost: "70.0000" },
     { key: "mochila", code: "BAG-001", name: "Mochila urbana", categoryId: categories.clothingId, brandId: brands.auroraId, basePrice: "219.0000", baseCost: "110.0000" },
+    { key: "teclado", code: "KEY-001", name: "Teclado mecánico", categoryId: categories.electronicsId, brandId: brands.andinaId, basePrice: "179.0000", baseCost: "85.0000" },
+    { key: "silla", code: "CHAIR-001", name: "Silla de oficina", categoryId: categories.homeId, brandId: brands.andinaId, basePrice: "449.0000", baseCost: "220.0000" },
   ];
 
   for (const item of simple) {
@@ -339,7 +411,7 @@ async function seedProducts(
     products[item.key] = { id: product.id, code: item.code, hasVariants: true, variantIds };
   }
 
-  // An 11th product, deliberately not sold directly on its own — it exists
+  // A 13th product, deliberately not sold directly on its own — it exists
   // to be Manufacturing's finished good later.
   const combo = await findOrCreate<{ id: string }>(ctx, "/products", "/products", "code", "COMBO-001", {
     code: "COMBO-001",
@@ -357,7 +429,7 @@ async function seedProducts(
   });
   products.combo = { id: combo.id, code: "COMBO-001", hasVariants: false, variantIds: [] };
 
-  log("master-data", `${Object.keys(products).length} products ready (2 with variants, 4 variants total)`);
+  log(ctx.tenantSlug, "master-data", `${Object.keys(products).length} products ready (2 with variants, 4 variants total)`);
   return products;
 }
 
@@ -368,6 +440,11 @@ async function seedCustomers(ctx: Ctx) {
     { code: "CUST-03", name: "Tienda Vista Hermosa", email: "contacto@vistahermosa.gt", city: "Antigua Guatemala" },
     { code: "CUST-04", name: "Grupo Mayoreo GT", email: "compras@mayoreogt.com", city: "Ciudad de Guatemala" },
     { code: "CUST-05", name: "Retail Express", email: "ventas@retailexpress.gt", city: "Escuintla" },
+    { code: "CUST-06", name: "Almacenes del Valle", email: "compras@almacenesvalle.gt", city: "Chimaltenango" },
+    { code: "CUST-07", name: "Supermercado Norte", email: "pedidos@supernorte.gt", city: "Huehuetenango" },
+    { code: "CUST-08", name: "Comercial San Miguel", email: "ventas@sanmiguel.gt", city: "Retalhuleu" },
+    { code: "CUST-09", name: "Distribuidora Pacífico", email: "compras@distripacifico.gt", city: "Mazatenango" },
+    { code: "CUST-10", name: "Tienda El Progreso", email: "contacto@elprogreso.gt", city: "Zacapa" },
   ];
   const ids: Record<string, string> = {};
   for (const definition of definitions) {
@@ -377,7 +454,7 @@ async function seedCustomers(ctx: Ctx) {
     });
     ids[definition.code] = customer.id;
   }
-  log("master-data", "5 customers ready");
+  log(ctx.tenantSlug, "master-data", `${definitions.length} customers ready`);
   return ids;
 }
 
@@ -387,6 +464,12 @@ async function seedSuppliers(ctx: Ctx) {
     { code: "SUP-02", name: "Textiles Andinos", email: "pedidos@textilesandinos.com" },
     { code: "SUP-03", name: "Electro Import GT", email: "contacto@electroimport.gt" },
     { code: "SUP-04", name: "Hogar y Estilo", email: "ventas@hogarestilo.gt" },
+    { code: "SUP-05", name: "Suministros Industriales GT", email: "ventas@suminindustrial.gt" },
+    { code: "SUP-06", name: "Distribuidora Continental", email: "pedidos@continentalgt.com" },
+    { code: "SUP-07", name: "Manufacturas del Istmo", email: "contacto@manuistmo.gt" },
+    { code: "SUP-08", name: "Comercializadora Atlántico", email: "ventas@atlanticogt.com" },
+    { code: "SUP-09", name: "Insumos y Materiales S.A.", email: "compras@insumosmat.gt" },
+    { code: "SUP-10", name: "Proveedora Central", email: "ventas@proveedoracentral.gt" },
   ];
   const ids: Record<string, string> = {};
   for (const definition of definitions) {
@@ -396,54 +479,106 @@ async function seedSuppliers(ctx: Ctx) {
     });
     ids[definition.code] = supplier.id;
   }
-  log("master-data", "4 suppliers ready");
+  log(ctx.tenantSlug, "master-data", `${definitions.length} suppliers ready`);
   return ids;
 }
 
 async function seedWarehouses(ctx: Ctx) {
-  const central = await findOrCreate<{ id: string }>(ctx, "/warehouses", "/warehouses", "code", "WH-01", {
-    code: "WH-01",
-    name: "Bodega Central",
-    city: "Ciudad de Guatemala",
-    country: "GT",
-  });
-  const north = await findOrCreate<{ id: string }>(ctx, "/warehouses", "/warehouses", "code", "WH-02", {
-    code: "WH-02",
-    name: "Bodega Norte",
-    city: "Cobán",
-    country: "GT",
-  });
-  log("master-data", "2 warehouses ready");
-  return { centralId: central.id, northId: north.id };
+  const definitions = [
+    { code: "WH-01", name: "Bodega Central", city: "Ciudad de Guatemala" },
+    { code: "WH-02", name: "Bodega Norte", city: "Cobán" },
+    { code: "WH-03", name: "Bodega Sur", city: "Escuintla" },
+    { code: "WH-04", name: "Bodega Este", city: "Zacapa" },
+    { code: "WH-05", name: "Bodega Oeste", city: "Quetzaltenango" },
+    { code: "WH-06", name: "Centro de Distribución", city: "Ciudad de Guatemala" },
+    { code: "WH-07", name: "Bodega de Repuestos", city: "Mixco" },
+    { code: "WH-08", name: "Bodega Temporal", city: "Villa Nueva" },
+    { code: "WH-09", name: "Bodega de Devoluciones", city: "Ciudad de Guatemala" },
+    { code: "WH-10", name: "Bodega Fría", city: "Antigua Guatemala" },
+  ];
+  const ids: Record<string, { id: string }> = {};
+  for (const definition of definitions) {
+    const warehouse = await findOrCreate<{ id: string }>(ctx, "/warehouses", "/warehouses", "code", definition.code, {
+      ...definition,
+      country: "GT",
+    });
+    ids[definition.code] = warehouse;
+  }
+  log(ctx.tenantSlug, "master-data", `${definitions.length} warehouses ready`);
+  return { centralId: ids["WH-01"].id, all: ids };
 }
 
 async function seedTaxes(ctx: Ctx) {
-  const iva = await findOrCreate<{ id: string }>(ctx, "/taxes", "/taxes", "code", "IVA", {
-    code: "IVA",
-    name: "IVA",
-    rate: "12.0000",
-  });
-  await findOrCreate(ctx, "/taxes", "/taxes", "code", "EXENTO", { code: "EXENTO", name: "Exento", rate: "0.0000" });
-  log("master-data", "2 taxes ready");
-  return { ivaId: iva.id };
+  const definitions = [
+    { code: "IVA", name: "IVA", rate: "12.0000" },
+    { code: "EXENTO", name: "Exento", rate: "0.0000" },
+    { code: "IVA_RED", name: "IVA Reducido", rate: "5.0000" },
+    { code: "RET_IVA", name: "Retención IVA", rate: "1.5000" },
+    { code: "RET_ISR", name: "Retención ISR", rate: "5.0000" },
+    { code: "IVA_IMP", name: "IVA Importación", rate: "12.0000" },
+    { code: "ARANCEL", name: "Arancel de Importación", rate: "15.0000" },
+    { code: "TASA_MUN", name: "Tasa Municipal", rate: "2.0000" },
+    { code: "IMP_TUR", name: "Impuesto de Turismo", rate: "3.0000" },
+    { code: "TASA_ESP", name: "Tasa Especial", rate: "7.0000" },
+  ];
+  const ids: Record<string, string> = {};
+  for (const definition of definitions) {
+    const tax = await findOrCreate<{ id: string }>(ctx, "/taxes", "/taxes", "code", definition.code, definition);
+    ids[definition.code] = tax.id;
+  }
+  log(ctx.tenantSlug, "master-data", `${definitions.length} taxes ready`);
+  return { ivaId: ids["IVA"] };
 }
 
-// --- Step 4: inventory --------------------------------------------------------
+async function seedPriceList(ctx: Ctx, products: Record<string, ProductRef>) {
+  const priceList = await findOrCreate<{ id: string }>(
+    ctx,
+    "/pricing/price-lists",
+    "/pricing/price-lists",
+    "code",
+    "GENERAL",
+    { code: "GENERAL", name: "Lista general", currency: "GTQ" },
+  );
+  const items: Array<{ key: string; price: string }> = SIMPLE_PRODUCT_KEYS.map((key, index) => ({
+    key,
+    price: `${190 + index * 15}.0000`,
+  }));
+  const existingItems = await api<Array<{ productId: string }>>(
+    "GET",
+    `/pricing/price-lists/${priceList.id}/items`,
+    auth(ctx),
+  );
+  let created = 0;
+  for (const item of items) {
+    const productId = products[item.key].id;
+    if (existingItems.some((existing) => existing.productId === productId)) continue;
+    await api("POST", `/pricing/price-lists/${priceList.id}/items`, {
+      ...auth(ctx),
+      body: { productId, price: item.price },
+    });
+    created += 1;
+  }
+  log(ctx.tenantSlug, "master-data", `1 price list ready with ${items.length} items (${created} created this run)`);
+}
+
+// --- Inventory --------------------------------------------------------
 
 async function receiveStock(ctx: Ctx, warehouseId: string, products: Record<string, ProductRef>) {
   const receipts: Array<{ productKey: string; variantId?: string; quantity: string }> = [
-    { productKey: "audifonos", quantity: "80.0000" },
-    { productKey: "parlante", quantity: "60.0000" },
-    { productKey: "cargador", quantity: "150.0000" },
-    { productKey: "chaqueta", quantity: "45.0000" },
-    { productKey: "sabanas", quantity: "55.0000" },
-    { productKey: "ollas", quantity: "20.0000" },
-    { productKey: "lampara", quantity: "65.0000" },
-    { productKey: "mochila", quantity: "50.0000" },
-    { productKey: "camiseta", variantId: products.camiseta.variantIds[0], quantity: "40.0000" },
-    { productKey: "camiseta", variantId: products.camiseta.variantIds[1], quantity: "35.0000" },
-    { productKey: "pantalon", variantId: products.pantalon.variantIds[0], quantity: "30.0000" },
-    { productKey: "pantalon", variantId: products.pantalon.variantIds[1], quantity: "25.0000" },
+    { productKey: "audifonos", quantity: "600.0000" },
+    { productKey: "parlante", quantity: "500.0000" },
+    { productKey: "cargador", quantity: "800.0000" },
+    { productKey: "chaqueta", quantity: "400.0000" },
+    { productKey: "sabanas", quantity: "400.0000" },
+    { productKey: "ollas", quantity: "300.0000" },
+    { productKey: "lampara", quantity: "400.0000" },
+    { productKey: "mochila", quantity: "400.0000" },
+    { productKey: "teclado", quantity: "400.0000" },
+    { productKey: "silla", quantity: "300.0000" },
+    { productKey: "camiseta", variantId: products.camiseta.variantIds[0], quantity: "400.0000" },
+    { productKey: "camiseta", variantId: products.camiseta.variantIds[1], quantity: "400.0000" },
+    { productKey: "pantalon", variantId: products.pantalon.variantIds[0], quantity: "400.0000" },
+    { productKey: "pantalon", variantId: products.pantalon.variantIds[1], quantity: "400.0000" },
   ];
   for (const receipt of receipts) {
     await api("POST", "/inventory/movements/receipt", {
@@ -453,329 +588,344 @@ async function receiveStock(ctx: Ctx, warehouseId: string, products: Record<stri
         productId: products[receipt.productKey].id,
         productVariantId: receipt.variantId,
         quantity: receipt.quantity,
-        reason: "Recepción inicial — carga de datos de demostración",
+        reason: "Recepción de demostración — carga de datos de verificación",
       },
     });
   }
-  log("inventory", `${receipts.length} stock receipts recorded across ${Object.keys(products).length - 1} products`);
+  log(ctx.tenantSlug, "inventory", `${receipts.length} stock receipts recorded`);
 }
 
-// --- Step 5: sales -------------------------------------------------------------
+// --- Sales + Payments ----------------------------------------------------
 
 async function seedSales(
   ctx: Ctx,
   warehouseId: string,
   products: Record<string, ProductRef>,
-  customers: Record<string, string>,
+  customerIds: Record<string, string>,
   ivaId: string,
 ) {
-  async function newOrder(customerCode: string) {
-    return api<{ id: string }>("POST", "/sales/orders", {
+  const customerCodes = Object.keys(customerIds);
+  const orderCount = 12;
+  let paymentsCaptured = 0;
+  let returnsCreated = 0;
+
+  for (let i = 0; i < orderCount; i += 1) {
+    const customerCode = customerCodes[i % customerCodes.length];
+    const productKey = SIMPLE_PRODUCT_KEYS[i % SIMPLE_PRODUCT_KEYS.length];
+    const quantity = `${(i % 5) + 1}.0000`;
+
+    const order = await api<{ id: string }>("POST", "/sales/orders", {
       ...auth(ctx),
-      body: { customerId: customers[customerCode], currency: "GTQ" },
+      body: { customerId: customerIds[customerCode], currency: "GTQ" },
     });
-  }
-
-  async function addLine(orderId: string, productKey: string, quantity: string, variantId?: string) {
-    return api<{ id: string }>("POST", `/sales/orders/${orderId}/lines`, {
+    const line = await api<{ id: string; lineTotal: string }>("POST", `/sales/orders/${order.id}/lines`, {
       ...auth(ctx),
-      body: {
-        productId: products[productKey].id,
-        productVariantId: variantId,
-        warehouseId,
-        taxId: ivaId,
-        quantity,
-      },
+      body: { productId: products[productKey].id, warehouseId, taxId: ivaId, quantity },
     });
-  }
 
-  async function confirm(orderId: string) {
-    await api("POST", `/sales/orders/${orderId}/confirm`, auth(ctx));
-  }
+    // The first 2 orders stay DRAFT — a real "not yet confirmed" state for
+    // the Ventas screen to show, not every order needs to reach the end.
+    if (i < 2) continue;
 
-  async function capture(orderId: string, amount: string, method: "CASH" | "BANK_TRANSFER") {
+    await api("POST", `/sales/orders/${order.id}/confirm`, auth(ctx));
     await api("POST", "/payments/capture", {
       ...auth(ctx),
       body: {
-        salesOrderId: orderId,
-        method,
-        amount,
+        salesOrderId: order.id,
+        method: i % 2 === 0 ? "CASH" : "BANK_TRANSFER",
+        amount: line.lineTotal,
         currency: "GTQ",
-        idempotencyKey: `demo-seed-${orderId}-${method}`,
-        reference: method === "BANK_TRANSFER" ? `TRF-${orderId.slice(0, 8)}` : undefined,
+        idempotencyKey: `demo-seed-${order.id}`,
+        reference: i % 2 === 0 ? undefined : `TRF-${order.id.slice(0, 8)}`,
       },
     });
+    paymentsCaptured += 1;
+    await api("POST", `/sales/orders/${order.id}/fulfill`, auth(ctx));
+
+    if (i >= orderCount - 2) {
+      await api("POST", "/sales/returns", {
+        ...auth(ctx),
+        body: {
+          salesOrderId: order.id,
+          reason: "Devolución de demostración — verificación de módulo",
+          lines: [{ salesOrderLineId: line.id, quantity: "1.0000" }],
+        },
+      });
+      returnsCreated += 1;
+    }
   }
 
-  async function fulfill(orderId: string) {
-    await api("POST", `/sales/orders/${orderId}/fulfill`, auth(ctx));
-  }
-
-  // 1. Fully fulfilled and paid.
-  const order1 = await newOrder("CUST-01");
-  await addLine(order1.id, "audifonos", "3.0000");
-  await confirm(order1.id);
-  await capture(order1.id, "836.7600", "CASH");
-  await fulfill(order1.id);
-
-  // 2. Fully fulfilled, paid by bank transfer.
-  const order2 = await newOrder("CUST-02");
-  await addLine(order2.id, "parlante", "5.0000");
-  await confirm(order2.id);
-  await capture(order2.id, "1058.4000", "BANK_TRANSFER");
-  await fulfill(order2.id);
-
-  // 3. Confirmed, reserved, not yet paid.
-  const order3 = await newOrder("CUST-03");
-  await addLine(order3.id, "cargador", "10.0000");
-  await confirm(order3.id);
-
-  // 4. Still a draft.
-  const order4 = await newOrder("CUST-04");
-  await addLine(order4.id, "chaqueta", "2.0000");
-
-  // 5. Fulfilled, paid, then partially returned.
-  const order5 = await newOrder("CUST-05");
-  const order5Line = await addLine(order5.id, "sabanas", "4.0000");
-  await confirm(order5.id);
-  await capture(order5.id, "1157.9600", "CASH");
-  await fulfill(order5.id);
-  await api("POST", "/sales/returns", {
+  // One more order using a variant line, so Sales exercises that path too.
+  const variantOrder = await api<{ id: string }>("POST", "/sales/orders", {
+    ...auth(ctx),
+    body: { customerId: customerIds[customerCodes[0]], currency: "GTQ" },
+  });
+  const variantLine = await api<{ id: string; lineTotal: string }>("POST", `/sales/orders/${variantOrder.id}/lines`, {
     ...auth(ctx),
     body: {
-      salesOrderId: order5.id,
-      reason: "Cliente devolvió una unidad por empaque dañado",
-      lines: [{ salesOrderLineId: order5Line.id, quantity: "1.0000" }],
+      productId: products.camiseta.id,
+      productVariantId: products.camiseta.variantIds[0],
+      warehouseId,
+      quantity: "3.0000",
     },
   });
+  await api("POST", `/sales/orders/${variantOrder.id}/confirm`, auth(ctx));
+  await api("POST", "/payments/capture", {
+    ...auth(ctx),
+    body: {
+      salesOrderId: variantOrder.id,
+      method: "CASH",
+      amount: variantLine.lineTotal,
+      currency: "GTQ",
+      idempotencyKey: `demo-seed-${variantOrder.id}`,
+    },
+  });
+  paymentsCaptured += 1;
+  await api("POST", `/sales/orders/${variantOrder.id}/fulfill`, auth(ctx));
 
-  // 6. Fulfilled, paid — a variant line.
-  const order6 = await newOrder("CUST-01");
-  await addLine(order6.id, "camiseta", "6.0000", products.camiseta.variantIds[0]);
-  await confirm(order6.id);
-  await capture(order6.id, "665.2800", "CASH");
-  await fulfill(order6.id);
-
-  log("sales", "6 sales orders created (draft/confirmed/fulfilled mix, 1 return)");
+  log(
+    ctx.tenantSlug,
+    "sales",
+    `${orderCount + 1} sales orders created, ${paymentsCaptured} payments captured, ${returnsCreated} returns`,
+  );
 }
 
-// --- Step 6: purchasing ---------------------------------------------------------
+// --- Purchasing ---------------------------------------------------------
 
 async function seedPurchasing(
   ctx: Ctx,
   warehouseId: string,
   products: Record<string, ProductRef>,
-  suppliers: Record<string, string>,
+  supplierIds: Record<string, string>,
 ) {
-  // 1. Confirmed and fully received.
-  const order1 = await api<{ id: string }>("POST", "/purchasing/orders", {
-    ...auth(ctx),
-    body: { supplierId: suppliers["SUP-04"], currency: "GTQ" },
-  });
-  const order1Line = await api<{ id: string }>("POST", `/purchasing/orders/${order1.id}/lines`, {
-    ...auth(ctx),
-    body: { productId: products.ollas.id, warehouseId, quantity: "30.0000", unitCost: "320.0000" },
-  });
-  await api("POST", `/purchasing/orders/${order1.id}/confirm`, auth(ctx));
-  await api("POST", "/purchasing/receipts", {
-    ...auth(ctx),
-    body: { purchaseOrderId: order1.id, lines: [{ purchaseOrderLineId: order1Line.id, quantity: "30.0000" }] },
-  });
+  const supplierCodes = Object.keys(supplierIds);
+  const orderCount = 12;
+  let invoicesCreated = 0;
 
-  // 2. Confirmed, partially received.
-  const order2 = await api<{ id: string }>("POST", "/purchasing/orders", {
-    ...auth(ctx),
-    body: { supplierId: suppliers["SUP-03"], currency: "GTQ" },
-  });
-  const order2Line = await api<{ id: string }>("POST", `/purchasing/orders/${order2.id}/lines`, {
-    ...auth(ctx),
-    body: { productId: products.lampara.id, warehouseId, quantity: "40.0000", unitCost: "70.0000" },
-  });
-  await api("POST", `/purchasing/orders/${order2.id}/confirm`, auth(ctx));
-  await api("POST", "/purchasing/receipts", {
-    ...auth(ctx),
-    body: { purchaseOrderId: order2.id, lines: [{ purchaseOrderLineId: order2Line.id, quantity: "25.0000" }] },
-  });
+  for (let i = 0; i < orderCount; i += 1) {
+    const supplierCode = supplierCodes[i % supplierCodes.length];
+    const productKey = SIMPLE_PRODUCT_KEYS[i % SIMPLE_PRODUCT_KEYS.length];
+    const quantity = `${((i % 5) + 2) * 10}.0000`;
+    const unitCost = "50.0000";
 
-  // 3. Still a draft.
-  await api("POST", "/purchasing/orders", {
-    ...auth(ctx),
-    body: { supplierId: suppliers["SUP-01"], currency: "GTQ" },
-  }).then((order) =>
-    api("POST", `/purchasing/orders/${(order as { id: string }).id}/lines`, {
+    const order = await api<{ id: string }>("POST", "/purchasing/orders", {
       ...auth(ctx),
-      body: { productId: products.audifonos.id, warehouseId, quantity: "50.0000", unitCost: "140.0000" },
-    }),
-  );
+      body: { supplierId: supplierIds[supplierCode], currency: "GTQ" },
+    });
+    const line = await api<{ id: string; lineTotal: string }>("POST", `/purchasing/orders/${order.id}/lines`, {
+      ...auth(ctx),
+      body: { productId: products[productKey].id, warehouseId, quantity, unitCost },
+    });
 
-  // 4. Fully received, closed, plus a supplier invoice.
-  const order4 = await api<{ id: string }>("POST", "/purchasing/orders", {
-    ...auth(ctx),
-    body: { supplierId: suppliers["SUP-02"], currency: "GTQ" },
-  });
-  const order4Line = await api<{ id: string }>("POST", `/purchasing/orders/${order4.id}/lines`, {
-    ...auth(ctx),
-    body: { productId: products.mochila.id, warehouseId, quantity: "60.0000", unitCost: "110.0000" },
-  });
-  await api("POST", `/purchasing/orders/${order4.id}/confirm`, auth(ctx));
-  await api("POST", "/purchasing/receipts", {
-    ...auth(ctx),
-    body: { purchaseOrderId: order4.id, lines: [{ purchaseOrderLineId: order4Line.id, quantity: "60.0000" }] },
-  });
-  await api("POST", `/purchasing/orders/${order4.id}/close`, auth(ctx));
-  await api("POST", "/purchasing/supplier-invoices", {
-    ...auth(ctx),
-    body: {
-      supplierId: suppliers["SUP-02"],
-      purchaseOrderId: order4.id,
-      invoiceNumber: "FAC-DEMO-1001",
-      amount: "6600.0000",
-      currency: "GTQ",
-      issueDate: isoDate(new Date()),
-      dueDate: isoDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
-    },
-  });
+    // The first 2 orders stay DRAFT.
+    if (i < 2) continue;
 
-  log("purchasing", "4 purchase orders created (draft/confirmed-partial/closed mix, 1 supplier invoice)");
+    await api("POST", `/purchasing/orders/${order.id}/confirm`, auth(ctx));
+
+    const fullyReceive = i % 3 === 0;
+    const receivedQuantity = fullyReceive ? quantity : (Number.parseFloat(quantity) * 0.6).toFixed(4);
+    await api("POST", "/purchasing/receipts", {
+      ...auth(ctx),
+      body: { purchaseOrderId: order.id, lines: [{ purchaseOrderLineId: line.id, quantity: receivedQuantity }] },
+    });
+    if (fullyReceive) {
+      await api("POST", `/purchasing/orders/${order.id}/close`, auth(ctx));
+    }
+
+    if (i % 4 === 0) {
+      await api("POST", "/purchasing/supplier-invoices", {
+        ...auth(ctx),
+        body: {
+          supplierId: supplierIds[supplierCode],
+          purchaseOrderId: order.id,
+          invoiceNumber: `FAC-DEMO-${order.id.slice(0, 8).toUpperCase()}`,
+          amount: line.lineTotal,
+          currency: "GTQ",
+          issueDate: isoDate(new Date()),
+          dueDate: isoDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+        },
+      });
+      invoicesCreated += 1;
+    }
+  }
+
+  log(ctx.tenantSlug, "purchasing", `${orderCount} purchase orders created, ${invoicesCreated} supplier invoices`);
 }
 
-// --- Step 7: POS -----------------------------------------------------------------
+// --- POS -----------------------------------------------------------------
 
 async function seedPos(
   ctx: Ctx,
   warehouseId: string,
   products: Record<string, ProductRef>,
-  customers: Record<string, string>,
+  customerIds: Record<string, string>,
 ) {
+  const customerCodes = Object.keys(customerIds);
   const register = await findOrCreate<{ id: string }>(ctx, "/pos/registers", "/pos/registers", "code", "REG-01", {
     warehouseId,
     code: "REG-01",
     name: "Caja principal",
   });
-  const shift = await api<{ id: string }>("POST", "/pos/shifts", {
-    ...auth(ctx),
-    body: { registerId: register.id, openingCash: "500.0000", notes: "Turno de demostración" },
-  });
+  // A register allows at most one OPEN shift at a time — a real
+  // resumability gap found running this script: an earlier failed run
+  // left a shift open (the crash happened before the closing call ever
+  // ran), so a plain "always open a new shift" blew up on re-run with a
+  // real business-rule rejection. Reuse the already-open one if there is
+  // one, exactly like `findOrCreate` does for master data.
+  const openShifts = await api<Array<{ id: string }>>(
+    "GET",
+    `/pos/shifts?registerId=${register.id}&status=OPEN`,
+    auth(ctx),
+  );
+  const shift =
+    openShifts[0] ??
+    (await api<{ id: string }>("POST", "/pos/shifts", {
+      ...auth(ctx),
+      body: { registerId: register.id, openingCash: "500.0000", notes: "Turno de demostración" },
+    }));
   await api("POST", `/pos/shifts/${shift.id}/cash-movements`, {
     ...auth(ctx),
     body: { type: "CASH_IN", amount: "100.0000", reason: "Fondo adicional" },
   });
-
-  const sale1 = await api<{ id: string }>("POST", "/pos/sales", {
+  await api("POST", `/pos/shifts/${shift.id}/cash-movements`, {
     ...auth(ctx),
-    body: {
-      shiftId: shift.id,
-      customerId: customers["CUST-01"],
-      currency: "GTQ",
-      paymentMethod: "CASH",
-      amountTendered: "200.0000",
-      idempotencyKey: `demo-pos-sale-1-${shift.id}`,
-      lines: [{ productId: products.cargador.id, quantity: "2.0000" }],
-    },
-  });
-  await api("POST", "/pos/sales", {
-    ...auth(ctx),
-    body: {
-      shiftId: shift.id,
-      customerId: customers["CUST-02"],
-      currency: "GTQ",
-      paymentMethod: "CASH",
-      amountTendered: "200.0000",
-      idempotencyKey: `demo-pos-sale-2-${shift.id}`,
-      lines: [{ productId: products.parlante.id, quantity: "1.0000" }],
-    },
-  });
-  await api("POST", "/pos/sales", {
-    ...auth(ctx),
-    body: {
-      shiftId: shift.id,
-      customerId: customers["CUST-03"],
-      currency: "GTQ",
-      paymentMethod: "BANK_TRANSFER",
-      paymentReference: `POS-TRF-${shift.id.slice(0, 8)}`,
-      idempotencyKey: `demo-pos-sale-3-${shift.id}`,
-      lines: [{ productId: products.audifonos.id, quantity: "1.0000" }],
-    },
-  });
-  await api("POST", "/pos/sales", {
-    ...auth(ctx),
-    body: {
-      shiftId: shift.id,
-      customerId: customers["CUST-04"],
-      currency: "GTQ",
-      paymentMethod: "CASH",
-      amountTendered: "250.0000",
-      idempotencyKey: `demo-pos-sale-4-${shift.id}`,
-      lines: [{ productId: products.mochila.id, quantity: "1.0000" }],
-    },
+    body: { type: "CASH_OUT", amount: "20.0000", reason: "Pago de mensajería" },
   });
 
-  await api("POST", "/pos/returns", {
-    ...auth(ctx),
-    body: {
-      shiftId: shift.id,
-      posSaleId: sale1.id,
-      reason: "Cliente cambió de opinión",
-      issueRefund: true,
-      idempotencyKey: `demo-pos-return-1-${shift.id}`,
-      lines: [{ salesOrderLineId: sale1.id, quantity: "1.0000" }],
-    },
-  }).catch(() => {
-    // If the sale's line id doesn't line up (POS doesn't expose it directly
-    // in the ring-up response), skip the return rather than fail the whole
-    // seed — the sale itself already gives the dashboard real content.
-  });
+  const saleCount = 12;
+  const sales: Array<{ id: string; salesOrderId: string }> = [];
+  for (let i = 0; i < saleCount; i += 1) {
+    const customerCode = customerCodes[i % customerCodes.length];
+    const productKey = SIMPLE_PRODUCT_KEYS[i % SIMPLE_PRODUCT_KEYS.length];
+    const useBankTransfer = i % 3 === 0;
+    const sale = await api<{ id: string; salesOrderId: string }>("POST", "/pos/sales", {
+      ...auth(ctx),
+      body: {
+        shiftId: shift.id,
+        customerId: customerIds[customerCode],
+        currency: "GTQ",
+        paymentMethod: useBankTransfer ? "BANK_TRANSFER" : "CASH",
+        paymentReference: useBankTransfer ? `POS-TRF-${shift.id.slice(0, 8)}-${i}` : undefined,
+        // Comfortably covers the highest simple product's price (599.00)
+        // times the highest quantity this loop generates (3) — a real
+        // validation error found running this against the API: "500.00"
+        // wasn't enough once the loop reached higher-priced products.
+        amountTendered: useBankTransfer ? undefined : "2000.0000",
+        idempotencyKey: `demo-pos-sale-${i}-${shift.id}`,
+        lines: [{ productId: products[productKey].id, quantity: `${(i % 3) + 1}.0000` }],
+      },
+    });
+    sales.push(sale);
+  }
+
+  // Real returns for the first 2 sales — looked up via the sale's own
+  // underlying SalesOrder lines (a real bug found while scaling this
+  // script up: the original version passed the PosSale's own id as the
+  // salesOrderLineId, which never matched anything, so the "return" call
+  // always failed silently behind a swallowed .catch()).
+  let returnsCreated = 0;
+  for (const sale of sales.slice(0, 2)) {
+    const orderLines = await api<Array<{ id: string }>>(
+      "GET",
+      `/sales/orders/${sale.salesOrderId}/lines`,
+      auth(ctx),
+    );
+    const firstLine = orderLines[0];
+    if (!firstLine) continue;
+    await api("POST", "/pos/returns", {
+      ...auth(ctx),
+      body: {
+        shiftId: shift.id,
+        posSaleId: sale.id,
+        reason: "Cliente cambió de opinión",
+        issueRefund: true,
+        idempotencyKey: `demo-pos-return-${sale.id}`,
+        lines: [{ salesOrderLineId: firstLine.id, quantity: "1.0000" }],
+      },
+    });
+    returnsCreated += 1;
+  }
 
   await api("POST", `/pos/shifts/${shift.id}/close`, {
     ...auth(ctx),
-    body: { closingCashCounted: "900.0000" },
+    body: { closingCashCounted: "3000.0000" },
   });
 
-  log("pos", "1 register, 1 shift, 4 ring-up sales, 1 return attempt, shift closed");
+  log(ctx.tenantSlug, "pos", `1 register, 1 shift, ${saleCount} ring-up sales, ${returnsCreated} returns, shift closed`);
 }
 
-// --- Step 8: commerce --------------------------------------------------------
+// --- Commerce --------------------------------------------------------
 
-async function seedCommerce(ctx: Ctx, warehouseId: string, products: Record<string, ProductRef>) {
+async function seedCommerce(
+  ctx: Ctx,
+  warehouseId: string,
+  products: Record<string, ProductRef>,
+  storefrontCode: string,
+) {
   const storefront = await findOrCreate<{ id: string; code: string }>(
     ctx,
     "/commerce/storefronts",
     "/commerce/storefronts",
     "code",
-    "tienda-demo",
-    { code: "tienda-demo", name: "Tienda Demo ERP", currency: "GTQ", defaultWarehouseId: warehouseId },
+    storefrontCode,
+    { code: storefrontCode, name: `Tienda ${ctx.tenantSlug}`, currency: "GTQ", defaultWarehouseId: warehouseId },
   );
 
-  const toPublish = ["audifonos", "parlante", "cargador", "chaqueta", "mochila"];
+  const toPublish = SIMPLE_PRODUCT_KEYS.slice(0, 8);
   for (const key of toPublish) {
     await api("POST", `/commerce/storefronts/${storefront.id}/products`, {
       ...auth(ctx),
       body: { productId: products[key].id },
+    }).catch((error) => {
+      // publishProduct is idempotent per docs/PROJECT_STATE.md — a real
+      // republish is a no-op, not an error, but re-guard defensively in
+      // case a future backend version changes that contract.
+      if (!(error instanceof DemoSeedError && error.statusCode === 201)) throw error;
     });
   }
 
-  async function guestCheckout(productKey: string, quantity: string, name: string, email: string, withPayment: boolean) {
+  const guests = [
+    { name: "Sofía Ramírez", email: "sofia.ramirez@example.com" },
+    { name: "Diego Castillo", email: "diego.castillo@example.com" },
+    { name: "Valentina Gómez", email: "valentina.gomez@example.com" },
+    { name: "Mateo Herrera", email: "mateo.herrera@example.com" },
+    { name: "Isabella Cruz", email: "isabella.cruz@example.com" },
+    { name: "Sebastián Morales", email: "sebastian.morales@example.com" },
+    { name: "Camila Reyes", email: "camila.reyes@example.com" },
+    { name: "Andrés Ortiz", email: "andres.ortiz@example.com" },
+    { name: "Renata Flores", email: "renata.flores@example.com" },
+    { name: "Emilio Vargas", email: "emilio.vargas@example.com" },
+    { name: "Paula Jiménez", email: "paula.jimenez@example.com" },
+    { name: "Tomás Ibáñez", email: "tomas.ibanez@example.com" },
+  ];
+
+  let checkoutsCompleted = 0;
+  for (let i = 0; i < guests.length; i += 1) {
+    const productKey = toPublish[i % toPublish.length];
+    const guest = guests[i];
     const cart = await api<{ id: string }>("POST", `/storefront/${storefront.code}/carts`, { body: {} });
     await api("POST", `/storefront/${storefront.code}/carts/${cart.id}/lines`, {
-      body: { productId: products[productKey].id, quantity },
+      body: { productId: products[productKey].id, quantity: `${(i % 3) + 1}.0000` },
     });
     await api("POST", `/storefront/${storefront.code}/checkout`, {
       body: {
         cartId: cart.id,
-        guestName: name,
-        guestEmail: email,
-        paymentReference: withPayment ? `WEB-TRF-${cart.id.slice(0, 8)}` : undefined,
+        guestName: guest.name,
+        guestEmail: guest.email,
+        paymentReference: i % 3 === 0 ? `WEB-TRF-${cart.id.slice(0, 8)}` : undefined,
       },
     });
+    checkoutsCompleted += 1;
   }
 
-  await guestCheckout("audifonos", "1.0000", "Sofía Ramírez", "sofia.ramirez@example.com", false);
-  await guestCheckout("mochila", "2.0000", "Diego Castillo", "diego.castillo@example.com", true);
-
-  log("commerce", "1 storefront, 5 published products, 2 guest checkouts");
+  log(
+    ctx.tenantSlug,
+    "commerce",
+    `1 storefront, ${toPublish.length} published products, ${checkoutsCompleted} guest checkouts`,
+  );
 }
 
-// --- Step 9: accounting -------------------------------------------------------
+// --- Accounting -------------------------------------------------------
 
 async function seedAccounting(ctx: Ctx) {
   async function account(code: string, name: string, type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE") {
@@ -788,7 +938,7 @@ async function seedAccounting(ctx: Ctx) {
 
   const cash = await account("1000", "Caja", "ASSET");
   const bank = await account("1010", "Bancos", "ASSET");
-  await account("1100", "Cuentas por Cobrar", "ASSET");
+  const receivable = await account("1100", "Cuentas por Cobrar", "ASSET");
   const inventoryAccount = await account("1200", "Inventario", "ASSET");
   const payable = await account("2000", "Cuentas por Pagar", "LIABILITY");
   const capital = await account("3000", "Capital", "EQUITY");
@@ -811,29 +961,39 @@ async function seedAccounting(ctx: Ctx) {
     await api("POST", "/accounting/journal-entries", { ...auth(ctx), body: { entryDate, description, lines } });
   }
 
-  await entry("Aporte de capital inicial", [
-    { accountId: cash.id, debit: "5000.0000" },
-    { accountId: capital.id, credit: "5000.0000" },
-  ]);
-  await entry("Reconocimiento de venta en efectivo", [
-    { accountId: cash.id, debit: "500.0000" },
-    { accountId: revenue.id, credit: "500.0000" },
-  ]);
-  await entry("Pago de gasto operativo", [
-    { accountId: expense.id, debit: "250.0000" },
-    { accountId: bank.id, credit: "250.0000" },
-  ]);
-  await entry("Compra de inventario a crédito", [
-    { accountId: inventoryAccount.id, debit: "1200.0000" },
-    { accountId: payable.id, credit: "1200.0000" },
-  ]);
+  const pairs: Array<[string, string]> = [
+    [cash.id, capital.id],
+    [cash.id, revenue.id],
+    [expense.id, bank.id],
+    [inventoryAccount.id, payable.id],
+    [receivable.id, revenue.id],
+    [bank.id, receivable.id],
+    [expense.id, cash.id],
+    [payable.id, bank.id],
+    [cash.id, revenue.id],
+    [inventoryAccount.id, payable.id],
+    [expense.id, bank.id],
+    [receivable.id, revenue.id],
+  ];
 
-  log("accounting", "8 accounts, 1 open fiscal period, 4 balanced journal entries");
+  let entriesCreated = 0;
+  for (let i = 0; i < pairs.length; i += 1) {
+    const [debitAccountId, creditAccountId] = pairs[i];
+    const amount = `${(i + 1) * 125}.0000`;
+    await entry(`Movimiento contable de demostración #${i + 1}`, [
+      { accountId: debitAccountId, debit: amount },
+      { accountId: creditAccountId, credit: amount },
+    ]);
+    entriesCreated += 1;
+  }
+
+  log(ctx.tenantSlug, "accounting", `8 accounts, 1 open fiscal period, ${entriesCreated} balanced journal entries`);
 }
 
-// --- Step 10: CRM --------------------------------------------------------------
+// --- CRM --------------------------------------------------------------
 
-async function seedCrm(ctx: Ctx, customers: Record<string, string>) {
+async function seedCrm(ctx: Ctx, customerIds: Record<string, string>) {
+  const customerCodes = Object.keys(customerIds);
   const pipeline = await findOrCreate<{ id: string }>(ctx, "/crm/pipelines", "/crm/pipelines", "code", "SALES", {
     code: "SALES",
     name: "Ventas",
@@ -861,6 +1021,13 @@ async function seedCrm(ctx: Ctx, customers: Record<string, string>) {
     { name: "María Fernanda Ruiz", companyName: "Grupo Innova", email: "mf.ruiz@grupoinnova.gt" },
     { name: "Jorge Salazar", companyName: "Ferretería Central", email: "jorge.salazar@ferreteriacentral.gt" },
     { name: "Lucía Ramírez", companyName: "Boutique Luna", email: "lucia.ramirez@boutiqueluna.gt" },
+    { name: "Roberto Aguilar", companyName: "Comercial del Lago", email: "roberto.aguilar@comerlago.gt" },
+    { name: "Daniela Castañeda", companyName: "Distribuidora Real", email: "daniela.castaneda@distrireal.gt" },
+    { name: "Fernando Paz", companyName: "Grupo Andes", email: "fernando.paz@grupoandes.gt" },
+    { name: "Gabriela Solís", companyName: "Comercial Estrella", email: "gabriela.solis@comercialestrella.gt" },
+    { name: "Alejandro Rivas", companyName: "Distribuidora Norte GT", email: "alejandro.rivas@distrinorte.gt" },
+    { name: "Karla Monterroso", companyName: "Almacén Central", email: "karla.monterroso@almacencentral.gt" },
+    { name: "Pablo Estrada", companyName: "Comercializadora Maya", email: "pablo.estrada@comermaya.gt" },
   ];
   const leadIds: string[] = [];
   for (const definition of leadDefinitions) {
@@ -868,55 +1035,75 @@ async function seedCrm(ctx: Ctx, customers: Record<string, string>) {
     leadIds.push(lead.id);
   }
 
-  const converted = [];
-  for (const leadId of leadIds.slice(0, 2)) {
+  const converted: string[] = [];
+  for (const leadId of leadIds.slice(0, 4)) {
     const result = await api<{ customerId: string }>("POST", `/crm/leads/${leadId}/convert`, auth(ctx));
     converted.push(result.customerId);
   }
 
-  const opp1 = await api<{ id: string }>("POST", "/crm/opportunities", {
-    ...auth(ctx),
-    body: { name: "Renovación Distribuidora del Sur", pipelineId: pipeline.id, stageId: negotiation.id, customerId: converted[0], amount: "15000.0000", currency: "GTQ" },
-  });
-  const opp2 = await api<{ id: string }>("POST", "/crm/opportunities", {
-    ...auth(ctx),
-    body: { name: "Expansión Comercial Ideal", pipelineId: pipeline.id, stageId: prospecting.id, customerId: converted[1], amount: "8500.0000", currency: "GTQ" },
-  });
-  const opp3 = await api<{ id: string }>("POST", "/crm/opportunities", {
-    ...auth(ctx),
-    body: { name: "Pedido mayorista Aurora", pipelineId: pipeline.id, stageId: prospecting.id, customerId: customers["CUST-01"], amount: "22000.0000", currency: "GTQ" },
-  });
-  const opp4 = await api<{ id: string }>("POST", "/crm/opportunities", {
-    ...auth(ctx),
-    body: { name: "Contrato anual Grupo Mayoreo", pipelineId: pipeline.id, stageId: negotiation.id, customerId: customers["CUST-04"], amount: "31000.0000", currency: "GTQ" },
-  });
-  await api("PUT", `/crm/opportunities/${opp1.id}/stage`, { ...auth(ctx), body: { stageId: won.id } });
+  const stages = [prospecting, negotiation, won];
+  const opportunityCount = 12;
+  const opportunityIds: string[] = [];
+  for (let i = 0; i < opportunityCount; i += 1) {
+    const useConverted = i < converted.length;
+    const stage = stages[i % 2]; // alternate prospecting/negotiation; a few get moved to won below
+    const opportunity = await api<{ id: string }>("POST", "/crm/opportunities", {
+      ...auth(ctx),
+      body: {
+        name: `Oportunidad de demostración #${i + 1}`,
+        pipelineId: pipeline.id,
+        stageId: stage.id,
+        customerId: useConverted ? converted[i] : customerIds[customerCodes[i % customerCodes.length]],
+        amount: `${(i + 1) * 2500}.0000`,
+        currency: "GTQ",
+      },
+    });
+    opportunityIds.push(opportunity.id);
+  }
+  // Move a few real opportunities all the way to the won stage.
+  for (const opportunityId of opportunityIds.slice(0, 3)) {
+    await api("PUT", `/crm/opportunities/${opportunityId}/stage`, { ...auth(ctx), body: { stageId: won.id } });
+  }
 
-  await api("POST", "/crm/activities", {
-    ...auth(ctx),
-    body: { type: "CALL", subject: "Llamada inicial de calificación", relatedLeadId: leadIds[2] },
-  });
-  await api("POST", "/crm/activities", {
-    ...auth(ctx),
-    body: { type: "EMAIL", subject: "Envío de cotización", relatedOpportunityId: opp3.id },
-  });
-  await api("POST", "/crm/activities", {
-    ...auth(ctx),
-    body: { type: "MEETING", subject: "Reunión de cierre", relatedOpportunityId: opp4.id },
-  });
-  await api("POST", "/crm/activities", {
-    ...auth(ctx),
-    body: { type: "TASK", subject: "Seguimiento post-venta", relatedCustomerId: customers["CUST-01"] },
-  });
-  await api("POST", "/crm/activities", {
-    ...auth(ctx),
-    body: { type: "NOTE", subject: "Interesada en volumen mayor al trimestral habitual", relatedOpportunityId: opp2.id },
-  });
+  const activityTypes: Array<"CALL" | "EMAIL" | "MEETING" | "NOTE" | "TASK"> = [
+    "CALL",
+    "EMAIL",
+    "MEETING",
+    "NOTE",
+    "TASK",
+  ];
+  let activitiesCreated = 0;
+  for (let i = 0; i < leadIds.length; i += 1) {
+    await api("POST", "/crm/activities", {
+      ...auth(ctx),
+      body: {
+        type: activityTypes[i % activityTypes.length],
+        subject: `Seguimiento de demostración #${i + 1}`,
+        relatedLeadId: leadIds[i],
+      },
+    });
+    activitiesCreated += 1;
+  }
+  for (let i = 0; i < opportunityIds.length; i += 1) {
+    await api("POST", "/crm/activities", {
+      ...auth(ctx),
+      body: {
+        type: activityTypes[(i + 1) % activityTypes.length],
+        subject: `Nota de oportunidad de demostración #${i + 1}`,
+        relatedOpportunityId: opportunityIds[i],
+      },
+    });
+    activitiesCreated += 1;
+  }
 
-  log("crm", "1 pipeline, 3 stages, 5 leads (2 converted), 4 opportunities, 5 activities");
+  log(
+    ctx.tenantSlug,
+    "crm",
+    `1 pipeline, 3 stages, ${leadDefinitions.length} leads (${converted.length} converted), ${opportunityCount} opportunities, ${activitiesCreated} activities`,
+  );
 }
 
-// --- Step 11: manufacturing ----------------------------------------------------
+// --- Manufacturing ----------------------------------------------------
 
 async function seedManufacturing(ctx: Ctx, warehouseId: string, products: Record<string, ProductRef>) {
   const bom = await findOrCreate<{ id: string }>(
@@ -936,107 +1123,83 @@ async function seedManufacturing(ctx: Ctx, warehouseId: string, products: Record
     },
   );
 
-  const order1 = await api<{ id: string }>("POST", "/manufacturing/orders", {
-    ...auth(ctx),
-    body: { billOfMaterialId: bom.id, warehouseId, quantityPlanned: "10.0000" },
-  });
-  await api("POST", `/manufacturing/orders/${order1.id}/confirm`, auth(ctx));
-  const order1Materials = await api<Array<{ id: string }>>("GET", `/manufacturing/orders/${order1.id}/materials`, auth(ctx));
-  for (const material of order1Materials) {
-    await api("POST", `/manufacturing/orders/${order1.id}/materials/issue`, {
+  const orderCount = 12;
+  let closedCount = 0;
+  for (let i = 0; i < orderCount; i += 1) {
+    const quantityPlanned = `${(i % 4) + 3}.0000`;
+    const order = await api<{ id: string }>("POST", "/manufacturing/orders", {
       ...auth(ctx),
-      body: { productionOrderMaterialId: material.id, quantity: "5.0000" },
+      body: { billOfMaterialId: bom.id, warehouseId, quantityPlanned },
     });
-  }
-  await api("POST", `/manufacturing/orders/${order1.id}/finished-goods-receipts`, {
-    ...auth(ctx),
-    body: { quantity: "3.0000" },
-  });
+    await api("POST", `/manufacturing/orders/${order.id}/confirm`, auth(ctx));
 
-  const order2 = await api<{ id: string }>("POST", "/manufacturing/orders", {
-    ...auth(ctx),
-    body: { billOfMaterialId: bom.id, warehouseId, quantityPlanned: "5.0000" },
-  });
-  await api("POST", `/manufacturing/orders/${order2.id}/confirm`, auth(ctx));
-  const order2Materials = await api<Array<{ id: string; quantityRequired: string }>>(
-    "GET",
-    `/manufacturing/orders/${order2.id}/materials`,
-    auth(ctx),
-  );
-  for (const material of order2Materials) {
-    await api("POST", `/manufacturing/orders/${order2.id}/materials/issue`, {
+    const materials = await api<Array<{ id: string; quantityRequired: string }>>(
+      "GET",
+      `/manufacturing/orders/${order.id}/materials`,
+      auth(ctx),
+    );
+    const fullyIssue = i % 2 === 0;
+    for (const material of materials) {
+      const issueQuantity = fullyIssue
+        ? material.quantityRequired
+        : `${(Number.parseFloat(material.quantityRequired) * 0.5).toFixed(4)}`;
+      await api("POST", `/manufacturing/orders/${order.id}/materials/issue`, {
+        ...auth(ctx),
+        body: { productionOrderMaterialId: material.id, quantity: issueQuantity },
+      });
+    }
+
+    const receivedQuantity = fullyIssue ? quantityPlanned : `${(Number.parseFloat(quantityPlanned) * 0.5).toFixed(4)}`;
+    await api("POST", `/manufacturing/orders/${order.id}/finished-goods-receipts`, {
       ...auth(ctx),
-      body: { productionOrderMaterialId: material.id, quantity: material.quantityRequired },
+      body: { quantity: receivedQuantity },
     });
-  }
-  await api("POST", `/manufacturing/orders/${order2.id}/finished-goods-receipts`, {
-    ...auth(ctx),
-    body: { quantity: "5.0000" },
-  });
-  await api("POST", `/manufacturing/orders/${order2.id}/close`, auth(ctx));
 
-  log("manufacturing", "1 BOM, 2 production orders (1 confirmed-partial, 1 closed)");
+    if (fullyIssue) {
+      await api("POST", `/manufacturing/orders/${order.id}/close`, auth(ctx));
+      closedCount += 1;
+    }
+  }
+
+  log(ctx.tenantSlug, "manufacturing", `1 BOM, ${orderCount} production orders (${closedCount} closed)`);
 }
 
 // --- Orchestration ----------------------------------------------------------
 
-async function main() {
-  log("start", `seeding against ${BASE_URL}`);
+async function seedTenant(config: TenantConfig): Promise<void> {
+  log(config.tenantSlug, "start", `seeding "${config.tenantName}" against ${BASE_URL}`);
 
-  const session = await registerOrLoginOwner();
-  const { companyId } = await provisionOrReuseTenant(session.accessToken);
-  const ctx: Ctx = { accessToken: session.accessToken, companyId };
+  const session = await registerOrLoginOwner(config);
+  const { companyId } = await provisionOrReuseTenant(config, session.accessToken);
+  const ctx: Ctx = { tenantSlug: config.tenantSlug, accessToken: session.accessToken, companyId };
 
   const { unitId } = await seedUnitsOfMeasure(ctx);
   const categories = await seedCategories(ctx);
   const brands = await seedBrands(ctx);
   const products = await seedProducts(ctx, unitId, categories, brands);
-  const customers = await seedCustomers(ctx);
-  const suppliers = await seedSuppliers(ctx);
+  const customerIds = await seedCustomers(ctx);
+  const supplierIds = await seedSuppliers(ctx);
   const { centralId } = await seedWarehouses(ctx);
   const { ivaId } = await seedTaxes(ctx);
   await seedPriceList(ctx, products);
 
   await receiveStock(ctx, centralId, products);
-  await seedSales(ctx, centralId, products, customers, ivaId);
-  await seedPurchasing(ctx, centralId, products, suppliers);
-  await seedPos(ctx, centralId, products, customers);
-  await seedCommerce(ctx, centralId, products);
+  await seedSales(ctx, centralId, products, customerIds, ivaId);
+  await seedPurchasing(ctx, centralId, products, supplierIds);
+  await seedPos(ctx, centralId, products, customerIds);
+  await seedCommerce(ctx, centralId, products, config.storefrontCode);
   await seedAccounting(ctx);
-  await seedCrm(ctx, customers);
+  await seedCrm(ctx, customerIds);
   await seedManufacturing(ctx, centralId, products);
 
-  log("done", `"Demo ERP" (${TENANT_SLUG}) is fully seeded — log in as ${OWNER_EMAIL} to explore it.`);
+  log(config.tenantSlug, "done", `"${config.tenantName}" is fully seeded — log in as ${config.ownerEmail} to explore it.`);
 }
 
-async function seedPriceList(ctx: Ctx, products: Record<string, ProductRef>) {
-  const priceList = await findOrCreate<{ id: string }>(
-    ctx,
-    "/pricing/price-lists",
-    "/pricing/price-lists",
-    "code",
-    "GENERAL",
-    { code: "GENERAL", name: "Lista general", currency: "GTQ" },
-  );
-  const items: Array<{ key: string; price: string }> = [
-    { key: "audifonos", price: "229.0000" },
-    { key: "parlante", price: "169.0000" },
-    { key: "cargador", price: "69.0000" },
-  ];
-  const existingItems = await api<Array<{ productId: string }>>(
-    "GET",
-    `/pricing/price-lists/${priceList.id}/items`,
-    auth(ctx),
-  );
-  for (const item of items) {
-    const productId = products[item.key].id;
-    if (existingItems.some((existing) => existing.productId === productId)) continue;
-    await api("POST", `/pricing/price-lists/${priceList.id}/items`, {
-      ...auth(ctx),
-      body: { productId, price: item.price },
-    });
+async function main() {
+  for (const config of TENANTS) {
+    await seedTenant(config);
   }
-  log("master-data", "1 price list ready with 3 items");
+  console.log(`[seed-demo-data] all ${TENANTS.length} tenants seeded successfully.`);
 }
 
 main().catch((error) => {
