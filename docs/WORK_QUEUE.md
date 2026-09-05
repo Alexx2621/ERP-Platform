@@ -51,8 +51,20 @@ aserción de E2E con un valor hardcodeado que dejó de ser cierto, y un
 timeout de Vitest demasiado ajustado para el runner de 2 cores de GitHub
 Actions — confirmado preexistente, no introducido por esta sesión) más
 Escala excluida del promedio del panel de avance (a pedido explícito del
-usuario, en vez de mostrar una cifra falsa) — los once bloques a pedido
-explícito del usuario). Modelo operativo actualizado: 2026-08-27.
+usuario, en vez de mostrar una cifra falsa); y, a pedido explícito del
+usuario tras compartir una captura de un dashboard de widgets ajeno, el
+"Inicio" heredado de Foundation (tarjetas de verificación de sesión/
+tenant, panel de avance del roadmap) se reemplazó por un dashboard real
+de 10 widgets con drag-and-drop nativo (reordenar y redimensionar), y se
+sembraron datos de demostración realistas en un tenant nuevo y separado,
+"Demo ERP", a través de los 11 módulos de negocio vía un script nuevo
+(`apps/api/scripts/seed-demo-data.ts`) que corre enteramente contra la
+API real — encontrando y corrigiendo de paso dos bugs reales y no
+relacionados (un generador de código "aleatorio" en Commerce/CRM que en
+realidad recortaba el timestamp de un UUIDv7, y `TenantsController.provision()`
+ejecutando sus efectos secundarios sin condición incluso en una
+repetición idempotente) — los trece bloques a pedido explícito del
+usuario). Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -211,6 +223,79 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 36 (home dashboard drag-and-drop + datos de demostración)
+
+A pedido explícito del usuario, tras compartir la captura de un dashboard
+de widgets ajeno con arrastre visible: *"Ahora llena todo el sistema de
+datos de prueba... quita toda la información de desarrollo del INICIO y
+agrega todo lo necesario para un modulo de INICIO... quiero un sistema de
+widgets... con sistema drag and drop"*. Se preguntó explícitamente al
+usuario antes de implementar: dónde vivirían los datos de demostración
+(eligió un tenant nuevo y separado, "Demo ERP") y si el sistema de
+widgets soportaría solo reordenar o también redimensionar (eligió
+ambos).
+
+- **`WorkspacePage` reescrita**: eliminadas las tarjetas "Workspace base"/
+  "Contexto activo" (verificación de sesión/tenant heredada de
+  Foundation) y `DevelopmentProgressPanel` (tracker de roadmap interno,
+  eliminado por completo junto a su spec). Reemplazadas por
+  `apps/erp-web/src/features/home/` (módulo nuevo): 10 widgets reales
+  (clientes/productos activos, pedidos de venta abiertos, cobrado hoy,
+  compras pendientes, ventas POS de hoy, oportunidades del pipeline CRM,
+  producción activa, productos sin stock, pedidos de tienda online),
+  cada uno calculado desde datos reales vía `Promise.allSettled` (nunca
+  `Promise.all`, para que un módulo deshabilitado no deje en blanco el
+  resto). Drag-and-drop nativo de HTML5 (sin dependencia nueva, mismo
+  criterio que `Modal`/`NavDropdown`/`Tabs`), redimensionar vía botón de
+  alternancia, quitar/re-agregar vía X + menú "Agregar widget". Layout
+  persistido con el `UserPreference` genérico ya existente — sin cambio
+  de backend.
+- **Bug real de UX encontrado y corregido antes del primer commit**:
+  `reorderWidgets` siempre insertaba "antes" del objetivo — arrastrar una
+  tarjeta sobre su vecina inmediata era un no-op silencioso. Corregido
+  con lógica consciente de dirección (insertar después cuando se arrastra
+  hacia adelante, antes cuando es hacia atrás), con test de regresión
+  dedicado.
+- **`apps/api/scripts/seed-demo-data.ts`** (script nuevo,
+  `pnpm --filter @erp/api run seed:demo`): llena "Demo ERP" con datos
+  realistas en los 11 módulos de negocio, enteramente vía HTTP real contra
+  la API (nunca Postgres directo), con `findOrCreate` para cada entidad de
+  código único — necesario en la práctica, no especulativo, ya que la
+  primera corrida falló a mitad de camino por un bug real (ver abajo) y
+  la re-corrida lo exigió de inmediato.
+- **Dos bugs reales, no relacionados, encontrados y corregidos durante la
+  propia ejecución del script**: (1) `CheckoutUseCase` (Commerce) y
+  `ConvertLeadUseCase` (CRM) generaban un código de cliente recortando el
+  segmento de *timestamp* (no aleatorio) de un `newId()` UUIDv7 —
+  colisionaba bajo sucesión rápida con un `409` real; corregido con
+  `crypto.randomBytes` en ambos lugares. (2) `TenantsController.provision()`
+  ejecutaba sus efectos secundarios (seed del rol Owner, habilitar
+  catálogo, auditorías) de forma incondicional incluso en una repetición
+  idempotente ya soportada por `findExisting()` — crasheaba con una
+  violación real de constraint único al reintentar un provisioning ya
+  exitoso; corregido con el mismo patrón `wasReplayed` ya usado por
+  `CapturePaymentUseCase`/`CheckoutUseCase`, con test de regresión
+  agregado a la suite ya existente.
+- Ver el detalle completo de ambos bugs, la verificación visual real
+  contra el dev server, y las correcciones de locators de E2E en
+  `docs/PROJECT_STATE.md` — "Home dashboard con widgets drag-and-drop +
+  datos de demostración en toda la plataforma".
+- Tests: 12 tests unitarios nuevos en `apps/erp-web`
+  (`home-dashboard.spec.tsx`) — 120/120 en total (antes 110). 1 test de
+  regresión nuevo en `apps/api`
+  (`provision-tenant.use-case.spec.ts`) — 1056/1056 en total (antes
+  1055). Nueve archivos de `apps/e2e` ganaron `exact: true` en clics de
+  navegación del sidebar que ahora colisionan por substring con títulos/
+  leyendas de widgets del dashboard ("Ventas POS de hoy", "Compras
+  pendientes", "...en el catálogo") — 20/20 Playwright sin cambio de
+  conteo.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/api` 1056/1056, `apps/erp-web` 120/120, `apps/e2e` 20/20
+  Playwright contra infraestructura efímera real, y una corrida real de
+  GitHub Actions confirmada `"conclusion":"success"` tras el push a
+  `develop`. Tenant "Demo ERP" sembrado y disponible
+  (`demo-owner@erp-platform.local` / `DemoErp9!Platform`).
 
 ### Hecho — sesión 36 (contraste de texto sobre --accent-soft, corregido de forma sistémica)
 

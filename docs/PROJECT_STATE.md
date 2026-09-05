@@ -3888,6 +3888,194 @@ contra un navegador real, nunca asumiendo la causa desde la captura sola.
   persistentes de desarrollo reiniciados y verificados con el build
   final.
 
+### Home dashboard con widgets drag-and-drop + datos de demostración en toda la plataforma (sesión 36, 2026-09-04/05)
+
+A pedido explícito del usuario, tras compartir una captura de un dashboard
+de widgets ajeno (una app de clínica dental) mostrando reordenamiento por
+arrastre con un placeholder visible "Soltar aquí": *"Ahora llena todo el
+sistema de datos de prueba, agrega varios registros para ver que todo
+funciona correctamente, quita toda la información de desarrollo del INICIO
+y agrega todo lo necesario para un modulo de INICIO, también ese mismo
+inicio adicional de lo que pongas quiero un sistema de widgets asi como el
+de la imagen adjunta con sistema drag and drop"*. Antes de implementar, se
+preguntó explícitamente al usuario dónde debían vivir los datos de
+demostración (tenant nuevo separado vs. el tenant real ya en uso — eligió
+un tenant nuevo, "Demo ERP") y si el sistema de widgets debía soportar solo
+reordenar o también cambiar de tamaño (eligió ambos).
+
+- **`WorkspacePage` (`apps/erp-web/src/features/workspace/workspace-page.tsx`)
+  reescrita por completo**: se eliminó la tarjeta "Workspace base"
+  (verificación de sesión/tenant/empresa/aislamiento, útil solo durante la
+  construcción de Foundation), el `<aside>` "Contexto activo" (UUIDs crudos
+  de tenant/membership/empresa expuestos en pantalla), y
+  `<DevelopmentProgressPanel />` — el tracker de progreso del roadmap por
+  fases que llevaba desde la sesión 8 mostrando avance técnico interno, no
+  información de negocio. `development-progress-panel.tsx` y su spec se
+  **eliminaron por completo** (confirmado por grep que ningún otro archivo
+  los importaba). `WorkspacePage` ahora es un wrapper delgado:
+  `<ProductShell><HomeDashboard selection={selection} navigate={navigate} /></ProductShell>`.
+- **`apps/erp-web/src/features/home/`** (módulo nuevo): `widget-definitions.tsx`
+  (registro de 10 widgets — clientes activos, productos activos, pedidos de
+  venta abiertos, cobrado hoy, compras pendientes, ventas POS de hoy,
+  oportunidades abiertas del pipeline CRM, producción activa, productos sin
+  stock, pedidos de tienda online —, cada uno con un `compute(data)` que
+  devuelve `null`, no un cero fabricado, cuando su fuente de datos no cargó
+  por estar el módulo deshabilitado per ADR-015 o por falta de permiso de
+  lectura), `use-dashboard-data.ts` (un hook que dispara las 10 llamadas
+  reales vía `Promise.allSettled` — nunca `Promise.all`, para que un solo
+  módulo deshabilitado no deje en blanco el resto del dashboard —, con un
+  paso adicional condicional para `getPipelineSummary` solo si existe al
+  menos un pipeline real), `home-dashboard.tsx` (la grilla de widgets:
+  drag-and-drop nativo de HTML5 —mismo criterio ya establecido en este
+  código base de no agregar una dependencia para un widget interactivo,
+  igual que `Modal`/`NavDropdown`/`Tabs`—, redimensionar vía un botón de
+  alternancia normal/ancho —un resize real por arrastre de píxeles habría
+  exigido seguimiento de mouse-move y matemática de grid-track, un riesgo
+  desproporcionado para este alcance—, quitar/re-agregar vía un botón X y
+  un menú de disclosure "Agregar widget"). El layout (`order`/`hidden`/
+  `sizes`) persiste mediante el mismo mecanismo genérico de
+  `UserPreference` que `appearance-context.tsx` ya usa para
+  `ui.accentColor`/`ui.navigationLayout`/`ui.surfaceColor` — clave nueva
+  `ui.dashboardLayout`, **sin ningún cambio de backend**.
+- **Bug real de UX encontrado y corregido durante la propia escritura del
+  test de arrastre, antes de cualquier commit**: `reorderWidgets` siempre
+  insertaba el widget arrastrado "antes" de su objetivo — para el caso más
+  común y visualmente esperado (arrastrar una tarjeta sobre su vecina
+  inmediata siguiente) esto la dejaba exactamente en la misma posición,
+  un no-op silencioso que el placeholder de arrastre igual animaba como si
+  algo hubiera cambiado. Corregido con una lógica consciente de dirección:
+  arrastrar hacia adelante inserta *después* del objetivo, arrastrar hacia
+  atrás inserta *antes* — ambos casos terminan colocando la tarjeta
+  arrastrada exactamente en la posición original del objetivo, produciendo
+  el intercambio real que un usuario esperaría. Regresión cubierta con un
+  test dedicado (`"dragging a widget onto its immediate next neighbor
+  swaps them"`).
+- Tests: 12 tests unitarios nuevos en `apps/erp-web`
+  (`home-dashboard.spec.tsx`: 6 casos puros de `reorderWidgets`, 3
+  `compute()` de widgets contra datos de fixture, 3 de renderizado/
+  interacción incluyendo el ciclo completo de arrastre real vía
+  `fireEvent`) — 120/120 tests unitarios totales en `apps/erp-web` (antes
+  110, sin ningún test existente roto por la eliminación del panel de
+  desarrollo).
+
+**`apps/api/scripts/seed-demo-data.ts`** (script nuevo, `pnpm --filter
+@erp/api run seed:demo`): llena un tenant nuevo y separado, "Demo ERP"
+(`demo-erp`), con datos realistas en los 11 módulos de negocio — 2
+unidades de medida, 3 categorías, 2 marcas, 11 productos (2 con
+variantes, 4 variantes en total, más un producto "combo" reservado para
+Manufactura), 5 clientes, 4 proveedores, 2 bodegas, 2 impuestos, 1 lista
+de precios; recepciones de inventario para los 10 productos vendibles; 6
+pedidos de venta en estados mixtos (borrador/confirmado/despachado) con
+pagos y una devolución; 4 órdenes de compra en estados mixtos con una
+factura de proveedor; un ciclo completo de POS (caja, turno, 4 ventas,
+una devolución, cierre); una tienda con 5 productos publicados y 2
+checkouts de invitado reales; un catálogo de cuentas contables con un
+período fiscal abierto y 4 asientos balanceados; un pipeline de CRM con 3
+etapas, 5 prospectos (2 convertidos), 4 oportunidades y 5 actividades; y
+una lista de materiales con 2 órdenes de producción. Deliberadamente
+**nunca escribe directamente a Postgres** — cada paso llama a la API real
+vía `fetch` nativo (un helper propio que replica exactamente el
+`request()` de `@erp/api-client`, ya que ese paquete es `"type": "module"`
+sin punto de entrada CJS y este script corre bajo el `ts-node` en
+CommonJS de `apps/api`), ejerciendo cada invariante de dominio
+(reservas, RBAC, idempotencia) tal como lo haría un usuario real
+(MASTER_SPEC §90). Reentrante por diseño en los pasos con código único
+(unidades/categorías/marcas/productos/variantes/clientes/proveedores/
+bodegas/impuestos/lista de precios/cuentas/período fiscal/caja POS/
+tienda/pipeline y sus etapas/BOM, todos con un `findOrCreate` genérico
+que lista antes de crear) — encontrado necesario en la práctica, no
+especulativo: la primera corrida real falló a mitad de camino por un bug
+de backend real (ver abajo) y la re-corrida habría fallado de inmediato
+en la primera unidad de medida sin esta propiedad.
+
+**Dos bugs reales, no relacionados entre sí, encontrados y corregidos
+durante la propia ejecución del script contra la API real — ninguno
+simulado, cada uno confirmado leyendo el stack trace real del servidor**:
+
+1. **`CheckoutUseCase` (Commerce) y `ConvertLeadUseCase` (CRM) generaban
+   un código de cliente "aleatorio" recortando los primeros caracteres
+   hexadecimales de un `newId()` (UUIDv7)** — pero los primeros 48 bits de
+   un UUIDv7 son un timestamp en milisegundos (RFC 9562), así que ese
+   recorte llevaba casi ninguna aleatoriedad real: dos checkouts de
+   invitado (o dos conversiones de prospecto) ocurridos cerca en el
+   tiempo producían el mismo código "aleatorio", y el segundo fallaba con
+   un `409` real (`CustomerCodeAlreadyInUseError`) — exactamente lo que
+   pasó al correr el script con dos checkouts seguidos y, más tarde, con
+   la conversión de dos prospectos seguidos. Corregido en ambos lugares
+   usando `crypto.randomBytes` (`node:crypto`), sin relación alguna con el
+   tiempo. Verificado que ningún test existente afirmaba el formato/
+   longitud exacta del código generado.
+2. **`TenantsController.provision()` ejecutaba `SeedOwnerRoleUseCase`/
+   `EnableAllCatalogAppsUseCase`/las auditorías correspondientes de forma
+   incondicional**, incluso cuando `ProvisionTenantUseCase` devolvía una
+   repetición idempotente (el camino exacto para el que `findExisting()`
+   fue construido — ya probado como tal en
+   `provision-tenant.use-case.spec.ts` desde antes de esta sesión) — así
+   que reintentar un provisioning con la misma identidad natural (mismo
+   slug + mismo owner + mismos códigos de organización/empresa) fallaba
+   con una violación real de constraint único no manejada
+   (`roles_tenant_id_name_key`, al intentar sembrar un segundo rol
+   "Owner" para un tenant que ya lo tenía) en vez de devolver el mismo
+   resultado exitoso de nuevo — exactamente lo que pasó al reintentar el
+   provisioning de "Demo ERP" en una segunda corrida del script tras la
+   primera falla parcial. Corregido con el mismo patrón `wasReplayed` ya
+   usado por `CapturePaymentUseCase` (sesión 27) y `CheckoutUseCase`
+   (sesión 31): `ProvisionTenantUseCase.execute()` ahora devuelve
+   `{ ...resultado, wasReplayed: boolean }`, y el controller salta los
+   tres efectos secundarios posteriores al provisioning cuando es una
+   repetición. Test de regresión agregado a la suite ya existente,
+   confirmando `wasReplayed: false` en la creación real y `true` en el
+   reintento idempotente.
+
+Los dos bugs eran genuinamente independientes del trabajo de UI de esta
+sesión — surgieron exclusivamente porque este fue el primer caso real en
+36 sesiones que ejecutó checkouts/conversiones de prospecto en sucesión
+rápida, y el primer caso real que reintentó un provisioning de tenant ya
+exitoso. Ninguno se simuló ni se dio por sentado: cada uno se confirmó
+leyendo el stack trace real del servidor (`PrismaClientKnownRequestError`
+con el nombre exacto del constraint violado) antes de escribir el fix.
+
+**Verificación visual real contra el dev server** (script ad hoc de
+Playwright, no comiteado): login real como el owner de "Demo ERP",
+confirmando los 10 widgets con valores reales y no-cero (9 clientes
+activos, 11 productos, Q14,476.20 cobrado hoy, etc.), el placeholder
+"Soltar aquí" real durante un arrastre real, el intercambio real de
+posición tras soltar (confirmando el fix del bug de `reorderWidgets`), el
+redimensionado real a dos columnas, y el ciclo real de quitar + reabrir
+vía "Agregar widget". La preferencia de layout de la cuenta demo se
+reseteó a su valor por defecto al terminar la verificación, para que
+quien explore la cuenta después la encuentre en su estado inicial.
+
+**Correcciones necesarias en `apps/e2e`**: `onboarding.spec.ts` ganó una
+aserción nueva confirmando que el widget "Clientes activos" del dashboard
+renderiza un "0" real y honesto para un tenant recién aprovisionado sin
+clientes — encontrado en el proceso, no anticipado: el nombre accesible
+del botón contenedor cambia de "Clientes activos" (durante la carga) a
+"Clientes activos 0 0 en total" (una vez los datos llegan), así que
+localizar por el texto del título (`getByText(..., {exact:true})`) y
+subir al `<button>` ancestro por XPath es lo único estable, no una
+búsqueda por rol contra el nombre accesible del botón. Ocho archivos más
+(`app-registry.spec.ts`, `catalog.spec.ts`, `commerce.spec.ts`,
+`commercial.spec.ts`, `inventory.spec.ts`, `manufacturing.spec.ts`,
+`pos.spec.ts`, `purchasing.spec.ts`, `sales.spec.ts`) ganaron `exact:
+true` en sus clics de navegación del sidebar hacia "Ventas"/"Compras"/
+"Catálogo" — antes inequívocos, ahora también coincidentes por substring
+con el propio título/leyenda de un widget del dashboard ("Ventas POS de
+hoy", "Compras pendientes", "...en el catálogo") cuando se navega desde
+`/workspace`, el mismo tipo de colisión de `getByRole` por substring ya
+documentado repetidamente en el historial de este proyecto.
+
+Validación completa: `pnpm turbo run lint typecheck build` (31/31 tareas),
+`apps/api` 1056/1056 tests unitarios (antes 1055, un test de regresión
+nuevo), `apps/erp-web` 120/120 tests unitarios (antes 110), `apps/e2e`
+20/20 Playwright contra infraestructura efímera real (verificado dos
+veces tras cada ronda de fixes de locator), y una corrida real de GitHub
+Actions confirmada `"conclusion":"success"` vía `gh run view` tras el
+push a `develop`. Los tres procesos persistentes de desarrollo
+reiniciados y verificados con el build final, y el tenant "Demo ERP"
+queda sembrado y disponible para explorar
+(`demo-owner@erp-platform.local` / `DemoErp9!Platform`).
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -4001,14 +4189,35 @@ operativo en modo oscuro. Un barrido exhaustivo de los 10 archivos que
 usan `bg-[var(--accent-soft)]` encontró y corrigió varios casos más allá
 de los dos ya reportados, con un par de tokens nuevo
 (`accentSoftText`/`accentSoftMuted`) derivado siempre desde el color
-final de `accentSoft` mismo. Sin trabajo en curso — lo único que queda de
-todo `docs/ROADMAP.md` §16/§17 sigue bloqueado por el mismo gate de
-evidencia que cerró Fase 12 (SLOs/alertas, capacity tests, runbooks/
-backup/PITR/DR drills, previews de PR, export/legal holds/derecho al
-olvido) — ninguno tiene un siguiente paso real sin tráfico de producción
-genuino. El siguiente trabajo depende de que el usuario aporte esa
-evidencia, indique otra prioridad, reporte otro bug real, o pida iniciar
-una fase/ítem deliberadamente diferido documentado en "## Pending".
+final de `accentSoft` mismo. **Inmediatamente después, a pedido explícito
+del usuario, se reemplazó el "Inicio" heredado de Foundation por un
+dashboard real de widgets con drag-and-drop, y se sembraron datos de
+demostración realistas en un tenant nuevo y separado, "Demo ERP", a
+través de los 11 módulos de negocio** — ver "Home dashboard con widgets
+drag-and-drop + datos de demostración en toda la plataforma" arriba: se
+eliminaron las tarjetas de verificación de Foundation ("Workspace base",
+"Contexto activo") y `DevelopmentProgressPanel` del `/workspace`,
+reemplazados por 10 widgets reales calculados desde datos en vivo de la
+API, reordenables y redimensionables por arrastre nativo de HTML5 (sin
+dependencia nueva), con persistencia de layout vía el mecanismo genérico
+de `UserPreference` ya existente. Un script nuevo
+(`apps/api/scripts/seed-demo-data.ts`) llena "Demo ERP" enteramente a
+través de la API HTTP real, nunca escribiendo a Postgres directamente,
+encontrando y corrigiendo dos bugs reales y no relacionados en el proceso:
+un generador de código "aleatorio" en Commerce y en CRM que en realidad
+recortaba el segmento de timestamp de un UUIDv7 (colisionando bajo
+sucesión rápida), y `TenantsController.provision()` ejecutando sus
+efectos secundarios de forma incondicional incluso ante una repetición
+idempotente ya soportada por `findExisting()`, corregido con el mismo
+patrón `wasReplayed` ya usado por Payments/Commerce. Sin trabajo en curso
+tras este bloque — lo único que queda de todo `docs/ROADMAP.md` §16/§17
+sigue bloqueado por el mismo gate de evidencia que cerró Fase 12
+(SLOs/alertas, capacity tests, runbooks/backup/PITR/DR drills, previews
+de PR, export/legal holds/derecho al olvido) — ninguno tiene un siguiente
+paso real sin tráfico de producción genuino. El siguiente trabajo depende
+de que el usuario aporte esa evidencia, indique otra prioridad, reporte
+otro bug real, o pida iniciar una fase/ítem deliberadamente diferido
+documentado en "## Pending".
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 
