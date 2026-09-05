@@ -301,5 +301,12 @@ test("reopening an existing tenant from the tenant list resolves its company aut
   await expect(
     page.getByText("Selecciona una empresa desde el selector de tenant para administrar ventas."),
   ).not.toBeVisible();
-  await expect(page.getByText("Todavía no hay clientes en esta empresa")).toBeVisible();
+  // A brand-new company genuinely has no customers yet, so Ventas shows its
+  // setup prompt — an informative empty state with a direct link to the
+  // module that fixes it, not the red error banner it used to render (and
+  // used to render on every visit, for a moment, even when the company had
+  // dozens of real customers, because nothing distinguished "still loading"
+  // from "genuinely empty").
+  await expect(page.getByText("Primero necesitas un cliente")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ir a Contactos" })).toBeVisible();
 });

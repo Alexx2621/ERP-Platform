@@ -7,7 +7,8 @@ import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
-import { ErrorNotice } from "../../shared/ui/notice";
+import { ErrorNotice, SetupNotice } from "../../shared/ui/notice";
+import { PageLoading } from "../../shared/ui/page-loading";
 import { Tabs } from "../../shared/ui/tabs";
 import { QuotesPanel } from "./quotes-panel";
 import { SalesOrdersPanel } from "./sales-orders-panel";
@@ -58,12 +59,14 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
   const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
   const [taxes, setTaxes] = useState<TaxResponse[]>([]);
   const [error, setError] = useState<string>();
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("quotes");
   const [focusOrder, setFocusOrder] = useState<SalesOrderResponse | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
       setError(undefined);
+      setIsLoading(true);
       try {
         const accessToken = await getAccessToken();
         const [customersResult, productsResult, warehousesResult, taxesResult] = await Promise.all([
@@ -78,6 +81,8 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
         setTaxes(taxesResult);
       } catch (caught) {
         if (!isAbortError(caught)) setError(getErrorMessage(caught));
+      } finally {
+        if (!signal?.aborted) setIsLoading(false);
       }
     },
     [companyId, getAccessToken, selection.slug],
@@ -110,8 +115,18 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
               Reintentar
             </Button>
           </div>
+        ) : isLoading ? (
+          <PageLoading />
         ) : customers.length === 0 ? (
-          <ErrorNotice message="Todavía no hay clientes en esta empresa. Crea al menos uno en Contactos antes de vender." />
+          <SetupNotice
+            title="Primero necesitas un cliente"
+            description="Cada cotización y pedido de venta se registra a nombre de un cliente. Crea al menos uno en Contactos para empezar a vender."
+            action={
+              <Button type="button" variant="secondary" onClick={() => navigate("/contacts")}>
+                Ir a Contactos
+              </Button>
+            }
+          />
         ) : (
           <Tabs
             ariaLabel="Administración de ventas"

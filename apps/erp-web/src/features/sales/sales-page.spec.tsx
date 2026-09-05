@@ -132,11 +132,11 @@ describe("SalesPage", () => {
 
     render(<SalesPage selection={selection} navigate={navigate} />);
 
-    await waitFor(() =>
-      expect(
-        screen.getByText("Todavía no hay clientes en esta empresa. Crea al menos uno en Contactos antes de vender."),
-      ).toBeInTheDocument(),
-    );
+    // Only after loading finishes — the guard used to render immediately on
+    // mount against an empty initial array, flashing a red error even for
+    // companies with dozens of real customers.
+    await waitFor(() => expect(screen.getByText("Primero necesitas un cliente")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Ir a Contactos" })).toBeInTheDocument();
   });
 
   it("creates a quote, adds a line, and converts it into a sales order", async () => {

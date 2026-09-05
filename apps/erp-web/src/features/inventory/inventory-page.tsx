@@ -7,7 +7,8 @@ import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
-import { ErrorNotice } from "../../shared/ui/notice";
+import { ErrorNotice, SetupNotice } from "../../shared/ui/notice";
+import { PageLoading } from "../../shared/ui/page-loading";
 import { Tabs } from "../../shared/ui/tabs";
 import { BalancesPanel } from "./inventory-balances-panel";
 import { MovementsPanel } from "./inventory-movements-panel";
@@ -57,11 +58,13 @@ function InventoryWorkspace({ selection, companyId, navigate }: InventoryWorkspa
   const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [error, setError] = useState<string>();
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("balances");
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
       setError(undefined);
+      setIsLoading(true);
       try {
         const accessToken = await getAccessToken();
         const [warehousesResult, productsResult] = await Promise.all([
@@ -72,6 +75,8 @@ function InventoryWorkspace({ selection, companyId, navigate }: InventoryWorkspa
         setProducts(productsResult);
       } catch (caught) {
         if (!isAbortError(caught)) setError(getErrorMessage(caught));
+      } finally {
+        if (!signal?.aborted) setIsLoading(false);
       }
     },
     [companyId, getAccessToken, selection.slug],
@@ -104,8 +109,18 @@ function InventoryWorkspace({ selection, companyId, navigate }: InventoryWorkspa
               Reintentar
             </Button>
           </div>
+        ) : isLoading ? (
+          <PageLoading />
         ) : warehouses.length === 0 ? (
-          <ErrorNotice message="Todavía no hay bodegas en esta empresa. Crea al menos una bodega en Comercial antes de registrar movimientos de inventario." />
+          <SetupNotice
+            title="Primero necesitas una bodega"
+            description="Cada movimiento de inventario ocurre en una bodega. Crea al menos una en Comercial para empezar a registrar existencias."
+            action={
+              <Button type="button" variant="secondary" onClick={() => navigate("/commercial")}>
+                Ir a Comercial
+              </Button>
+            }
+          />
         ) : (
           <Tabs
             ariaLabel="Administración de inventario"

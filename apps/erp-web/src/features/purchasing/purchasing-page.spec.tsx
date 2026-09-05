@@ -131,11 +131,11 @@ describe("PurchasingPage", () => {
 
     render(<PurchasingPage selection={selection} navigate={navigate} />);
 
-    await waitFor(() =>
-      expect(
-        screen.getByText("Todavía no hay proveedores en esta empresa. Crea al menos uno en Contactos antes de comprar."),
-      ).toBeInTheDocument(),
-    );
+    // Only after loading finishes — the guard used to render immediately on
+    // mount against an empty initial array, flashing a red error even for
+    // companies with dozens of real suppliers.
+    await waitFor(() => expect(screen.getByText("Primero necesitas un proveedor")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Ir a Contactos" })).toBeInTheDocument();
   });
 
   it("creates a purchase order, adds a line, confirms it, and records a partial receipt", async () => {

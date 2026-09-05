@@ -7,7 +7,8 @@ import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
 import { Button } from "../../shared/ui/button";
-import { ErrorNotice } from "../../shared/ui/notice";
+import { ErrorNotice, SetupNotice } from "../../shared/ui/notice";
+import { PageLoading } from "../../shared/ui/page-loading";
 import { Tabs } from "../../shared/ui/tabs";
 import { PurchaseOrdersPanel } from "./purchase-orders-panel";
 import { PurchaseReturnsPanel } from "./purchase-returns-panel";
@@ -57,11 +58,13 @@ function PurchasingWorkspace({ selection, companyId, navigate }: PurchasingWorks
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseResponse[]>([]);
   const [error, setError] = useState<string>();
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("orders");
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
       setError(undefined);
+      setIsLoading(true);
       try {
         const accessToken = await getAccessToken();
         const [suppliersResult, productsResult, warehousesResult] = await Promise.all([
@@ -74,6 +77,8 @@ function PurchasingWorkspace({ selection, companyId, navigate }: PurchasingWorks
         setWarehouses(warehousesResult);
       } catch (caught) {
         if (!isAbortError(caught)) setError(getErrorMessage(caught));
+      } finally {
+        if (!signal?.aborted) setIsLoading(false);
       }
     },
     [companyId, getAccessToken, selection.slug],
@@ -106,8 +111,18 @@ function PurchasingWorkspace({ selection, companyId, navigate }: PurchasingWorks
               Reintentar
             </Button>
           </div>
+        ) : isLoading ? (
+          <PageLoading />
         ) : suppliers.length === 0 ? (
-          <ErrorNotice message="Todavía no hay proveedores en esta empresa. Crea al menos uno en Contactos antes de comprar." />
+          <SetupNotice
+            title="Primero necesitas un proveedor"
+            description="Cada orden de compra se registra a nombre de un proveedor. Crea al menos uno en Contactos para empezar a comprar."
+            action={
+              <Button type="button" variant="secondary" onClick={() => navigate("/contacts")}>
+                Ir a Contactos
+              </Button>
+            }
+          />
         ) : (
           <Tabs
             ariaLabel="Administración de compras"
