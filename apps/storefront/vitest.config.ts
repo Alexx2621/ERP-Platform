@@ -26,5 +26,14 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     css: true,
     globals: true,
+    // A real GitHub Actions runner (2 cores) is materially slower than a
+    // local machine, and this suite drives several sequential real
+    // `userEvent.type()` interactions per test — Vitest's 5000ms default
+    // is tight enough to flake under that contention (observed directly:
+    // checkout-view.spec.tsx timing out at ~5.1s in CI while passing
+    // comfortably locally). Same fix, same reasoning already applied to
+    // apps/erp-web's own vite.config.ts.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });
