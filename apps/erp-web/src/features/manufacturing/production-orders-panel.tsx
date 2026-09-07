@@ -18,12 +18,13 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
 import {
   isAbortError,
   productLabel,
   productionOrderStatusLabel,
-  statusToneClass,
+  productionOrderStatusTone,
   type WorkspaceSelection,
 } from "./manufacturing-shared";
 
@@ -580,9 +581,9 @@ export function ProductionOrdersPanel({ selection, companyId, billsOfMaterial, p
                   <TableCell className="font-mono text-[11px]">{order.quantityPlanned}</TableCell>
                   <TableCell className="font-mono text-[11px]">{order.quantityCompleted}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(order.status === "DRAFT" || order.status === "CONFIRMED")}`}>
+                    <StatusBadge tone={productionOrderStatusTone(order.status)}>
                       {productionOrderStatusLabel(order.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" variant="secondary" className="h-9 px-3" onClick={() => setDetailOrder(order)}>

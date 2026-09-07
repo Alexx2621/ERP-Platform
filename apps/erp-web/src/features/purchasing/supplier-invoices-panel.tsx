@@ -10,6 +10,7 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../shared/ui/table";
-import { SupplierSelect, isAbortError, statusToneClass, supplierInvoiceStatusLabel, supplierLabel, type WorkspaceSelection } from "./purchasing-shared";
+import { SupplierSelect, isAbortError, supplierInvoiceStatusLabel, supplierInvoiceStatusTone, supplierLabel, type WorkspaceSelection } from "./purchasing-shared";
 
 interface SupplierInvoicesPanelProps {
   selection: WorkspaceSelection;
@@ -171,9 +172,9 @@ export function SupplierInvoicesPanel({ selection, companyId, suppliers, active 
                     {invoice.amount} {invoice.currency}
                   </TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(invoice.status === "RECORDED")}`}>
+                    <StatusBadge tone={supplierInvoiceStatusTone(invoice.status)}>
                       {supplierInvoiceStatusLabel(invoice.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     {invoice.status === "RECORDED" ? (

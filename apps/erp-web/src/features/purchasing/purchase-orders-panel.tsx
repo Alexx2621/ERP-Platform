@@ -17,6 +17,7 @@ import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -33,7 +34,7 @@ import {
   isAbortError,
   productLabel,
   purchaseOrderStatusLabel,
-  statusToneClass,
+  purchaseOrderStatusTone,
   supplierLabel,
   type WorkspaceSelection,
 } from "./purchasing-shared";
@@ -546,9 +547,9 @@ export function PurchaseOrdersPanel({ selection, companyId, suppliers, products,
                   <TableCell className="text-[12px] font-semibold">{supplierLabel(suppliers, order.supplierId)}</TableCell>
                   <TableCell className="font-mono text-[11px]">{order.currency}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(order.status === "DRAFT" || order.status === "CONFIRMED")}`}>
+                    <StatusBadge tone={purchaseOrderStatusTone(order.status)}>
                       {purchaseOrderStatusLabel(order.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" variant="secondary" className="h-9 px-3" onClick={() => setDetailOrder(order)}>

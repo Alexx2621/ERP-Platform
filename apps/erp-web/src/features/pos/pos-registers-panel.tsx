@@ -9,8 +9,9 @@ import { FormField } from "../../shared/ui/form-field";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { registerStatusLabel, statusToneClass, type WorkspaceSelection } from "./pos-shared";
+import { registerStatusLabel, registerStatusTone, type WorkspaceSelection } from "./pos-shared";
 
 interface PosRegistersPanelProps {
   selection: WorkspaceSelection;
@@ -113,9 +114,9 @@ export function PosRegistersPanel({ selection, companyId, warehouses, registers,
                   <TableCell className="text-[12px] font-semibold">{register.name}</TableCell>
                   <TableCell className="text-[12px]">{warehouses.find((w) => w.id === register.warehouseId)?.name ?? register.warehouseId}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(register.status === "ACTIVE")}`}>
+                    <StatusBadge tone={registerStatusTone(register.status === "ACTIVE")}>
                       {registerStatusLabel(register.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" variant="quiet" className="h-9 px-3" busy={pendingId === register.id} onClick={() => void toggleStatus(register)}>

@@ -4510,6 +4510,187 @@ o monocromático (ej. Pizarra) volvía la interfaz entera visualmente plana.
   contra infraestructura efímera real tras detener los tres servidores
   persistentes.
 
+### Animaciones modernas + indicadores de estado semánticos en 6 módulos más (sesión 36, 2026-09-07)
+
+A pedido explícito del usuario, inmediatamente después de la paleta fija de
+colores: *"busca que mas puedes mejorar en UI/UX, en tamaños, colores,
+letras, iconos, veo que la mayor actualización fue en la barra de
+navegación pero trata de aplicar esas reglas también en el cuerpo y
+ventanas emergentes de todos los módulos, también implementa animaciones
+que se vean modernas, fluídas y bien adaptadas. Ya sea al cambiar entre
+modulos, presionar botónes, al salir y cerrar ventanas emergentes al
+cambiar de sección en los modulos y todo lo que se pueda mejorar"* — dos
+pedidos explícitos: (1) extender el mismo tratamiento de color más allá
+de la navegación hacia el cuerpo y las ventanas emergentes de todos los
+módulos, y (2) animaciones reales para cambio de módulo, botones, apertura/
+cierre de modales, y cambio de pestaña dentro de un módulo.
+
+**Estrategia deliberada: apalancar los componentes compartidos, no tocar
+cada uno de los ~60 archivos de features uno por uno.** Mejorar `Modal`,
+`Tabs`, `Button`, `NavDropdown`, `ErrorNotice`, `PageLoading` y el
+contenedor de widgets del dashboard propaga el cambio automáticamente a
+los 15 módulos de negocio que ya los consumen — la misma razón por la que
+el rediseño de sidebar/navbar de una sesión anterior ya se sintió como un
+cambio de plataforma completo sin tocar cada feature individualmente.
+
+**Sistema de motion tokens** (`styles.css`, `:root`): `--ease-out`
+(`cubic-bezier(0.16,1,0.3,1)`, la misma curva "expo-out" que Linear/Vercel
+usan para entradas — arranque rápido, asentamiento suave) y
+`--ease-in-out` (para movimiento bidireccional, como un indicador de
+pestaña que se desliza en ambas direcciones); `--duration-fast/base/slow`
+(150/220/320ms) — un lenguaje de motion compartido en vez de que cada
+componente eligiera su propia curva/duración.
+
+- **Entrada de página real en cada navegación**: `.fade-in-up` (nueva
+  clase, `@keyframes fade-slide-in`, opacity 0→1 + translateY 6px→0)
+  aplicada al `<main>` de `ProductShell` — como cada navegación real a un
+  módulo distinto ya remonta `ProductShell` completo (los 15+ módulos son
+  componentes de tipo distinto en el switch de `App()`, no rutas de un
+  mismo árbol persistente), esta única clase es lo que hace que **cambiar
+  de módulo** se sienta como una transición, no un salto — sin necesitar
+  ningún router de animación de página.
+- **Apertura/cierre de modal real, vía CSS puro sobre el `<dialog>`
+  nativo**: reglas nuevas en `styles.css` usando `@starting-style` +
+  `transition-behavior: allow-discrete` (el patrón moderno de CSS para
+  animar la apertura/cierre de un elemento que usa `display:none`/el "top
+  layer" del navegador, sin ninguna librería) — `dialog` transiciona
+  `opacity`/`transform` con `--ease-out`, `dialog::backdrop` transiciona
+  su propia opacidad, y `@starting-style` define el estado "recién
+  abierto" (escalado a 0.97, desplazado 6px, opacidad 0) desde el que
+  parte la entrada. **Aplica automáticamente a los dos `<dialog>` reales
+  de toda la app** (`Modal` y el Command Palette) sin tocar ni una línea
+  de JS de ninguno de los dos — el cierre real usa el mismo
+  `showModal()`/`close()` que ya existía, ahora con una transición de
+  salida real en vez de un salto instantáneo.
+- **Indicador deslizante real en `Tabs`** (`shared/ui/tabs.tsx`): en vez
+  del subrayado estático por pestaña que existía antes (una clase
+  `after:` fija en el botón activo), un único `<span>` absoluto mide la
+  posición/ancho real del botón activo (`useLayoutEffect` +
+  `offsetLeft`/`offsetWidth` — se ejecuta antes del pintado, así que la
+  primera posición ya es correcta, sin salto visible al montar) y
+  transiciona `left`/`width` con `--duration-base`/`--ease-in-out` al
+  cambiar de pestaña — un indicador que genuinamente se desliza de una
+  pestaña a otra, no un color que simplemente cambia. jsdom (tests
+  unitarios) reporta rects en cero, lo cual solo significa que el
+  indicador queda en `{0,0}` ahí — ningún test afirma su posición, así
+  que esto no rompe nada.
+- **Retroalimentación de botón real** (`shared/ui/button.tsx`): además del
+  `active:translate-y-px` ya existente, se agregó `active:scale-[0.98]`
+  (un "squish" sutil al presionar, con `active:shadow-none` para que la
+  sombra no compita con el achicamiento) y `hover:shadow-[var(--shadow-md)]`
+  en el variant `primary` — la curva de transición pasó a
+  `ease-[cubic-bezier(0.16,1,0.3,1)]` explícito (el mismo `--ease-out`,
+  escrito como literal en vez de `var()` anidado dentro de un valor
+  arbitrario de Tailwind, para evitar cualquier riesgo de parseo con
+  `ease-[var(--ease-out)]`).
+- **`NavDropdown`** (menús de categoría del modo navbar): el panel del
+  menú gana `.fade-in-up` + `origin-top` — el mismo lenguaje de entrada
+  que el resto de la interfaz, en vez de aparecer instantáneamente.
+- **`ErrorNotice`**: gana `.shake-in` (`@keyframes shake`, un shake breve
+  de 0.4s) — un error de validación ahora capta la atención en el
+  instante en que aparece, en vez de ser una caja roja que el usuario
+  podría no notar sobre un formulario largo.
+- **Widgets del dashboard de Inicio** (`home-dashboard.tsx`): la tarjeta
+  de cada widget gana `hover:shadow-[var(--shadow-md)]` (elevación al
+  pasar el mouse, la misma señal de "interactivo" ya aplicada a `Button`)
+  y su transición pasó de solo `opacity` a `opacity,box-shadow,border-color`.
+- **Lenguaje de carga consistente**: `PageLoading` y el esqueleto de
+  `TenantListPage` pasaron de `animate-pulse` (el pulso genérico de
+  Tailwind) a `.shimmer` (el degradado en movimiento ya usado por
+  `LoadingRows`/el dashboard desde una sesión anterior) — toda superficie
+  de carga de la app ahora comparte el mismo lenguaje visual, no dos
+  distintos.
+- **`prefers-reduced-motion: reduce`** (ya existente en `styles.css` desde
+  antes de esta sesión) neutraliza automáticamente todas las animaciones
+  nuevas — ninguna requirió una excepción manual.
+
+**Migración de indicadores de estado planos a `StatusBadge` semántico en 6
+módulos, autoiniciada durante esta misma búsqueda** ("aplicar esas reglas
+también en el cuerpo... de todos los módulos"): un grep de
+`statusToneClass` reveló 6 módulos (18 archivos) que todavía usaban un
+indicador de dos colores primitivo (`accent`/`muted`, texto en mayúsculas
+plano) en vez del `StatusBadge` de 4 tonos (punto + etiqueta) ya construido
+para Ventas en el bloque de rediseño anterior — no solo una inconsistencia
+visual, sino un hueco semántico real: en Compras, una orden "Cancelada" y
+una "Cerrada" eran visualmente idénticas (ambas simplemente "gris muted"),
+perdiendo la distinción éxito/fallo que un operador necesita ver de un
+vistazo. Cada mapeo de tono se construyó leyendo el enum de estado real del
+módulo (no un find-replace mecánico a ciegas), asegurando semántica
+correcta:
+
+- **Compras** (`purchasing-shared.tsx`): `purchaseOrderStatusTone`
+  (CLOSED→success, CANCELLED→danger, el resto→progress) y
+  `supplierInvoiceStatusTone` (CANCELLED→danger, el resto→progress) —
+  aplicados en `purchase-orders-panel.tsx`/`supplier-invoices-panel.tsx`.
+- **Manufactura** (`manufacturing-shared.tsx`): `productionOrderStatusTone`
+  (mismo patrón que órdenes de compra) y `billOfMaterialStatusTone`
+  (activo→success, inactivo→neutral) — aplicados en
+  `production-orders-panel.tsx`/`bills-of-material-panel.tsx`.
+- **CRM** (`crm-shared.tsx`): `leadStatusTone` (CONVERTED→success,
+  LOST→danger, el resto→progress), `opportunityStatusTone` (WON→success,
+  LOST→danger, el resto→progress), y `booleanStatusTone` genérico —
+  aplicados en `leads-panel.tsx` (estado terminal Y el toggle de
+  consentimiento, antes un `<button>` plano), `opportunities-panel.tsx`,
+  `pipelines-panel.tsx`; `activities-panel.tsx` usa el tono inline
+  (completada→success, pendiente→progress) sin necesitar un helper
+  compartido.
+- **Comercio** (`commerce-shared.tsx`): `storefrontStatusTone` (activo→
+  success, inactivo→neutral) — aplicado en `storefronts-panel.tsx`.
+- **Contabilidad** (`accounting-shared.tsx`): `fiscalPeriodStatusTone`
+  (OPEN→progress, el resto→neutral) y `accountStatusTone` (activo→
+  success, inactivo→neutral) — aplicados en
+  `fiscal-periods-panel.tsx`/`accounts-panel.tsx`.
+- **POS** (`pos-shared.tsx`): `registerStatusTone` (activo→success,
+  inactivo→neutral) — aplicado en `pos-registers-panel.tsx`.
+
+**Verificado visualmente contra el dev server real** (script de
+Playwright ad hoc, no comiteado) con el tenant "Demo ERP": Compras muestra
+un punto azul "Confirmada" junto a un punto verde "Cerrada" —
+distinguibles de un vistazo, la corrección semántica real funcionando; el
+modal "Nueva orden de compra" abre con fondo sólido bien centrado, sin
+artefactos de blur; CRM muestra el indicador deslizante de pestañas
+posicionado bajo "Prospectos" y, tras hacer clic en "Oportunidades", el
+mismo indicador ya desplazado bajo la nueva pestaña activa — confirmando
+que la medición real de posición/ancho y la transición funcionan de
+extremo a extremo, no solo en teoría.
+
+**Bug real encontrado por la propia corrida completa de `apps/e2e`, no
+simulado**: `purchasing.spec.ts` falló de forma real (no un flake de
+contención — reproducible) al intentar cancelar una factura de proveedor
+recién creada — `page.getByRole("button", { name: "Cancelar" })` resolvió
+a 2 elementos: el botón real de la fila (el objetivo correcto) y el botón
+"Cancelar" del pie del modal "Nueva factura de proveedor", que el propio
+formulario ya había cerrado. Causa raíz real: la nueva regla CSS
+`dialog:not([open]) { ... }` con `transition-behavior: allow-discrete` en
+`display`/`overlay` (agregada en este mismo bloque, arriba) hace que el
+navegador **difiera** la aplicación de `display: none` hasta que termine
+la transición de cierre (`--duration-base`, 220ms) — antes de este
+cambio, cerrar un `<dialog>` lo sacaba de forma instantánea y sincrónica
+del árbol de accesibilidad; ahora, durante esa ventana real de ~220ms, el
+modal que se está cerrando sigue siendo consultable por `getByRole`,
+colisionando con el botón real de la fila recién creada en la tabla — el
+mismo efecto secundario, real y no obvio, de la animación de cierre
+"moderna" que se pidió construir. Corregido escopando el click al
+`<table>` real (`page.getByRole("table").getByRole("button", { name:
+"Cancelar", exact: true })`) — la corrección semántica correcta, no un
+parche: el test siempre quiso el botón de la fila, nunca el del modal, y
+esta forma es inmune a la ventana de cierre sin importar su duración.
+Verificado que ningún otro test de la suite usa un `getByRole("button",
+{name:"Cancelar"})` sin escopar (`inventory.spec.ts` ya lo hacía escopado
+a su propio diálogo) antes de dar el fix por completo, y con una segunda
+corrida completa de la suite confirmando el fix real.
+
+Sin tests unitarios nuevos — cambio puramente visual/estructural sobre
+lógica ya probada; los 132 tests existentes de `apps/erp-web` pasan sin
+modificar ninguna aserción (ninguno afirmaba las clases
+`animate-pulse`/`after:` ni la posición del indicador de pestañas). Un
+test E2E existente (`purchasing.spec.ts`) sí se corrigió, por el bug real
+descrito arriba. Validación completa: `pnpm turbo run lint typecheck
+build` (limpio, 11/11 tareas), `apps/erp-web` 132/132, y la suite completa
+de `apps/e2e` (20/20 Playwright) contra infraestructura efímera real tras
+detener los tres servidores persistentes — verde en la segunda corrida,
+tras el fix.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

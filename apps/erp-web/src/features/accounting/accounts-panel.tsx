@@ -10,8 +10,9 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { accountTypeLabel, normalBalanceLabel, statusToneClass, type WorkspaceSelection } from "./accounting-shared";
+import { accountStatusTone, accountTypeLabel, normalBalanceLabel, type WorkspaceSelection } from "./accounting-shared";
 
 const ACCOUNT_TYPES: AccountType[] = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"];
 
@@ -135,9 +136,9 @@ export function AccountsPanel({ selection, companyId, accounts, error, onRetry, 
                   <TableCell className="text-[12px]">{accountTypeLabel(account.type)}</TableCell>
                   <TableCell className="text-[12px]">{normalBalanceLabel(account.normalBalance)}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(account.status === "ACTIVE")}`}>
+                    <StatusBadge tone={accountStatusTone(account.status === "ACTIVE")}>
                       {account.status === "ACTIVE" ? "Activa" : "Inactiva"}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

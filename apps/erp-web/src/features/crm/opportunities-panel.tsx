@@ -10,8 +10,9 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { opportunityStatusLabel, statusToneClass, type WorkspaceSelection } from "./crm-shared";
+import { opportunityStatusLabel, opportunityStatusTone, type WorkspaceSelection } from "./crm-shared";
 
 function pipelineName(pipelines: PipelineResponse[], pipelineId: string): string {
   return pipelines.find((p) => p.id === pipelineId)?.name ?? pipelineId;
@@ -277,9 +278,9 @@ export function OpportunitiesPanel({
                     {opportunity.amount} {opportunity.currency}
                   </TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(opportunity.status === "OPEN")}`}>
+                    <StatusBadge tone={opportunityStatusTone(opportunity.status)}>
                       {opportunityStatusLabel(opportunity.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">

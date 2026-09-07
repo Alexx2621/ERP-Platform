@@ -258,6 +258,58 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (animaciones modernas + StatusBadge semántico en 6 módulos más)
+
+A pedido explícito del usuario, inmediatamente después de la paleta fija
+de colores: *"aplica esas reglas también en el cuerpo y ventanas
+emergentes de todos los módulos, también implementa animaciones que se
+vean modernas, fluídas... al cambiar entre modulos, presionar botónes, al
+salir y cerrar ventanas emergentes al cambiar de sección"*.
+
+- **Sistema de motion tokens** (`styles.css`): `--ease-out`/`--ease-in-out`
+  + `--duration-fast/base/slow`, un lenguaje compartido en vez de que cada
+  componente elija su propia curva. Estrategia deliberada: mejorar los
+  componentes compartidos (`Modal`, `Tabs`, `Button`, `NavDropdown`,
+  `ErrorNotice`, `PageLoading`, el contenedor de widgets del dashboard)
+  para que el cambio se propague a los 15 módulos de negocio sin tocar
+  cada feature una por una.
+- Entrada de página (`.fade-in-up` en el `<main>` de `ProductShell`, se
+  re-dispara en cada cambio real de módulo); apertura/cierre real de
+  `<dialog>` vía CSS puro (`@starting-style` + `allow-discrete`, aplica
+  automáticamente a `Modal` y Command Palette sin tocar JS); indicador
+  deslizante real en `Tabs` (medido con `useLayoutEffect`, ya no un
+  subrayado estático); `active:scale-[0.98]` + sombra en hover en
+  `Button`; `.shake-in` en `ErrorNotice`; `.shimmer` unificado en
+  `PageLoading`/`TenantListPage` (antes `animate-pulse`).
+- **Migración autoiniciada de 6 módulos (18 archivos) de un indicador de
+  estado plano (`statusToneClass`) a `StatusBadge` semántico** —
+  encontrada por grep durante la propia búsqueda de "aplicar en el
+  cuerpo... de todos los módulos", con cada mapeo de tono construido
+  leyendo el enum real de cada módulo (no un find-replace ciego):
+  Compras, Manufactura, CRM, Comercio, Contabilidad, POS. Cierra un hueco
+  semántico real, no solo visual — ej. una orden de compra "Cancelada" y
+  una "Cerrada" antes eran visualmente idénticas.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Animaciones
+  modernas + indicadores de estado semánticos en 6 módulos más".
+- **Verificado visualmente contra el dev server real** (tenant "Demo
+  ERP"): badges con tono correcto en Compras, modal sin blur bien
+  centrado, indicador de pestañas desplazándose realmente entre
+  "Prospectos" y "Oportunidades" en CRM.
+- **Bug real encontrado por la propia corrida completa de `apps/e2e`**:
+  la animación de cierre del `<dialog>` (`allow-discrete` en `display`/
+  `overlay`) difiere ~220ms la salida real del árbol de accesibilidad —
+  un modal que se acaba de cerrar sigue siendo consultable por
+  `getByRole` durante esa ventana, colisionando con un botón de la misma
+  etiqueta en la tabla de fondo. Corregido escopando el test
+  (`purchasing.spec.ts`) al `<table>` real, no la animación — ver el
+  detalle completo en `docs/PROJECT_STATE.md`.
+- Sin tests unitarios nuevos — cambio puramente visual/estructural,
+  132/132 sin modificar ninguna aserción. Un test E2E existente sí se
+  corrigió, por el bug real de arriba. Validación completa: `pnpm turbo
+  run lint typecheck build` limpio, `apps/erp-web` 132/132, y la suite
+  completa de `apps/e2e` (20/20) contra infraestructura efímera real —
+  verde tras el fix.
+
 ### Hecho — sesión 36 (paleta fija de colores por categoría)
 
 A pedido explícito del usuario: *"agrega mas colores fijos en dónde

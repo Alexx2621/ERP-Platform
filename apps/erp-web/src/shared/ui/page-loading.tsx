@@ -10,13 +10,15 @@
  * dozens of real customers. Distinguishing "still loading" from "genuinely
  * empty" is what removes that flash; this is what the loading half looks
  * like. `LoadingRows` can't be reused here — it renders <tr> elements for
- * a table body, not a standalone page region.
+ * a table body, not a standalone page region — but it shares the same
+ * moving `.shimmer` gradient, not Tailwind's default pulse, so every
+ * loading surface in the app reads as one consistent language.
  */
 export function PageLoading() {
   return (
     <div className="grid gap-3" aria-hidden="true">
-      <span className="h-9 w-72 animate-pulse rounded-[8px] bg-[var(--field-hover)]" />
-      <span className="h-48 animate-pulse rounded-[14px] bg-[var(--field-hover)]" />
+      <span className="shimmer h-9 w-72 rounded-[8px]" />
+      <span className="shimmer h-48 rounded-[14px]" />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { ProductResponse, ProductVariantResponse, TenantSummary } from "@er
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
 import { Select } from "../../shared/ui/select";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -37,8 +38,14 @@ export function productionOrderStatusLabel(status: string): string {
   return PRODUCTION_ORDER_STATUS_LABELS[status] ?? status;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function billOfMaterialStatusTone(active: boolean): StatusTone {
+  return active ? "success" : "neutral";
+}
+
+export function productionOrderStatusTone(status: string): StatusTone {
+  if (status === "CLOSED") return "success";
+  if (status === "CANCELLED") return "danger";
+  return "progress";
 }
 
 /**

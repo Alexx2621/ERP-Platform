@@ -3,6 +3,7 @@ import type { CustomerResponse, ProductResponse, ProductVariantResponse, TaxResp
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
 import { Select } from "../../shared/ui/select";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -47,8 +48,8 @@ export function paymentMethodLabel(method: string): string {
   return PAYMENT_METHOD_LABELS[method] ?? method;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function registerStatusTone(active: boolean): StatusTone {
+  return active ? "success" : "neutral";
 }
 
 interface CustomerSelectProps {

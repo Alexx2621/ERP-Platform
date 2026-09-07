@@ -205,7 +205,7 @@ export function TenantListPage({ navigate, onSelect }: TenantListPageProps) {
             {[0, 1].map((item) => (
               <div
                 key={item}
-                className="h-32 animate-pulse rounded-[12px] border border-[var(--line)] bg-[var(--paper)]"
+                className="shimmer h-32 rounded-[12px] border border-[var(--line)]"
               />
             ))}
           </div>

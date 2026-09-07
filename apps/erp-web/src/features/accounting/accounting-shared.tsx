@@ -1,4 +1,5 @@
 import type { AccountResponse, TenantSummary } from "@erp/api-client";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -38,8 +39,12 @@ export function fiscalPeriodStatusLabel(status: string): string {
   return FISCAL_PERIOD_STATUS_LABELS[status] ?? status;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function fiscalPeriodStatusTone(status: string): StatusTone {
+  return status === "OPEN" ? "progress" : "neutral";
+}
+
+export function accountStatusTone(active: boolean): StatusTone {
+  return active ? "success" : "neutral";
 }
 
 export function accountLabel(accounts: AccountResponse[], accountId: string): string {

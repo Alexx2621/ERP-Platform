@@ -3,6 +3,7 @@ import type { ProductResponse, ProductVariantResponse, SupplierResponse, TenantS
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
 import { Select } from "../../shared/ui/select";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -42,8 +43,14 @@ export function supplierInvoiceStatusLabel(status: string): string {
   return SUPPLIER_INVOICE_STATUS_LABELS[status] ?? status;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function purchaseOrderStatusTone(status: string): StatusTone {
+  if (status === "CLOSED") return "success";
+  if (status === "CANCELLED") return "danger";
+  return "progress";
+}
+
+export function supplierInvoiceStatusTone(status: string): StatusTone {
+  return status === "CANCELLED" ? "danger" : "progress";
 }
 
 interface SupplierSelectProps {

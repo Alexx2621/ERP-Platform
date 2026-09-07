@@ -10,8 +10,9 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { activityTypeLabel, isAbortError, statusToneClass, type WorkspaceSelection } from "./crm-shared";
+import { activityTypeLabel, isAbortError, type WorkspaceSelection } from "./crm-shared";
 
 const ACTIVITY_TYPES: ActivityType[] = ["CALL", "EMAIL", "MEETING", "NOTE", "TASK"];
 
@@ -175,9 +176,9 @@ export function ActivitiesPanel({ selection, companyId, leads, opportunities, ac
                   <TableCell className="text-[12px] font-semibold">{activity.subject}</TableCell>
                   <TableCell className="text-[12px]">{relatedLabel(activity, leads, opportunities)}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(Boolean(activity.completedAt))}`}>
+                    <StatusBadge tone={activity.completedAt ? "success" : "progress"}>
                       {activity.completedAt ? "Completada" : "Pendiente"}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     {!activity.completedAt ? (

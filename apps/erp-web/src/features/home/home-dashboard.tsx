@@ -304,12 +304,12 @@ export function HomeDashboard({ selection, navigate }: HomeDashboardProps) {
                 handleDrop(widget.id);
               }}
               style={{ gridColumn: size === "wide" ? "span 2" : undefined }}
-              className={`group relative rounded-[14px] border p-6 shadow-[var(--shadow-sm)] transition-opacity duration-150 ${
+              className={`group relative rounded-[14px] border p-6 shadow-[var(--shadow-sm)] transition-[opacity,box-shadow,border-color] duration-200 ${
                 draggedId === widget.id ? "opacity-40" : "opacity-100"
               } ${
                 isDropTarget
                   ? "border-dashed border-[var(--accent)] bg-[var(--accent-soft)]"
-                  : "border-[var(--line)] bg-[var(--paper)]"
+                  : "border-[var(--line)] bg-[var(--paper)] hover:shadow-[var(--shadow-md)]"
               }`}
             >
               {isDropTarget ? (
@@ -364,7 +364,7 @@ export function HomeDashboard({ selection, navigate }: HomeDashboardProps) {
                       <div className="min-w-0">
                         <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
                         {isLoading && !content ? (
-                          <div className="mt-2 h-8 w-24 animate-pulse rounded-[6px] bg-[var(--field-hover)]" />
+                          <div className="shimmer mt-2 h-8 w-24 rounded-[6px]" />
                         ) : content ? (
                           <>
                             <p

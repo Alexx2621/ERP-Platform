@@ -66,6 +66,17 @@
   --nav-muted: var(--muted-strong);
   --nav-line: var(--line);
   --nav-hover: var(--field-hover);
+  /* Motion tokens — one shared easing/duration language instead of every
+     component picking its own, per the "consistent motion language" rule
+     (see docs/PROJECT_STATE.md for the UI/UX research behind this pass).
+     --ease-out ("expo out") is the same curve modern app shells (Linear,
+     Vercel) use for entrances — fast start, gentle settle; --ease-in-out
+     is for things that move both ways (a sliding tab indicator). */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
 }
 
 * {
@@ -139,6 +150,88 @@ a:focus-visible {
     --shadow-md: 0 4px 16px rgb(0 0 0 / 0.4);
     --shadow-lg: 0 20px 60px rgb(0 0 0 / 0.55);
   }
+}
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A small, reusable entrance — applied to a page's <main> content on every
+   real navigation (each one remounts ProductShell fresh, so this re-runs
+   on every module switch) and to freshly-opened popovers (NavDropdown's
+   menu) so appearing content settles in instead of popping instantly. */
+.fade-in-up {
+  animation: fade-slide-in var(--duration-slow) var(--ease-out);
+}
+
+/* Native <dialog> open/close animation — CSS-only, so it applies to every
+   <dialog> in the app (the shared Modal and the Command Palette) without
+   any JS changes to either. `allow-discrete` lets the browser defer the
+   display:none/top-layer removal until the closing transition finishes,
+   which is what makes a real fade-and-settle close possible with a plain
+   showModal()/close() call. */
+dialog {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out),
+    overlay var(--duration-base) var(--ease-out) allow-discrete,
+    display var(--duration-base) var(--ease-out) allow-discrete;
+}
+dialog::backdrop {
+  opacity: 1;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+dialog:not([open]) {
+  opacity: 0;
+  transform: scale(0.97) translateY(6px);
+}
+dialog:not([open])::backdrop {
+  opacity: 0;
+}
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+
+/* Used by ErrorNotice — a brief, purposeful shake draws the eye to a
+   validation failure the instant it appears, instead of a red box the
+   user might not notice popped in above a long form. */
+.shake-in {
+  animation: shake 0.4s var(--ease-in-out);
 }
 
 @keyframes shimmer {

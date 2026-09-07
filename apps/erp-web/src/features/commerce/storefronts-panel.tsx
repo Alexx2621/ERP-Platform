@@ -10,8 +10,9 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { isAbortError, statusToneClass, storefrontStatusLabel, type WorkspaceSelection } from "./commerce-shared";
+import { isAbortError, storefrontStatusLabel, storefrontStatusTone, type WorkspaceSelection } from "./commerce-shared";
 
 interface StorefrontDetailModalProps {
   storefront: StorefrontResponse | null;
@@ -297,9 +298,9 @@ export function StorefrontsPanel({ selection, companyId, products, warehouses, a
                   <TableCell className="font-mono text-[11px]">{storefront.code}</TableCell>
                   <TableCell className="font-mono text-[11px]">{storefront.currency}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(storefront.status === "ACTIVE")}`}>
+                    <StatusBadge tone={storefrontStatusTone(storefront.status === "ACTIVE")}>
                       {storefrontStatusLabel(storefront.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">

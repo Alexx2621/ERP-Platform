@@ -9,8 +9,9 @@ import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { billOfMaterialStatusLabel, ProductSelectFields, productLabel, statusToneClass, type WorkspaceSelection } from "./manufacturing-shared";
+import { billOfMaterialStatusLabel, billOfMaterialStatusTone, ProductSelectFields, productLabel, type WorkspaceSelection } from "./manufacturing-shared";
 
 interface DraftComponent {
   key: string;
@@ -250,9 +251,9 @@ export function BillsOfMaterialPanel({
                   <TableCell className="text-[12px]">{productLabel(products, billOfMaterial.productId)}</TableCell>
                   <TableCell className="font-mono text-[11px]">{billOfMaterial.version}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(billOfMaterial.status === "ACTIVE")}`}>
+                    <StatusBadge tone={billOfMaterialStatusTone(billOfMaterial.status === "ACTIVE")}>
                       {billOfMaterialStatusLabel(billOfMaterial.status)}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">

@@ -10,8 +10,9 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { leadStatusLabel, statusToneClass, type WorkspaceSelection } from "./crm-shared";
+import { leadStatusLabel, leadStatusTone, type WorkspaceSelection } from "./crm-shared";
 
 const SETTABLE_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "LOST"] as const;
 
@@ -215,9 +216,7 @@ export function LeadsPanel({ selection, companyId, leads, error, onRetry, onLead
                     <TableCell className="text-[12px]">{lead.email ?? "—"}</TableCell>
                     <TableCell>
                       {terminal ? (
-                        <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(lead.status === "CONVERTED")}`}>
-                          {leadStatusLabel(lead.status)}
-                        </span>
+                        <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
                       ) : (
                         <Select
                           name={`lead-status-${lead.id}`}
@@ -239,11 +238,13 @@ export function LeadsPanel({ selection, companyId, leads, error, onRetry, onLead
                     <TableCell>
                       <button
                         type="button"
-                        className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(lead.consentMarketing)}`}
+                        className="disabled:cursor-not-allowed disabled:opacity-55"
                         disabled={pendingId === lead.id}
                         onClick={() => void toggleConsent(lead)}
                       >
-                        {lead.consentMarketing ? "Sí" : "No"}
+                        <StatusBadge tone={lead.consentMarketing ? "success" : "neutral"}>
+                          {lead.consentMarketing ? "Sí" : "No"}
+                        </StatusBadge>
                       </button>
                     </TableCell>
                     <TableCell className="text-right">

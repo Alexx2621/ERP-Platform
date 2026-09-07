@@ -192,7 +192,14 @@ test("runs the full PurchaseOrder -> Confirm -> partial Receipt -> Return -> Sup
   const cancelInvoiceResponse = page.waitForResponse(
     (response) => /\/api\/v1\/purchasing\/supplier-invoices\/[^/]+\/cancel$/.test(response.url()) && response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Cancelar" }).click();
+  // Scoped to the table (not a bare getByRole("button", {name:"Cancelar"})):
+  // the create-invoice dialog's own footer has a same-named "Cancelar"
+  // button, and the native <dialog>'s closing fade/scale transition (see
+  // the "dialog:not([open])" rule in styles.css) keeps it queryable by
+  // role for a brief moment after submit — long enough to race this click
+  // under CI/dev-server load. Scoping to the table sidesteps that window
+  // entirely, since the dialog's own button never lives inside a <table>.
+  await page.getByRole("table").getByRole("button", { name: "Cancelar", exact: true }).click();
   expect((await cancelInvoiceResponse).status()).toBe(201);
   await expect(page.getByText("Cancelada", { exact: true })).toBeVisible();
 });

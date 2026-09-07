@@ -1,4 +1,5 @@
 import type { TenantSummary } from "@erp/api-client";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -42,8 +43,21 @@ export function activityTypeLabel(type: string): string {
   return ACTIVITY_TYPE_LABELS[type] ?? type;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function leadStatusTone(status: string): StatusTone {
+  if (status === "CONVERTED") return "success";
+  if (status === "LOST") return "danger";
+  return "progress";
+}
+
+export function opportunityStatusTone(status: string): StatusTone {
+  if (status === "WON") return "success";
+  if (status === "LOST") return "danger";
+  return "progress";
+}
+
+/** Generic yes/no indicator (consent flags, completed-vs-pending activities) — not tied to a specific status enum. */
+export function booleanStatusTone(active: boolean): StatusTone {
+  return active ? "success" : "neutral";
 }
 
 export function formatDate(value: string): string {

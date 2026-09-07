@@ -79,7 +79,7 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
           id={menuId}
           role="menu"
           aria-label={label}
-          className="absolute left-0 top-full z-30 mt-1.5 min-w-[200px] rounded-[10px] border border-[var(--nav-line)] bg-[var(--nav-bg)] p-1.5 shadow-[var(--shadow-md)]"
+          className="fade-in-up absolute left-0 top-full z-30 mt-1.5 min-w-[200px] origin-top rounded-[10px] border border-[var(--nav-line)] bg-[var(--nav-bg)] p-1.5 shadow-[var(--shadow-md)]"
         >
           {items.map((item) => (
             <button

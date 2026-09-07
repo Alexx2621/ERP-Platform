@@ -1,4 +1,5 @@
 import type { TenantSummary } from "@erp/api-client";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -17,6 +18,6 @@ export function storefrontStatusLabel(status: string): string {
   return STOREFRONT_STATUS_LABELS[status] ?? status;
 }
 
-export function statusToneClass(active: boolean): string {
-  return active ? "text-[var(--accent)]" : "text-[var(--muted)]";
+export function storefrontStatusTone(active: boolean): StatusTone {
+  return active ? "success" : "neutral";
 }

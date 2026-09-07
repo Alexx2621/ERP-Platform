@@ -8,8 +8,9 @@ import { Button } from "../../shared/ui/button";
 import { FormField } from "../../shared/ui/form-field";
 import { Modal } from "../../shared/ui/modal";
 import { ErrorNotice } from "../../shared/ui/notice";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { Table, TableBody, TableCaption, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from "../../shared/ui/table";
-import { statusToneClass, type WorkspaceSelection } from "./crm-shared";
+import { booleanStatusTone, type WorkspaceSelection } from "./crm-shared";
 
 interface StagesModalProps {
   pipeline: PipelineResponse | null;
@@ -331,9 +332,9 @@ export function PipelinesPanel({ selection, companyId, pipelines, error, onRetry
                   <TableCell className="font-mono text-[11px]">{pipeline.code}</TableCell>
                   <TableCell className="text-[12px] font-semibold">{pipeline.name}</TableCell>
                   <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(pipeline.status === "ACTIVE")}`}>
+                    <StatusBadge tone={booleanStatusTone(pipeline.status === "ACTIVE")}>
                       {pipeline.status === "ACTIVE" ? "Activo" : "Inactivo"}
-                    </span>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
