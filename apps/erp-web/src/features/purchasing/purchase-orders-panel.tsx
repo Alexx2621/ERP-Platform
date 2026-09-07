@@ -126,37 +126,6 @@ function ReceivingSection({ order, lines, selection, companyId, products }: Rece
 
   return (
     <div className="grid gap-4 border-t border-[var(--line)] pt-5">
-      <p className="text-[12px] font-extrabold text-[var(--ink)]">Recepciones</p>
-      {error ? (
-        <ErrorNotice message={error} />
-      ) : (
-        <Table aria-busy={receipts === null}>
-          <TableCaption>Recepciones registradas contra esta orden</TableCaption>
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col">Fecha</TableHead>
-              <TableHead scope="col">Notas</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {receipts === null ? (
-              <LoadingRows columns={2} />
-            ) : receipts.length === 0 ? (
-              <TableRow>
-                <TableEmpty colSpan={2} title="Todavía no hay recepciones" />
-              </TableRow>
-            ) : (
-              receipts.map((receipt) => (
-                <TableRow key={receipt.id}>
-                  <TableCell className="font-mono text-[11px]">{new Date(receipt.createdAt).toLocaleString()}</TableCell>
-                  <TableCell className="text-[12px]">{receipt.notes ?? "—"}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      )}
-
       <form
         className="grid gap-4"
         onSubmit={(event) => {
@@ -222,6 +191,39 @@ function ReceivingSection({ order, lines, selection, companyId, products }: Rece
           Registrar recepción
         </Button>
       </form>
+
+      <div className="grid gap-3 border-t border-[var(--line)] pt-5">
+        <p className="text-[12px] font-extrabold text-[var(--ink)]">Recepciones</p>
+        {error ? (
+          <ErrorNotice message={error} />
+        ) : (
+          <Table aria-busy={receipts === null}>
+            <TableCaption>Recepciones registradas contra esta orden</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Fecha</TableHead>
+                <TableHead scope="col">Notas</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {receipts === null ? (
+                <LoadingRows columns={2} />
+              ) : receipts.length === 0 ? (
+                <TableRow>
+                  <TableEmpty colSpan={2} title="Todavía no hay recepciones" />
+                </TableRow>
+              ) : (
+                receipts.map((receipt) => (
+                  <TableRow key={receipt.id}>
+                    <TableCell className="font-mono text-[11px]">{new Date(receipt.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="text-[12px]">{receipt.notes ?? "—"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
   );
 }
@@ -335,46 +337,14 @@ function PurchaseOrderDetailModal({ order, selection, companyId, products, wareh
       onOpenChange={(open) => !busy && !actionBusy && onOpenChange(open)}
       title={order ? `Orden de compra ${order.currency} · ${purchaseOrderStatusLabel(order.status)}` : "Orden de compra"}
       description="Confirmar requiere el permiso de aprobación (purchasing.orders.approve), distinto de administrar la orden."
+      size="xl"
     >
       <div className="grid gap-6">
         {actionError ? <ErrorNotice message={actionError} /> : null}
-        {error ? (
-          <ErrorNotice message={error} />
-        ) : (
-          <Table aria-busy={lines === null}>
-            <TableCaption>Líneas de la orden</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Producto</TableHead>
-                <TableHead scope="col">Cantidad</TableHead>
-                <TableHead scope="col">Costo unit.</TableHead>
-                <TableHead scope="col">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines === null ? (
-                <LoadingRows columns={4} />
-              ) : lines.length === 0 ? (
-                <TableRow>
-                  <TableEmpty colSpan={4} title="Todavía no hay líneas" />
-                </TableRow>
-              ) : (
-                lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="text-[12px] font-semibold">{productLabel(products, line.productId)}</TableCell>
-                    <TableCell className="font-mono text-[11px]">{line.quantity}</TableCell>
-                    <TableCell className="font-mono text-[11px]">{line.unitCost}</TableCell>
-                    <TableCell className="font-mono text-[11px] font-bold">{line.lineTotal}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
 
         {isDraft ? (
           <form
-            className="grid gap-4 border-t border-[var(--line)] pt-5"
+            className="grid gap-4"
             onSubmit={(event) => {
               void submit(event);
             }}
@@ -417,6 +387,43 @@ function PurchaseOrderDetailModal({ order, selection, companyId, products, wareh
             </Button>
           </form>
         ) : null}
+
+        <div className={`grid gap-3 ${isDraft ? "border-t border-[var(--line)] pt-5" : ""}`}>
+        <p className="text-[12px] font-extrabold text-[var(--ink)]">Líneas</p>
+        {error ? (
+          <ErrorNotice message={error} />
+        ) : (
+          <Table aria-busy={lines === null}>
+            <TableCaption>Líneas de la orden</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Producto</TableHead>
+                <TableHead scope="col">Cantidad</TableHead>
+                <TableHead scope="col">Costo unit.</TableHead>
+                <TableHead scope="col">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines === null ? (
+                <LoadingRows columns={4} />
+              ) : lines.length === 0 ? (
+                <TableRow>
+                  <TableEmpty colSpan={4} title="Todavía no hay líneas" />
+                </TableRow>
+              ) : (
+                lines.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell className="text-[12px] font-semibold">{productLabel(products, line.productId)}</TableCell>
+                    <TableCell className="font-mono text-[11px]">{line.quantity}</TableCell>
+                    <TableCell className="font-mono text-[11px]">{line.unitCost}</TableCell>
+                    <TableCell className="font-mono text-[11px] font-bold">{line.lineTotal}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+        </div>
 
         {isDraft || isConfirmed ? (
           <div className="flex flex-wrap gap-3 border-t border-[var(--line)] pt-5">

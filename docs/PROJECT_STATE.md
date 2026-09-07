@@ -4366,6 +4366,75 @@ diferenciadoras nuevas.
   y la suite completa de `apps/e2e` verificada contra infraestructura
   efímera real tras detener los tres servidores persistentes.
 
+### Scroll fluido, modales más anchos, formulario antes que la tabla en 8 módulos (sesión 36, 2026-09-07)
+
+A pedido explícito del usuario, tras compartir una captura del modal de
+detalle de una cotización: *"Al hacer scroll en estas ventanas emergentes
+o en otros modulos se siente lagueado y debe ser lo mas fluído posible,
+también puedes hacer esas ventanas mas anchas para no estar haciendo
+tanto scroll a la tabla y creo que la tabla deberia estar debajo de los
+campos para agregar productos no?"* — tres problemas reales, no solo uno.
+
+- **Causa raíz real del lag de scroll, no solo cosmética**: `backdrop-filter:
+  blur()` estaba aplicado en tres lugares que permanecen visibles mientras
+  el usuario hace scroll de contenido detrás — el header `sticky top-0` de
+  `ProductShell` (presente en **todas** las páginas del sistema, el
+  candidato más probable del "en otros módulos" reportado), el `::backdrop`
+  del `<dialog>` compartido `Modal` (y su copia en el Command Palette), y
+  la barra de acciones flotante `fixed` que el rediseño de Ventas de esta
+  misma sesión introdujo en `sales-order-editor.tsx`. Un elemento `fixed`/
+  `sticky` con `backdrop-filter` obliga al navegador a recomponer el área
+  bajo el blur en cada frame de scroll — un patrón de rendimiento
+  ampliamente documentado como causante de jank, no una percepción
+  subjetiva. Corregido en los tres lugares reemplazando el blur por un
+  fondo sólido/opaco (`bg-[var(--paper)]` sin transparencia) — mismo look
+  "elevado", sin el costo de recomputación por frame. De paso,
+  `overscroll-contain` se agregó al contenedor de scroll interno de
+  `Modal` para evitar el "salto" de scroll-chaining hacia el body al
+  llegar al final del contenido.
+- **`shared/ui/modal.tsx`** gana un tamaño nuevo, `size="xl"` (`max-w-5xl`,
+  antes el más ancho disponible era `lg` = `max-w-3xl`) — aplicado a los
+  modales de detalle con tablas de 4+ columnas que antes forzaban scroll
+  horizontal (visible en la propia captura del usuario).
+- **Tabla movida debajo del formulario de captura en 8 componentes, a
+  través de 6 módulos** — el mismo criterio que el usuario señaló para
+  Cotizaciones se aplicó consistentemente donde el mismo patrón existía
+  (encontrado por una revisión sistemática de todo `apps/erp-web/src/
+  features`, no solo el caso reportado): `QuoteDetailModal` (Ventas, con
+  `size="xl"`), la sección de Pagos de `sales-order-editor.tsx`/
+  `payments-section.tsx` (el propio rediseño de esta sesión, mismo criterio
+  aplicado retroactivamente), `PurchaseOrderDetailModal` +
+  `ReceivingSection` (Compras, con `size="xl"`), `MaterialsSection`/
+  `OperationsSection`/`FinishedGoodsSection` dentro de
+  `ProductionOrderDetailModal` (Manufactura, subido de `size="lg"` a
+  `"xl"`), `StagesModal` (CRM/Pipelines, `size="lg"` nuevo),
+  `StorefrontDetailModal` (Comercio, `size="lg"` nuevo), `ItemsModal`
+  (Comercial/Listas de precios, `size="lg"` nuevo), y `VariantsModal`
+  (Catálogo/Productos, `size="lg"` nuevo). Deliberadamente **no** tocados:
+  modales de solo lectura sin formulario de captura (`ReturnLinesModal` de
+  Ventas/Compras, `ComponentsModal` de Manufactura, `SummaryModal` de
+  CRM/Pipelines, `JournalEntryDetailModal` de Contabilidad) y los
+  formularios que ya seguían el orden correcto por construcción — captura
+  con lista en borrador (`<ul>`) antes de enviar, no una tabla ya
+  persistida (Contabilidad/nuevo asiento, POS/nueva devolución, Compras/
+  nueva devolución, Manufactura/nueva BOM) — ninguno de estos tenía el
+  problema reportado, así que tocarlos habría sido movimiento sin efecto.
+- Tests: sin tests nuevos — cambio puramente visual/estructural sobre
+  lógica ya probada. Dos archivos de test (`roles-permissions-page.spec.tsx`,
+  `crm-page.spec.tsx`) mostraron timeout bajo la corrida paralela completa
+  de Vitest; ambos confirmados como contención de recursos de esta sesión
+  larga (mismo patrón ya documentado repetidamente en el historial de este
+  proyecto), no una regresión real — verificado con una corrida aislada de
+  cada archivo (limpia en ~13-14s cada uno) y con la suite completa en
+  modo serial (`--no-file-parallelism`, 132/132 limpio).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 132/132 (serial), y la suite completa de `apps/e2e`
+  verificada contra infraestructura efímera real tras detener los tres
+  servidores persistentes — sin ninguna modificación de test E2E necesaria
+  pese a tocar la estructura interna de 8 modales a través de 6 módulos,
+  confirmando que el cambio es puramente de presentación/orden, no de
+  contrato de comportamiento.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

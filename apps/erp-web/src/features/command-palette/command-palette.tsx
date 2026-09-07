@@ -349,7 +349,7 @@ export function CommandPalette({ selection, navigate, isPlatformAdmin }: Command
           }
         }}
         aria-label="Buscar en la plataforma"
-        className="m-auto mt-[12dvh] w-[calc(100%-2rem)] max-w-xl rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[0_24px_80px_rgba(10,20,16,0.24)] backdrop:bg-[var(--overlay)] backdrop:backdrop-blur-[2px]"
+        className="m-auto mt-[12dvh] w-[calc(100%-2rem)] max-w-xl rounded-[14px] border border-[var(--line-strong)] bg-[var(--paper)] p-0 text-[var(--ink)] shadow-[0_24px_80px_rgba(10,20,16,0.24)] backdrop:bg-[var(--overlay)]"
       >
         <div onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-3">

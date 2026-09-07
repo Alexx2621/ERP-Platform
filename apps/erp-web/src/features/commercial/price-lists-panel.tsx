@@ -122,8 +122,51 @@ function ItemsModal({ priceList, products, selection, companyId, onOpenChange }:
       onOpenChange={(open) => !busy && onOpenChange(open)}
       title={priceList ? `Precios de ${priceList.name}` : "Precios"}
       description="Cada producto sin variantes puede tener un precio propio en esta lista."
+      size="lg"
     >
       <div className="grid gap-6">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          <p className="text-[12px] font-extrabold text-[var(--ink)]">Agregar producto</p>
+          {formError ? <ErrorNotice message={formError} /> : null}
+          {sellableProducts.length === 0 ? (
+            <ErrorNotice message="No hay productos sin variantes disponibles. Los productos con variantes no se pueden agregar a una lista de precios en esta versión." />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select
+                name="item-productId"
+                label="Producto"
+                value={productId}
+                required
+                onChange={(event) => setProductId(event.target.value)}
+              >
+                <option value="">Selecciona un producto</option>
+                {sellableProducts.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} ({product.code})
+                  </option>
+                ))}
+              </Select>
+              <FormField
+                name="item-price"
+                label="Precio"
+                value={price}
+                required
+                placeholder="24.9900"
+                onChange={(event) => setPrice(event.target.value)}
+              />
+            </div>
+          )}
+          <Button type="submit" busy={busy} disabled={sellableProducts.length === 0} className="w-fit">
+            <Plus size={16} weight="bold" aria-hidden="true" />
+            Agregar
+          </Button>
+        </form>
+
         {error ? (
           <ErrorNotice message={error} />
         ) : (
@@ -168,48 +211,6 @@ function ItemsModal({ priceList, products, selection, companyId, onOpenChange }:
             </TableBody>
           </Table>
         )}
-
-        <form
-          className="grid gap-4 border-t border-[var(--line)] pt-5"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          <p className="text-[12px] font-extrabold text-[var(--ink)]">Agregar producto</p>
-          {formError ? <ErrorNotice message={formError} /> : null}
-          {sellableProducts.length === 0 ? (
-            <ErrorNotice message="No hay productos sin variantes disponibles. Los productos con variantes no se pueden agregar a una lista de precios en esta versión." />
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Select
-                name="item-productId"
-                label="Producto"
-                value={productId}
-                required
-                onChange={(event) => setProductId(event.target.value)}
-              >
-                <option value="">Selecciona un producto</option>
-                {sellableProducts.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} ({product.code})
-                  </option>
-                ))}
-              </Select>
-              <FormField
-                name="item-price"
-                label="Precio"
-                value={price}
-                required
-                placeholder="24.9900"
-                onChange={(event) => setPrice(event.target.value)}
-              />
-            </div>
-          )}
-          <Button type="submit" busy={busy} disabled={sellableProducts.length === 0} className="w-fit">
-            <Plus size={16} weight="bold" aria-hidden="true" />
-            Agregar
-          </Button>
-        </form>
       </div>
     </Modal>
   );

@@ -258,6 +258,37 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (scroll fluido, modales más anchos, formulario antes que la tabla)
+
+A pedido explícito del usuario tras compartir una captura del modal de
+detalle de cotización: *"Al hacer scroll en estas ventanas emergentes o
+en otros modulos se siente lagueado... también puedes hacer esas
+ventanas mas anchas... la tabla deberia estar debajo de los campos para
+agregar productos"* — tres problemas reales.
+
+- **Causa raíz real del lag**: `backdrop-filter: blur()` en tres lugares
+  que quedan visibles durante el scroll (el header `sticky` de todas las
+  páginas, el fondo de `Modal`/Command Palette, y la barra flotante nueva
+  de Ventas) — obliga al navegador a recomputar el desenfoque en cada
+  frame de scroll. Reemplazado por fondo sólido en los tres, mismo look
+  sin el costo. `overscroll-contain` agregado al scroll interno de
+  `Modal`.
+- `shared/ui/modal.tsx` gana `size="xl"` (`max-w-5xl`).
+- Tabla movida debajo del formulario de captura en 8 modales de detalle a
+  través de 6 módulos (Ventas, Compras, Manufactura, CRM, Comercio,
+  Comercial, Catálogo) — el mismo criterio del usuario aplicado
+  consistentemente donde existía el mismo patrón, encontrado por revisión
+  sistemática de todo `apps/erp-web/src/features`. Ver el detalle completo
+  en `docs/PROJECT_STATE.md` — "Scroll fluido, modales más anchos,
+  formulario antes que la tabla en 8 módulos".
+- Sin tests nuevos — cambio puramente visual/estructural. Dos archivos
+  mostraron timeout bajo la corrida paralela completa, confirmados como
+  contención de recursos (limpios en aislamiento y en modo serial,
+  132/132).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 132/132, y la suite completa de `apps/e2e` (20/20) sin
+  ninguna modificación de test necesaria.
+
 ### Hecho — sesión 36 (rediseño visual del módulo de Ventas)
 
 Continuación directa del bloque anterior, a pedido explícito del usuario

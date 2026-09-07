@@ -82,6 +82,33 @@ function MaterialsSection({ order, materials, products, selection, companyId, on
   return (
     <div className="grid gap-4 border-t border-[var(--line)] pt-5">
       <p className="text-[12px] font-extrabold text-[var(--ink)]">Materiales</p>
+
+      {order.status === "CONFIRMED" ? (
+        <div className="grid gap-4">
+          {formError ? <ErrorNotice message={formError} /> : null}
+          <p className="text-[11px] font-bold text-[var(--muted-strong)]">Emitir o devolver material (parcial o total)</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select name="material-select" label="Material" value={selectedMaterialId} onChange={(event) => setSelectedMaterialId(event.target.value)}>
+              <option value="">Selecciona un material</option>
+              {(materials ?? []).map((material) => (
+                <option key={material.id} value={material.id}>
+                  {productLabel(products, material.componentProductId)}
+                </option>
+              ))}
+            </Select>
+            <FormField name="material-quantity" label="Cantidad" value={quantity} placeholder="2.0000" onChange={(event) => setQuantity(event.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" busy={busy === "issue"} disabled={!selectedMaterialId || !quantity} onClick={() => void runMovement("issue")}>
+              Emitir
+            </Button>
+            <Button type="button" variant="secondary" busy={busy === "return"} disabled={!selectedMaterialId || !quantity} onClick={() => void runMovement("return")}>
+              Devolver
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <Table aria-busy={materials === null}>
         <TableCaption>Requerimientos de material de esta orden</TableCaption>
         <TableHeader>
@@ -109,32 +136,6 @@ function MaterialsSection({ order, materials, products, selection, companyId, on
           )}
         </TableBody>
       </Table>
-
-      {order.status === "CONFIRMED" ? (
-        <div className="grid gap-4">
-          {formError ? <ErrorNotice message={formError} /> : null}
-          <p className="text-[11px] font-bold text-[var(--muted-strong)]">Emitir o devolver material (parcial o total)</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select name="material-select" label="Material" value={selectedMaterialId} onChange={(event) => setSelectedMaterialId(event.target.value)}>
-              <option value="">Selecciona un material</option>
-              {(materials ?? []).map((material) => (
-                <option key={material.id} value={material.id}>
-                  {productLabel(products, material.componentProductId)}
-                </option>
-              ))}
-            </Select>
-            <FormField name="material-quantity" label="Cantidad" value={quantity} placeholder="2.0000" onChange={(event) => setQuantity(event.target.value)} />
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" busy={busy === "issue"} disabled={!selectedMaterialId || !quantity} onClick={() => void runMovement("issue")}>
-              Emitir
-            </Button>
-            <Button type="button" variant="secondary" busy={busy === "return"} disabled={!selectedMaterialId || !quantity} onClick={() => void runMovement("return")}>
-              Devolver
-            </Button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -203,6 +204,22 @@ function OperationsSection({ order, selection, companyId }: OperationsSectionPro
     <div className="grid gap-4 border-t border-[var(--line)] pt-5">
       <p className="text-[12px] font-extrabold text-[var(--ink)]">Operaciones</p>
       {error ? <ErrorNotice message={error} /> : null}
+
+      {order.status === "DRAFT" || order.status === "CONFIRMED" ? (
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            void addOperation(event);
+          }}
+        >
+          <FormField name="operation-name" label="Nueva operación" value={name} placeholder="Corte" onChange={(event) => setName(event.target.value)} />
+          <Button type="submit" busy={busy} disabled={!name.trim()}>
+            <Plus size={16} weight="bold" aria-hidden="true" />
+            Agregar
+          </Button>
+        </form>
+      ) : null}
+
       <Table aria-busy={operations === null}>
         <TableCaption>Pasos del proceso de producción</TableCaption>
         <TableHeader>
@@ -239,21 +256,6 @@ function OperationsSection({ order, selection, companyId }: OperationsSectionPro
           )}
         </TableBody>
       </Table>
-
-      {order.status === "DRAFT" || order.status === "CONFIRMED" ? (
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(event) => {
-            void addOperation(event);
-          }}
-        >
-          <FormField name="operation-name" label="Nueva operación" value={name} placeholder="Corte" onChange={(event) => setName(event.target.value)} />
-          <Button type="submit" busy={busy} disabled={!name.trim()}>
-            <Plus size={16} weight="bold" aria-hidden="true" />
-            Agregar
-          </Button>
-        </form>
-      ) : null}
     </div>
   );
 }
@@ -311,6 +313,22 @@ function FinishedGoodsSection({ order, selection, companyId, onOrderUpdated }: F
     <div className="grid gap-4 border-t border-[var(--line)] pt-5">
       <p className="text-[12px] font-extrabold text-[var(--ink)]">Producto terminado</p>
       {error ? <ErrorNotice message={error} /> : null}
+
+      {order.status === "CONFIRMED" ? (
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          <FormField name="finished-goods-quantity" label="Cantidad recibida" value={quantity} placeholder="5.0000" onChange={(event) => setQuantity(event.target.value)} />
+          <Button type="submit" busy={busy} disabled={!quantity}>
+            <Package size={16} weight="bold" aria-hidden="true" />
+            Registrar recepción
+          </Button>
+        </form>
+      ) : null}
+
       <Table aria-busy={receipts === null}>
         <TableCaption>Recepciones de producto terminado</TableCaption>
         <TableHeader>
@@ -336,21 +354,6 @@ function FinishedGoodsSection({ order, selection, companyId, onOrderUpdated }: F
           )}
         </TableBody>
       </Table>
-
-      {order.status === "CONFIRMED" ? (
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          <FormField name="finished-goods-quantity" label="Cantidad recibida" value={quantity} placeholder="5.0000" onChange={(event) => setQuantity(event.target.value)} />
-          <Button type="submit" busy={busy} disabled={!quantity}>
-            <Package size={16} weight="bold" aria-hidden="true" />
-            Registrar recepción
-          </Button>
-        </form>
-      ) : null}
     </div>
   );
 }
@@ -412,7 +415,7 @@ function ProductionOrderDetailModal({ order, billsOfMaterial, products, selectio
       onOpenChange={(open) => !actionBusy && onOpenChange(open)}
       title={order ? `Orden de producción · ${productionOrderStatusLabel(order.status)}` : "Orden de producción"}
       description={order ? `${order.quantityCompleted} de ${order.quantityPlanned} unidades completadas.` : undefined}
-      size="lg"
+      size="xl"
     >
       {order ? (
         <div className="grid gap-6">

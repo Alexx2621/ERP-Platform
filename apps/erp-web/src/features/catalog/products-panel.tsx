@@ -144,8 +144,42 @@ function VariantsModal({ product, selection, companyId, onOpenChange }: Variants
       onOpenChange={(open) => !busy && onOpenChange(open)}
       title={product ? `Variantes de ${product.name}` : "Variantes"}
       description="Cada variante es un SKU vendible con su propio precio y atributos (color, talla, etc.)."
+      size="lg"
     >
       <div className="grid gap-6">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          <p className="text-[12px] font-extrabold text-[var(--ink)]">Agregar variante</p>
+          {formError ? <ErrorNotice message={formError} /> : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField name="sku" label="SKU" value={sku} required onChange={(event) => setSku(event.target.value)} />
+            <FormField
+              name="price"
+              label="Precio"
+              value={price}
+              required
+              placeholder="19.9900"
+              onChange={(event) => setPrice(event.target.value)}
+            />
+          </div>
+          <FormField
+            name="attributes"
+            label='Atributos (JSON, ej. {"color":"Azul","talla":"M"})'
+            value={attributesRaw}
+            required
+            placeholder='{"color":"Azul","talla":"M"}'
+            onChange={(event) => setAttributesRaw(event.target.value)}
+          />
+          <Button type="submit" busy={busy} className="w-fit">
+            <Plus size={16} weight="bold" aria-hidden="true" />
+            Agregar variante
+          </Button>
+        </form>
+
         {error ? (
           <ErrorNotice message={error} />
         ) : (
@@ -193,39 +227,6 @@ function VariantsModal({ product, selection, companyId, onOpenChange }: Variants
             </TableBody>
           </Table>
         )}
-
-        <form
-          className="grid gap-4 border-t border-[var(--line)] pt-5"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          <p className="text-[12px] font-extrabold text-[var(--ink)]">Agregar variante</p>
-          {formError ? <ErrorNotice message={formError} /> : null}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField name="sku" label="SKU" value={sku} required onChange={(event) => setSku(event.target.value)} />
-            <FormField
-              name="price"
-              label="Precio"
-              value={price}
-              required
-              placeholder="19.9900"
-              onChange={(event) => setPrice(event.target.value)}
-            />
-          </div>
-          <FormField
-            name="attributes"
-            label='Atributos (JSON, ej. {"color":"Azul","talla":"M"})'
-            value={attributesRaw}
-            required
-            placeholder='{"color":"Azul","talla":"M"}'
-            onChange={(event) => setAttributesRaw(event.target.value)}
-          />
-          <Button type="submit" busy={busy} className="w-fit">
-            <Plus size={16} weight="bold" aria-hidden="true" />
-            Agregar variante
-          </Button>
-        </form>
       </div>
     </Modal>
   );

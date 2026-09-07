@@ -73,8 +73,38 @@ function StagesModal({ pipeline, selection, companyId, onOpenChange }: StagesMod
   };
 
   return (
-    <Modal open={Boolean(pipeline)} onOpenChange={onOpenChange} title={pipeline ? `Etapas · ${pipeline.name}` : "Etapas"}>
+    <Modal
+      open={Boolean(pipeline)}
+      onOpenChange={onOpenChange}
+      title={pipeline ? `Etapas · ${pipeline.name}` : "Etapas"}
+      size="lg"
+    >
       <div className="grid gap-6">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+        >
+          {formError ? <ErrorNotice message={formError} /> : null}
+          <p className="text-[12px] font-extrabold text-[var(--ink)]">Nueva etapa</p>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+            <FormField name="stage-name" label="Nombre" value={name} required onChange={(event) => setName(event.target.value)} />
+            <label className="flex items-center gap-2 self-end pb-3 text-[12px] font-bold text-[var(--ink)]">
+              <input type="checkbox" checked={isWon} onChange={(event) => setIsWon(event.target.checked)} />
+              Gana
+            </label>
+            <label className="flex items-center gap-2 self-end pb-3 text-[12px] font-bold text-[var(--ink)]">
+              <input type="checkbox" checked={isLost} onChange={(event) => setIsLost(event.target.checked)} />
+              Pierde
+            </label>
+            <Button type="submit" busy={busy} className="self-end">
+              <Plus size={16} weight="bold" aria-hidden="true" />
+              Agregar
+            </Button>
+          </div>
+        </form>
+
         {error ? (
           <ErrorNotice message={error} />
         ) : (
@@ -112,31 +142,6 @@ function StagesModal({ pipeline, selection, companyId, onOpenChange }: StagesMod
             </TableBody>
           </Table>
         )}
-
-        <form
-          className="grid gap-4 border-t border-[var(--line)] pt-5"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          {formError ? <ErrorNotice message={formError} /> : null}
-          <p className="text-[12px] font-extrabold text-[var(--ink)]">Nueva etapa</p>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-            <FormField name="stage-name" label="Nombre" value={name} required onChange={(event) => setName(event.target.value)} />
-            <label className="flex items-center gap-2 self-end pb-3 text-[12px] font-bold text-[var(--ink)]">
-              <input type="checkbox" checked={isWon} onChange={(event) => setIsWon(event.target.checked)} />
-              Gana
-            </label>
-            <label className="flex items-center gap-2 self-end pb-3 text-[12px] font-bold text-[var(--ink)]">
-              <input type="checkbox" checked={isLost} onChange={(event) => setIsLost(event.target.checked)} />
-              Pierde
-            </label>
-            <Button type="submit" busy={busy} className="self-end">
-              <Plus size={16} weight="bold" aria-hidden="true" />
-              Agregar
-            </Button>
-          </div>
-        </form>
       </div>
     </Modal>
   );

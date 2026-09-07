@@ -196,7 +196,7 @@ export function ProductShell({
             </div>
           ) : null}
 
-          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--paper)]/95 px-4 backdrop-blur sm:px-6">
+          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-[var(--line)] bg-[var(--paper)] px-4 sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               {showNav ? (
                 <button

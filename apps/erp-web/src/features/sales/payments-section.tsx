@@ -5,7 +5,7 @@ import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import { Button } from "../../shared/ui/button";
-import { Card, CardBody, CardFooter, CardHeader } from "../../shared/ui/card";
+import { Card, CardBody, CardHeader } from "../../shared/ui/card";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { ErrorNotice } from "../../shared/ui/notice";
@@ -112,12 +112,55 @@ export function PaymentsSection({ order, selection, companyId }: PaymentsSection
         title="Pagos"
         description={payments === null ? "Cargando…" : `${payments.length} pago(s) registrados`}
       />
+      <CardBody className="bg-[var(--canvas)]">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            void capture(event);
+          }}
+        >
+          {formError ? <ErrorNotice message={formError} /> : null}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Select
+              name="payment-method"
+              label="Método"
+              value={method}
+              onChange={(event) => setMethod(event.target.value as "CASH" | "BANK_TRANSFER")}
+            >
+              <option value="CASH">Efectivo</option>
+              <option value="BANK_TRANSFER">Transferencia</option>
+            </Select>
+            <FormField
+              name="payment-amount"
+              label={`Monto (${order.currency})`}
+              value={amount}
+              required
+              placeholder="150.0000"
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            {method === "BANK_TRANSFER" ? (
+              <FormField
+                name="payment-reference"
+                label="Número de transferencia"
+                value={reference}
+                required
+                onChange={(event) => setReference(event.target.value)}
+              />
+            ) : null}
+          </div>
+          <Button type="submit" busy={busy} className="w-fit">
+            <CreditCard size={16} weight="bold" aria-hidden="true" />
+            Cobrar
+          </Button>
+        </form>
+      </CardBody>
+
       {error ? (
-        <CardBody>
+        <CardBody className="border-t border-[var(--line)]">
           <ErrorNotice message={error} />
         </CardBody>
       ) : (
-        <CardBody className="p-0">
+        <CardBody className="border-t border-[var(--line)] p-0">
         <Table aria-busy={payments === null}>
           <TableCaption>Pagos del pedido</TableCaption>
           <TableHeader>
@@ -173,49 +216,6 @@ export function PaymentsSection({ order, selection, companyId }: PaymentsSection
         </Table>
         </CardBody>
       )}
-
-      <CardFooter className="bg-[var(--canvas)]">
-        <form
-          className="grid gap-4"
-          onSubmit={(event) => {
-            void capture(event);
-          }}
-        >
-          {formError ? <ErrorNotice message={formError} /> : null}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Select
-              name="payment-method"
-              label="Método"
-              value={method}
-              onChange={(event) => setMethod(event.target.value as "CASH" | "BANK_TRANSFER")}
-            >
-              <option value="CASH">Efectivo</option>
-              <option value="BANK_TRANSFER">Transferencia</option>
-            </Select>
-            <FormField
-              name="payment-amount"
-              label={`Monto (${order.currency})`}
-              value={amount}
-              required
-              placeholder="150.0000"
-              onChange={(event) => setAmount(event.target.value)}
-            />
-            {method === "BANK_TRANSFER" ? (
-              <FormField
-                name="payment-reference"
-                label="Número de transferencia"
-                value={reference}
-                required
-                onChange={(event) => setReference(event.target.value)}
-              />
-            ) : null}
-          </div>
-          <Button type="submit" busy={busy} className="w-fit">
-            <CreditCard size={16} weight="bold" aria-hidden="true" />
-            Cobrar
-          </Button>
-        </form>
-      </CardFooter>
     </Card>
   );
 }

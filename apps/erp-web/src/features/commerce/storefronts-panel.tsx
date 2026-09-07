@@ -96,8 +96,31 @@ function StorefrontDetailModal({ storefront, selection, companyId, products, onO
       onOpenChange={(open) => !busy && onOpenChange(open)}
       title={storefront ? `Catálogo publicado · ${storefront.name}` : "Catálogo publicado"}
       description={storefront ? `Handle público: ${storefront.code}` : undefined}
+      size="lg"
     >
       <div className="grid gap-6">
+        <form
+          className="grid gap-4"
+          onSubmit={(event) => {
+            void publish(event);
+          }}
+        >
+          <p className="text-[12px] font-extrabold text-[var(--ink)]">Publicar un producto</p>
+          {formError ? <ErrorNotice message={formError} /> : null}
+          <Select name="storefront-publish-productId" label="Producto" value={productId} required onChange={(event) => setProductId(event.target.value)}>
+            <option value="">Selecciona un producto</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name} ({product.code})
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" busy={busy} className="w-fit" disabled={!productId}>
+            <Plus size={16} weight="bold" aria-hidden="true" />
+            Publicar
+          </Button>
+        </form>
+
         {error ? (
           <ErrorNotice message={error} />
         ) : (
@@ -140,28 +163,6 @@ function StorefrontDetailModal({ storefront, selection, companyId, products, onO
             </TableBody>
           </Table>
         )}
-
-        <form
-          className="grid gap-4 border-t border-[var(--line)] pt-5"
-          onSubmit={(event) => {
-            void publish(event);
-          }}
-        >
-          <p className="text-[12px] font-extrabold text-[var(--ink)]">Publicar un producto</p>
-          {formError ? <ErrorNotice message={formError} /> : null}
-          <Select name="storefront-publish-productId" label="Producto" value={productId} required onChange={(event) => setProductId(event.target.value)}>
-            <option value="">Selecciona un producto</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name} ({product.code})
-              </option>
-            ))}
-          </Select>
-          <Button type="submit" busy={busy} className="w-fit" disabled={!productId}>
-            <Plus size={16} weight="bold" aria-hidden="true" />
-            Publicar
-          </Button>
-        </form>
       </div>
     </Modal>
   );

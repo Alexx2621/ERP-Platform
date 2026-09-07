@@ -202,46 +202,14 @@ function QuoteDetailModal({
       onOpenChange={(open) => !busy && !actionBusy && onOpenChange(open)}
       title={quote ? `Cotización ${quote.currency} · ${quoteStatusLabel(quote.status)}` : "Cotización"}
       description="Cada línea guarda un precio congelado en el momento en que se agrega."
+      size="xl"
     >
       <div className="grid gap-6">
         {actionError ? <ErrorNotice message={actionError} /> : null}
-        {error ? (
-          <ErrorNotice message={error} />
-        ) : (
-          <Table aria-busy={lines === null}>
-            <TableCaption>Líneas de la cotización</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Producto</TableHead>
-                <TableHead scope="col">Cantidad</TableHead>
-                <TableHead scope="col">Precio unitario</TableHead>
-                <TableHead scope="col">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines === null ? (
-                <LoadingRows columns={4} />
-              ) : lines.length === 0 ? (
-                <TableRow>
-                  <TableEmpty colSpan={4} title="Todavía no hay líneas" />
-                </TableRow>
-              ) : (
-                lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="text-[12px] font-semibold">{productLabel(products, line.productId)}</TableCell>
-                    <TableCell className="font-mono text-[11px]">{line.quantity}</TableCell>
-                    <TableCell className="font-mono text-[11px]">{line.unitPrice}</TableCell>
-                    <TableCell className="font-mono text-[11px] font-bold">{line.lineTotal}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
 
         {isDraft ? (
           <form
-            className="grid gap-4 border-t border-[var(--line)] pt-5"
+            className="grid gap-4"
             onSubmit={(event) => {
               void submit(event);
             }}
@@ -295,6 +263,43 @@ function QuoteDetailModal({
             </Button>
           </form>
         ) : null}
+
+        <div className={`grid gap-3 ${isDraft ? "border-t border-[var(--line)] pt-5" : ""}`}>
+        <p className="text-[12px] font-extrabold text-[var(--ink)]">Líneas</p>
+        {error ? (
+          <ErrorNotice message={error} />
+        ) : (
+          <Table aria-busy={lines === null}>
+            <TableCaption>Líneas de la cotización</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Producto</TableHead>
+                <TableHead scope="col">Cantidad</TableHead>
+                <TableHead scope="col">Precio unitario</TableHead>
+                <TableHead scope="col">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines === null ? (
+                <LoadingRows columns={4} />
+              ) : lines.length === 0 ? (
+                <TableRow>
+                  <TableEmpty colSpan={4} title="Todavía no hay líneas" />
+                </TableRow>
+              ) : (
+                lines.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell className="text-[12px] font-semibold">{productLabel(products, line.productId)}</TableCell>
+                    <TableCell className="font-mono text-[11px]">{line.quantity}</TableCell>
+                    <TableCell className="font-mono text-[11px]">{line.unitPrice}</TableCell>
+                    <TableCell className="font-mono text-[11px] font-bold">{line.lineTotal}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+        </div>
 
         {isDraft ? (
           <div className="grid gap-3 border-t border-[var(--line)] pt-5 sm:grid-cols-2">

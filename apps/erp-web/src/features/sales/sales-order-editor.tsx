@@ -14,7 +14,7 @@ import { useAuth } from "../../shared/auth/auth-context";
 import { formatDate } from "../../shared/format/date";
 import { AnimatedMoney } from "../../shared/ui/animated-money";
 import { Button } from "../../shared/ui/button";
-import { Card, CardBody, CardFooter, CardHeader } from "../../shared/ui/card";
+import { Card, CardBody, CardHeader } from "../../shared/ui/card";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { ErrorNotice } from "../../shared/ui/notice";
@@ -348,62 +348,8 @@ export function SalesOrderEditor({
             title="Líneas del pedido"
             description={lines === null ? "Cargando…" : `${lines.length} línea(s)`}
           />
-          <CardBody className="p-0">
-            <Table aria-busy={lines === null}>
-              <TableCaption>Líneas del pedido</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Producto</TableHead>
-                  <TableHead scope="col" className="text-right">
-                    Cantidad
-                  </TableHead>
-                  <TableHead scope="col" className="text-right">
-                    Precio unitario
-                  </TableHead>
-                  <TableHead scope="col" className="text-right">
-                    Descuento
-                  </TableHead>
-                  <TableHead scope="col" className="text-right">
-                    Total
-                  </TableHead>
-                  <TableHead scope="col">Reserva</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines === null ? (
-                  <LoadingRows columns={6} />
-                ) : lines.length === 0 ? (
-                  <TableRow>
-                    <TableEmpty
-                      colSpan={6}
-                      title="Todavía no hay líneas"
-                      description="Agrega al menos una línea antes de confirmar el pedido."
-                    />
-                  </TableRow>
-                ) : (
-                  lines.map((line) => (
-                    <TableRow key={line.id}>
-                      <TableCell className="text-[12px] font-semibold">
-                        {productLabel(products, line.productId)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-[12px]">{line.quantity}</TableCell>
-                      <TableCell className="text-right font-mono text-[12px]">{line.unitPrice}</TableCell>
-                      <TableCell className="text-right font-mono text-[12px]">{line.discountAmount}</TableCell>
-                      <TableCell className="text-right font-mono text-[12px] font-bold">
-                        {line.lineTotal}
-                      </TableCell>
-                      <TableCell className="text-[11px] text-[var(--muted-strong)]">
-                        {line.reservationId ? "Reservada" : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardBody>
-
           {isDraft ? (
-            <CardFooter className="bg-[var(--canvas)]">
+            <CardBody className="bg-[var(--canvas)]">
               <form
                 className="grid gap-4"
                 onSubmit={(event) => {
@@ -457,8 +403,62 @@ export function SalesOrderEditor({
                   </div>
                 </div>
               </form>
-            </CardFooter>
+            </CardBody>
           ) : null}
+
+          <CardBody className={`p-0 ${isDraft ? "border-t border-[var(--line)]" : ""}`}>
+            <Table aria-busy={lines === null}>
+              <TableCaption>Líneas del pedido</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Producto</TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Cantidad
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Precio unitario
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Descuento
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Total
+                  </TableHead>
+                  <TableHead scope="col">Reserva</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines === null ? (
+                  <LoadingRows columns={6} />
+                ) : lines.length === 0 ? (
+                  <TableRow>
+                    <TableEmpty
+                      colSpan={6}
+                      title="Todavía no hay líneas"
+                      description="Agrega al menos una línea antes de confirmar el pedido."
+                    />
+                  </TableRow>
+                ) : (
+                  lines.map((line) => (
+                    <TableRow key={line.id}>
+                      <TableCell className="text-[12px] font-semibold">
+                        {productLabel(products, line.productId)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.quantity}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.unitPrice}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.discountAmount}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px] font-bold">
+                        {line.lineTotal}
+                      </TableCell>
+                      <TableCell className="text-[11px] text-[var(--muted-strong)]">
+                        {line.reservationId ? "Reservada" : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardBody>
         </Card>
       ) : null}
 
@@ -469,11 +469,16 @@ export function SalesOrderEditor({
       {order ? <PaymentsSection order={order} selection={selection} companyId={companyId} /> : null}
 
       {/* Action bar: a floating panel over the page, not a plain sticky
-          strip — backdrop-blur + shadow-lg reads as an app-level command
-          bar rather than another stacked section. */}
+          strip — a solid surface + shadow-lg reads as an app-level command
+          bar rather than another stacked section. A blurred/translucent
+          fill was tried first but dropped: a `fixed` element with
+          `backdrop-filter` forces the browser to recomposite everything
+          scrolling underneath on every frame, which is exactly the
+          scroll jank real users reported — a solid background gets the
+          same floating look for free. */}
       {order ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-4 sm:px-6">
-          <div className="pointer-events-auto grid w-full max-w-3xl gap-3 rounded-[16px] border border-[var(--line)] bg-[var(--paper)]/90 p-4 shadow-[var(--shadow-lg)] backdrop-blur">
+          <div className="pointer-events-auto grid w-full max-w-3xl gap-3 rounded-[16px] border border-[var(--line)] bg-[var(--paper)] p-4 shadow-[var(--shadow-lg)]">
             {actionError ? <ErrorNotice message={actionError} /> : null}
             <div className="flex flex-wrap items-center gap-2">
               {isDraft ? (
