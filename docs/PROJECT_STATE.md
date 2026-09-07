@@ -4233,6 +4233,139 @@ módulo de Devoluciones de Ventas se dejó con su modal existente (una
 edición mucho más simple, de una sola pasada) en vez de forzarlo al mismo
 patrón sin necesidad real.
 
+### Home dashboard enriquecido: tendencia de ventas, feed de actividad, accesos rápidos, top clientes/productos (sesión 36, 2026-09-07)
+
+A pedido explícito del usuario, tras ver el piloto de UX de Ventas y el
+dashboard de widgets ya existente (sesión anterior): *"Pues no veo que esos
+cambios marquen una gran diferencia... en el dashboard quiero que agregues
+más cosas, se ve demasiado sencillo solo con los widgets"*. Presentadas
+cuatro opciones vía `AskUserQuestion` — el usuario eligió las cuatro:
+gráficas de tendencia, feed de actividad reciente, accesos rápidos, y
+top clientes/productos del mes.
+
+- **Backend — `GetTopSellingProductsUseCase` nuevo** (`apps/api/src/modules/
+  sales/application/use-cases/`): primer reporte agregado real de Sales.
+  `SalesOrderLineRepository` gana `topProductTotals(tenantId,
+  salesOrderIds, limit)` — un `groupBy` real de Prisma sobre `lineTotal`,
+  ordenado por ingreso descendente, acotado a un conjunto de órdenes ya
+  resuelto por el llamador (el propio caso de uso filtra `listByCompany`
+  por no-canceladas y dentro de una ventana de `sinceDays`) — así el
+  repositorio se mantiene una agregación pura, sin conocer las reglas de
+  qué orden califica. Cada `productId` se resuelve vía el `GetProductUseCase`
+  público de Catalog, nunca un join crudo entre tablas de ambos módulos
+  (`docs/ARCHITECTURE.md` §6). `SalesReportsController` nuevo, en
+  `/api/v1/sales/reports/top-products` — deliberadamente separado de
+  `SalesOrdersController` (que ya tiene `@Get(":id")`) para no arriesgar
+  una colisión de ruta con un literal `top-products`, mismo patrón ya
+  usado por `AccountingReportsController`. Reutiliza el permiso
+  `sales.orders.read` ya existente, sin permiso nuevo.
+- **`@erp/api-client`**: `TopSellingProductResponse` + método
+  `listTopSellingProducts`, regenerados desde el spec OpenAPI real.
+- **`apps/erp-web/src/features/home/`**: `WidgetDefinition` ganó una
+  variante `render` opcional (junto a la ya existente `compute`), para
+  widgets con su propio layout en vez de una simple cifra — sin romper
+  ninguno de los 10 widgets `compute`-based ya existentes.
+  `widgets/sales-trend-widget.tsx` (gráfica de área SVG hecha a mano, sin
+  dependencia nueva, con `buildDailyTotals()` como función pura testeada
+  por separado), `widgets/activity-feed-widget.tsx` (feed real desde
+  `GET /api/v1/audit-entries`, con un diccionario `ACTION_LABELS` de ~90
+  acciones reales de auditoría de todos los módulos de negocio traducidas
+  a español legible, y `relativeTime()` como función pura testeada),
+  `widgets/top-lists-widget.tsx` (Top clientes calculado del lado del
+  cliente sobre los mismos pedidos de venta de los últimos 30 días; Top
+  productos consumiendo el endpoint nuevo del backend), y
+  `widgets/quick-actions-widget.tsx` (accesos directos a los formularios
+  de creación más usados — documentado explícitamente que solo navegan al
+  módulo, sin poder abrir el formulario directamente, ya que el router de
+  esta app es de rutas planas sin parámetros de query).
+- **Bug real de UX encontrado y corregido antes del primer commit**: la
+  primera versión de `dashboardWidgets` seguía aplicando un límite de 6
+  resultados al listado de módulos de navegación incluso sin texto de
+  búsqueda — heredado de una limitación previa, no de este bloque —
+  corregido para que abrir el panel sin escribir nada muestre siempre el
+  catálogo completo de widgets disponibles.
+- Tests: 12 tests unitarios nuevos en `apps/erp-web` (4 `buildDailyTotals`,
+  4 `relativeTime`, 4 `buildTopCustomers`) — 132 tests unitarios totales en
+  `apps/erp-web`. 4 tests nuevos en `apps/api`
+  (`get-top-selling-products.use-case.spec.ts`: ranking por ingreso,
+  exclusión de órdenes canceladas, ranking vacío, límite respetado) — 1060
+  tests unitarios totales en `apps/api`. **Verificado visualmente contra el
+  dev server real** (script de Playwright ad hoc, no comiteado) usando el
+  tenant "Demo ERP" ya sembrado: gráfica de tendencia real mostrando datos
+  concentrados cerca del final de la ventana de 30 días (reflejo honesto de
+  cuándo se sembró el tenant demo, no un error), feed de actividad con
+  etiquetas reales en español, y ambos rankings con nombres y montos reales.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/api` 1060/1060, `apps/erp-web` 132/132, `@erp/api-client` 23/23.
+
+### Rediseño visual del módulo de Ventas: tarjetas elevadas, indicadores de estado tipo punto, totales animados (sesión 36, 2026-09-07)
+
+Continuación directa del bloque anterior, a pedido explícito del usuario
+tras el enriquecimiento del dashboard — eligiendo vía `AskUserQuestion`
+"Rediseño visual primero" para Ventas, antes de agregar funciones
+diferenciadoras nuevas.
+
+- **`shared/ui/card.tsx`** (nuevo): `Card`/`CardHeader` (ícono en tile
+  suave + título + descripción + acción a la derecha)/`CardBody`/
+  `CardFooter` — el mismo lenguaje de "panel elevado" que apps de trabajo
+  modernas (Linear, Notion) usan para separar secciones de una página
+  larga en bloques distintos, en vez de un scroll plano de tabla-tras-tabla.
+- **`shared/ui/status-badge.tsx` rediseñado**: de una píldora rellena a
+  "punto + etiqueta" (con pulso opcional para estados en curso, respetando
+  `prefers-reduced-motion`) — confirmado por grep que solo 4 archivos de
+  Ventas lo consumen, así que el cambio queda acotado a este módulo sin
+  afectar el resto de la plataforma.
+- **`shared/hooks/use-animated-number.ts` + `shared/ui/animated-money.tsx`**
+  (nuevos): un total de documento ahora se anima suavemente hacia su nuevo
+  valor (ease-out-cubic vía `requestAnimationFrame`) en vez de saltar de
+  golpe — puramente cosmético, nunca recalcula nada, solo anima un valor ya
+  calculado en el servidor; respeta `prefers-reduced-motion` saltando la
+  animación por completo.
+- **`shared/ui/loading-rows.tsx` con shimmer real** (`@keyframes shimmer`
+  en `styles.css`) en vez de un bloque pulsante plano, con anchos variables
+  por columna para leer más como "texto real cargando" que una grilla
+  uniforme.
+- **`sales-order-editor.tsx` reestructurado por completo**: el resumen del
+  pedido, las líneas, y (vía `payments-section.tsx`, también actualizado)
+  los pagos ahora viven cada uno en su propia `Card` con `CardHeader`
+  (ícono + título + conteo), en vez de secciones planas separadas por
+  bordes. La barra de acciones inferior pasó de una barra `sticky` simple a
+  un panel flotante centrado (`position: fixed`, `backdrop-blur`,
+  `shadow-lg`, `pointer-events-none` en el contenedor exterior para que los
+  clics fuera del panel sigan llegando al contenido de abajo) — el mismo
+  lenguaje visual de "command bar" flotante que Notion/Linear usan para
+  acciones de documento. El total del pedido usa `AnimatedMoney` tanto en
+  el resumen como en la barra flotante.
+- **`quotes-panel.tsx`/`sales-orders-panel.tsx`/`sales-returns-panel.tsx`**:
+  el bloque Toolbar+Tabla+Paginación de cada lista de trabajo ahora vive
+  dentro de una `Card`, dándole elevación y bordes redondeados consistentes
+  con el editor rediseñado — cambio puramente de envoltura, ninguna lógica
+  de negocio ni de carga de datos se tocó.
+- **Verificado visualmente contra el dev server real** (script de
+  Playwright ad hoc, no comiteado) usando el tenant "Demo ERP": la pestaña
+  Cotizaciones con su nueva `Card` envolviendo la tabla, y el editor de un
+  pedido real confirmado mostrando las tres tarjetas ("Resumen del
+  pedido", "Líneas del pedido", "Pagos") con sus íconos, el badge de
+  estado tipo punto ("Confirmado"), y la barra de acción flotante con
+  blur mostrando "Despachar"/"Cancelar pedido" y el total animado —
+  confirmado también, tras hacer scroll, que el formulario de "Cobrar"
+  (dentro de su propio `CardFooter` con fondo distinto) queda completamente
+  visible sin quedar recortado por la barra flotante gracias al
+  padding inferior reservado en la sección.
+- Alcance deliberadamente diferido, per la propia secuenciación elegida por
+  el usuario ("rediseño visual primero"): las funciones diferenciadoras que
+  motivaron el pedido original (KPIs en vivo, vista 360 de cliente, línea
+  de tiempo del pedido, indicador de margen, detección de duplicados,
+  atajos de teclado, exportación, acciones masivas) quedan pendientes de
+  una decisión explícita posterior del usuario, no descartadas.
+- Tests: sin tests nuevos — cambio puramente visual/estructural sobre
+  lógica ya probada; los 132 tests existentes de `apps/erp-web` (incluyendo
+  `sales-page.spec.tsx`) pasan sin ninguna modificación de aserción.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 132/132, `apps/api` 1060/1060, `@erp/api-client` 23/23,
+  y la suite completa de `apps/e2e` verificada contra infraestructura
+  efímera real tras detener los tres servidores persistentes.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

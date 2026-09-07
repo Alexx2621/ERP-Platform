@@ -7,6 +7,7 @@ import { useAuth } from "../../shared/auth/auth-context";
 import { formatDate } from "../../shared/format/date";
 import { formatMoney } from "../../shared/format/money";
 import { Button } from "../../shared/ui/button";
+import { Card, CardBody } from "../../shared/ui/card";
 import {
   DataTableFilter,
   DataTableToolbar,
@@ -136,6 +137,8 @@ export function SalesOrdersPanel({
 
   return (
     <section>
+      <Card>
+      <CardBody>
       <DataTableToolbar
         search={table.search}
         onSearchChange={table.setSearch}
@@ -250,6 +253,8 @@ export function SalesOrdersPanel({
         filtered={table.filteredCount}
         onPageChange={table.setPage}
       />
+      </CardBody>
+      </Card>
     </section>
   );
 }

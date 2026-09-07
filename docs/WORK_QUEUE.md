@@ -77,8 +77,14 @@ cadena de modales) se construyó en Ventas — con correlativos reales
 línea (`SummarizeSalesTotalsUseCase`) como los dos habilitadores de
 backend que no existían, y un timeout de Vitest en `apps/storefront`
 (ajeno al propio commit) encontrado y corregido por la corrida real de
-CI — todos estos bloques a pedido explícito del usuario. Modelo operativo
-actualizado: 2026-08-27.
+CI; e, inmediatamente después, a pedido explícito del usuario, el home
+dashboard se enriqueció con cuatro widgets nuevos (gráfica de tendencia
+de ventas, feed de actividad real, accesos rápidos, top clientes/
+productos del mes — con un primer reporte agregado real en Sales,
+`GetTopSellingProductsUseCase`) y el módulo de Ventas recibió un rediseño
+visual completo (tarjetas elevadas, indicadores de estado tipo punto,
+totales animados, barra de acciones flotante) — todos estos bloques a
+pedido explícito del usuario. Modelo operativo actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -251,6 +257,64 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 36 (rediseño visual del módulo de Ventas)
+
+Continuación directa del bloque anterior, a pedido explícito del usuario
+("Rediseño visual primero", elegido vía `AskUserQuestion` entre esa opción
+y agregar funciones diferenciadoras nuevas de una vez).
+
+- `shared/ui/card.tsx` nuevo (`Card`/`CardHeader`/`CardBody`/`CardFooter`),
+  `StatusBadge` rediseñado a "punto + etiqueta" (acotado a Ventas por
+  grep), `AnimatedMoney`/`useAnimatedNumber` nuevos (respeta
+  `prefers-reduced-motion`), `LoadingRows` con shimmer real.
+- `sales-order-editor.tsx` y `payments-section.tsx` reestructurados en
+  tarjetas elevadas con ícono por sección; la barra de acciones pasó a un
+  panel flotante centrado con blur. `quotes-panel.tsx`/
+  `sales-orders-panel.tsx`/`sales-returns-panel.tsx` envueltos en `Card`.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Rediseño visual
+  del módulo de Ventas: tarjetas elevadas, indicadores de estado tipo
+  punto, totales animados".
+- Sin tests nuevos (cambio puramente visual/estructural) — los 132 tests
+  existentes de `apps/erp-web` pasan sin modificar ninguna aserción.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 132/132, `apps/api` 1060/1060, `@erp/api-client` 23/23,
+  y la suite completa de `apps/e2e` contra infraestructura efímera real.
+- Alcance deliberadamente diferido: las funciones diferenciadoras
+  (KPIs en vivo, vista 360 de cliente, línea de tiempo, indicador de
+  margen, detección de duplicados, atajos de teclado, exportación,
+  acciones masivas) quedan pendientes de decisión explícita del usuario.
+
+### Hecho — sesión 36 (home dashboard enriquecido: tendencia, actividad, accesos rápidos, top clientes/productos)
+
+A pedido explícito del usuario tras ver el dashboard de widgets ya
+existente: *"en el dashboard quiero que agregues más cosas, se ve
+demasiado sencillo solo con los widgets"* — las cuatro opciones
+presentadas vía `AskUserQuestion` fueron elegidas todas.
+
+- **Backend**: `GetTopSellingProductsUseCase` nuevo (primer reporte
+  agregado real de Sales, `groupBy` real sobre `lineTotal`),
+  `SalesOrderLineRepository.topProductTotals` nuevo, `SalesReportsController`
+  nuevo en `/api/v1/sales/reports/top-products` (separado de
+  `SalesOrdersController` para evitar colisión con su ruta `:id`, mismo
+  patrón que `AccountingReportsController`). Reutiliza el permiso
+  `sales.orders.read` ya existente.
+- **Frontend**: `WidgetDefinition` gana una variante `render` (sin romper
+  los 10 widgets `compute`-based existentes). Cuatro widgets nuevos:
+  gráfica de tendencia de ventas (SVG hecho a mano), feed de actividad
+  real (desde `GET /api/v1/audit-entries`, con ~90 acciones traducidas a
+  español), accesos rápidos (navegación a los formularios más usados), y
+  top clientes/top productos del mes (el segundo vía el endpoint nuevo).
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "Home dashboard
+  enriquecido: tendencia de ventas, feed de actividad, accesos rápidos,
+  top clientes/productos".
+- Tests: 12 unitarios nuevos en `apps/erp-web` (funciones puras de los
+  widgets) — 132/132 en total. 4 unitarios nuevos en `apps/api`
+  (`get-top-selling-products.use-case.spec.ts`) — 1060/1060 en total.
+  **Verificado visualmente contra el dev server real** con el tenant
+  "Demo ERP" ya sembrado.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/api` 1060/1060, `apps/erp-web` 132/132, `@erp/api-client` 23/23.
 
 ### Hecho — sesión 36 (Ventas: tablas de trabajo reales + editor de página completa)
 

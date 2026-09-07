@@ -13,6 +13,7 @@ import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import { formatDate } from "../../shared/format/date";
 import { Button } from "../../shared/ui/button";
+import { Card, CardBody } from "../../shared/ui/card";
 import {
   DataTableToolbar,
   PaginationFooter,
@@ -284,7 +285,8 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
           </Button>
         </div>
       ) : (
-        <div>
+        <Card>
+        <CardBody>
           <DataTableToolbar
             search={table.search}
             onSearchChange={table.setSearch}
@@ -365,7 +367,8 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
             filtered={table.filteredCount}
             onPageChange={table.setPage}
           />
-        </div>
+        </CardBody>
+        </Card>
       )}
 
       <Modal

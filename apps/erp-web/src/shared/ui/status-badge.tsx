@@ -1,31 +1,52 @@
 import type { ReactNode } from "react";
 
 /**
- * Semantic tone of a status pill. Kept deliberately small and generic —
+ * Semantic tone of a status indicator. Kept deliberately small and generic —
  * every module maps its own status enum onto these four, instead of each
  * feature inventing its own colour vocabulary.
  */
 export type StatusTone = "neutral" | "progress" | "success" | "danger";
 
-const TONE_CLASS: Record<StatusTone, string> = {
-  // Draft/inactive: readable, but visually quiet — it is not an outcome yet.
-  neutral: "border-[var(--line-strong)] bg-[var(--field-hover)] text-[var(--muted-strong)]",
-  // In flight: uses the accent, so it follows the user's own theme colour.
-  progress: "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]",
-  success: "border-[var(--success)] bg-[var(--success-soft)] text-[var(--success)]",
-  danger: "border-[var(--danger)] bg-[var(--danger-soft)] text-[var(--danger)]",
+const DOT_CLASS: Record<StatusTone, string> = {
+  neutral: "bg-[var(--muted)]",
+  progress: "bg-[var(--accent)]",
+  success: "bg-[var(--success)]",
+  danger: "bg-[var(--danger)]",
+};
+
+const TEXT_CLASS: Record<StatusTone, string> = {
+  neutral: "text-[var(--muted-strong)]",
+  progress: "text-[var(--accent-soft-text)]",
+  success: "text-[var(--success)]",
+  danger: "text-[var(--danger)]",
 };
 
 interface StatusBadgeProps {
   tone: StatusTone;
   children: ReactNode;
+  /** "In flight" tones get a soft pulse so an active/pending state reads
+   * as alive, not just labeled — used sparingly (draft/confirmed states),
+   * never on a terminal one. Respects `prefers-reduced-motion` globally
+   * (see styles.css). */
+  pulse?: boolean;
 }
 
-export function StatusBadge({ tone, children }: StatusBadgeProps) {
+/**
+ * A dot + label, not a filled pill — the same minimal status-indicator
+ * language modern work tools (Linear, Notion) use, chosen deliberately over
+ * the heavier colored-background badge this codebase's other status
+ * displays still use elsewhere. Scoped to Sales only for now (no other
+ * module renders this component yet).
+ */
+export function StatusBadge({ tone, children, pulse = false }: StatusBadgeProps) {
   return (
-    <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.04em] ${TONE_CLASS[tone]}`}
-    >
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] font-bold ${TEXT_CLASS[tone]}`}>
+      <span className="relative grid size-1.5 shrink-0 place-items-center">
+        {pulse ? (
+          <span className={`absolute size-full animate-ping rounded-full opacity-60 ${DOT_CLASS[tone]}`} />
+        ) : null}
+        <span className={`size-1.5 rounded-full ${DOT_CLASS[tone]}`} />
+      </span>
       {children}
     </span>
   );

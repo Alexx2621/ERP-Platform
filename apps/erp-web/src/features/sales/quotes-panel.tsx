@@ -15,6 +15,7 @@ import { useAuth } from "../../shared/auth/auth-context";
 import { formatDate } from "../../shared/format/date";
 import { formatMoney } from "../../shared/format/money";
 import { Button } from "../../shared/ui/button";
+import { Card, CardBody } from "../../shared/ui/card";
 import {
   DataTableFilter,
   DataTableToolbar,
@@ -433,7 +434,8 @@ export function QuotesPanel({ selection, companyId, customers, products, warehou
           </Button>
         </div>
       ) : (
-        <div>
+        <Card>
+        <CardBody>
           <DataTableToolbar
             search={table.search}
             onSearchChange={table.setSearch}
@@ -547,7 +549,8 @@ export function QuotesPanel({ selection, companyId, customers, products, warehou
             filtered={table.filteredCount}
             onPageChange={table.setPage}
           />
-        </div>
+        </CardBody>
+        </Card>
       )}
 
       <Modal

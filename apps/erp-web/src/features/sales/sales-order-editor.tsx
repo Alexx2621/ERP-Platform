@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle, Package, Plus, XCircle } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, ListDashes, Package, Plus, Receipt, XCircle } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type {
   CustomerResponse,
@@ -12,8 +12,9 @@ import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
 import { formatDate } from "../../shared/format/date";
-import { formatMoney } from "../../shared/format/money";
+import { AnimatedMoney } from "../../shared/ui/animated-money";
 import { Button } from "../../shared/ui/button";
+import { Card, CardBody, CardFooter, CardHeader } from "../../shared/ui/card";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { ErrorNotice } from "../../shared/ui/notice";
@@ -243,7 +244,7 @@ export function SalesOrderEditor({
   const isConfirmed = order?.status === "CONFIRMED";
 
   return (
-    <section className="grid gap-6">
+    <section className="grid gap-6 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button type="button" variant="quiet" className="h-9 px-2" onClick={onClose}>
           <ArrowLeft size={16} weight="bold" aria-hidden="true" />
@@ -252,7 +253,7 @@ export function SalesOrderEditor({
         {order ? (
           <div className="flex items-center gap-3">
             <span className="font-mono text-[15px] font-bold text-[var(--ink)]">{order.number}</span>
-            <StatusBadge tone={salesOrderStatusTone(order.status)}>
+            <StatusBadge tone={salesOrderStatusTone(order.status)} pulse={isDraft || isConfirmed}>
               {salesOrderStatusLabel(order.status)}
             </StatusBadge>
           </div>
@@ -261,175 +262,204 @@ export function SalesOrderEditor({
 
       {/* Header: an editable form until the draft exists, then a summary. */}
       {order ? (
-        <dl className="grid gap-4 rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-5 sm:grid-cols-4">
-          <div>
-            <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">Cliente</dt>
-            <dd className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
-              {customerLabel(customers, order.customerId)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">Fecha</dt>
-            <dd className="mt-1 text-[13px] font-semibold text-[var(--ink)]">{formatDate(order.createdAt)}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">Moneda</dt>
-            <dd className="mt-1 font-mono text-[13px] font-semibold text-[var(--ink)]">{order.currency}</dd>
-          </div>
-          <div className="sm:text-right">
-            <dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">Total</dt>
-            <dd className="mt-1 font-mono text-[17px] font-extrabold text-[var(--ink)]">
-              {formatMoney(order.total, order.currency)}
-            </dd>
-          </div>
-        </dl>
-      ) : (
-        <form
-          className="grid gap-5 rounded-[12px] border border-[var(--line)] bg-[var(--paper)] p-5"
-          onSubmit={(event) => {
-            void createDraft(event);
-          }}
-        >
-          <p className="text-[13px] font-extrabold text-[var(--ink)]">Encabezado del pedido</p>
-          {headerError ? <ErrorNotice message={headerError} /> : null}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <CustomerSelect
-              fieldPrefix="order-editor"
-              customers={customers}
-              value={customerId}
-              onChange={setCustomerId}
-            />
-            <FormField
-              name="order-editor-currency"
-              label="Moneda (ISO 4217)"
-              value={currency}
-              required
-              maxLength={3}
-              onChange={(event) => setCurrency(event.target.value.toUpperCase())}
-            />
-            <div className="flex items-end">
-              <Button type="submit" busy={creating}>
-                Crear borrador
-              </Button>
+        <Card>
+          <CardHeader icon={Receipt} title="Resumen del pedido" description="Datos del documento" />
+          <CardBody className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+                Cliente
+              </p>
+              <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">
+                {customerLabel(customers, order.customerId)}
+              </p>
             </div>
-          </div>
-          <p className="text-[12px] font-medium text-[var(--muted)]">
-            El pedido se guarda como borrador para poder agregarle líneas con precios y totales reales. Un
-            borrador se puede cancelar en cualquier momento.
-          </p>
-        </form>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+                Fecha
+              </p>
+              <p className="mt-1 text-[13px] font-semibold text-[var(--ink)]">{formatDate(order.createdAt)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+                Moneda
+              </p>
+              <p className="mt-1 font-mono text-[13px] font-semibold text-[var(--ink)]">{order.currency}</p>
+            </div>
+            <div className="sm:text-right">
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+                Total
+              </p>
+              <p className="mt-1 font-mono text-[17px] font-extrabold text-[var(--ink)]">
+                <AnimatedMoney amount={order.total} currency={order.currency} />
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader
+            icon={Receipt}
+            title="Nuevo pedido de venta"
+            description="El encabezado se guarda como borrador real"
+          />
+          <CardBody>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                void createDraft(event);
+              }}
+            >
+              {headerError ? <ErrorNotice message={headerError} /> : null}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <CustomerSelect
+                  fieldPrefix="order-editor"
+                  customers={customers}
+                  value={customerId}
+                  onChange={setCustomerId}
+                />
+                <FormField
+                  name="order-editor-currency"
+                  label="Moneda (ISO 4217)"
+                  value={currency}
+                  required
+                  maxLength={3}
+                  onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+                />
+                <div className="flex items-end">
+                  <Button type="submit" busy={creating}>
+                    Crear borrador
+                  </Button>
+                </div>
+              </div>
+              <p className="text-[12px] font-medium text-[var(--muted)]">
+                El pedido se guarda como borrador para poder agregarle líneas con precios y totales reales. Un
+                borrador se puede cancelar en cualquier momento.
+              </p>
+            </form>
+          </CardBody>
+        </Card>
       )}
 
       {/* Lines */}
       {order ? (
-        <div className="grid gap-4">
-          <p className="text-[13px] font-extrabold text-[var(--ink)]">Líneas</p>
-          <Table aria-busy={lines === null}>
-            <TableCaption>Líneas del pedido</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Producto</TableHead>
-                <TableHead scope="col" className="text-right">
-                  Cantidad
-                </TableHead>
-                <TableHead scope="col" className="text-right">
-                  Precio unitario
-                </TableHead>
-                <TableHead scope="col" className="text-right">
-                  Descuento
-                </TableHead>
-                <TableHead scope="col" className="text-right">
-                  Total
-                </TableHead>
-                <TableHead scope="col">Reserva</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines === null ? (
-                <LoadingRows columns={6} />
-              ) : lines.length === 0 ? (
+        <Card>
+          <CardHeader
+            icon={ListDashes}
+            title="Líneas del pedido"
+            description={lines === null ? "Cargando…" : `${lines.length} línea(s)`}
+          />
+          <CardBody className="p-0">
+            <Table aria-busy={lines === null}>
+              <TableCaption>Líneas del pedido</TableCaption>
+              <TableHeader>
                 <TableRow>
-                  <TableEmpty
-                    colSpan={6}
-                    title="Todavía no hay líneas"
-                    description="Agrega al menos una línea antes de confirmar el pedido."
-                  />
+                  <TableHead scope="col">Producto</TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Cantidad
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Precio unitario
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Descuento
+                  </TableHead>
+                  <TableHead scope="col" className="text-right">
+                    Total
+                  </TableHead>
+                  <TableHead scope="col">Reserva</TableHead>
                 </TableRow>
-              ) : (
-                lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell className="text-[12px] font-semibold">
-                      {productLabel(products, line.productId)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-[12px]">{line.quantity}</TableCell>
-                    <TableCell className="text-right font-mono text-[12px]">{line.unitPrice}</TableCell>
-                    <TableCell className="text-right font-mono text-[12px]">{line.discountAmount}</TableCell>
-                    <TableCell className="text-right font-mono text-[12px] font-bold">{line.lineTotal}</TableCell>
-                    <TableCell className="text-[11px] text-[var(--muted-strong)]">
-                      {line.reservationId ? "Reservada" : "—"}
-                    </TableCell>
+              </TableHeader>
+              <TableBody>
+                {lines === null ? (
+                  <LoadingRows columns={6} />
+                ) : lines.length === 0 ? (
+                  <TableRow>
+                    <TableEmpty
+                      colSpan={6}
+                      title="Todavía no hay líneas"
+                      description="Agrega al menos una línea antes de confirmar el pedido."
+                    />
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  lines.map((line) => (
+                    <TableRow key={line.id}>
+                      <TableCell className="text-[12px] font-semibold">
+                        {productLabel(products, line.productId)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.quantity}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.unitPrice}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px]">{line.discountAmount}</TableCell>
+                      <TableCell className="text-right font-mono text-[12px] font-bold">
+                        {line.lineTotal}
+                      </TableCell>
+                      <TableCell className="text-[11px] text-[var(--muted-strong)]">
+                        {line.reservationId ? "Reservada" : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardBody>
 
           {isDraft ? (
-            <form
-              className="grid gap-4 rounded-[12px] border border-dashed border-[var(--line-strong)] p-5"
-              onSubmit={(event) => {
-                void addLine(event);
-              }}
-            >
-              {lineError ? <ErrorNotice message={lineError} /> : null}
-              <LineTargetFields
-                fieldPrefix="order-editor-line"
-                selection={selection}
-                companyId={companyId}
-                products={products}
-                warehouses={warehouses}
-                taxes={taxes}
-                productId={productId}
-                onProductIdChange={setProductId}
-                productVariantId={productVariantId}
-                onProductVariantIdChange={setProductVariantId}
-                warehouseId={warehouseId}
-                onWarehouseIdChange={setWarehouseId}
-                taxId={taxId}
-                onTaxIdChange={setTaxId}
-                requireWarehouse
-              />
-              <div className="grid gap-4 sm:grid-cols-4">
-                <FormField
-                  name="order-editor-line-quantity"
-                  label="Cantidad"
-                  value={quantity}
-                  required
-                  onChange={(event) => setQuantity(event.target.value)}
+            <CardFooter className="bg-[var(--canvas)]">
+              <form
+                className="grid gap-4"
+                onSubmit={(event) => {
+                  void addLine(event);
+                }}
+              >
+                {lineError ? <ErrorNotice message={lineError} /> : null}
+                <LineTargetFields
+                  fieldPrefix="order-editor-line"
+                  selection={selection}
+                  companyId={companyId}
+                  products={products}
+                  warehouses={warehouses}
+                  taxes={taxes}
+                  productId={productId}
+                  onProductIdChange={setProductId}
+                  productVariantId={productVariantId}
+                  onProductVariantIdChange={setProductVariantId}
+                  warehouseId={warehouseId}
+                  onWarehouseIdChange={setWarehouseId}
+                  taxId={taxId}
+                  onTaxIdChange={setTaxId}
+                  requireWarehouse
                 />
-                <FormField
-                  name="order-editor-line-unitPrice"
-                  label="Precio unitario (opcional)"
-                  hint="Si lo dejas vacío se toma de la lista de precios."
-                  value={unitPrice}
-                  onChange={(event) => setUnitPrice(event.target.value)}
-                />
-                <FormField
-                  name="order-editor-line-discountAmount"
-                  label="Descuento (opcional)"
-                  value={discountAmount}
-                  onChange={(event) => setDiscountAmount(event.target.value)}
-                />
-                <div className="flex items-end">
-                  <Button type="submit" variant="secondary" busy={addingLine}>
-                    <Plus size={16} weight="bold" aria-hidden="true" />
-                    Agregar línea
-                  </Button>
+                <div className="grid gap-4 sm:grid-cols-4">
+                  <FormField
+                    name="order-editor-line-quantity"
+                    label="Cantidad"
+                    value={quantity}
+                    required
+                    onChange={(event) => setQuantity(event.target.value)}
+                  />
+                  <FormField
+                    name="order-editor-line-unitPrice"
+                    label="Precio unitario (opcional)"
+                    hint="Si lo dejas vacío se toma de la lista de precios."
+                    value={unitPrice}
+                    onChange={(event) => setUnitPrice(event.target.value)}
+                  />
+                  <FormField
+                    name="order-editor-line-discountAmount"
+                    label="Descuento (opcional)"
+                    value={discountAmount}
+                    onChange={(event) => setDiscountAmount(event.target.value)}
+                  />
+                  <div className="flex items-end">
+                    <Button type="submit" variant="secondary" busy={addingLine}>
+                      <Plus size={16} weight="bold" aria-hidden="true" />
+                      Agregar línea
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </form>
+              </form>
+            </CardFooter>
           ) : null}
-        </div>
+        </Card>
       ) : null}
 
       {/* Payments live with the document, not on a separate screen. Shown
@@ -438,42 +468,46 @@ export function SalesOrderEditor({
           previous modal-based UI never gated this either. */}
       {order ? <PaymentsSection order={order} selection={selection} companyId={companyId} /> : null}
 
-      {/* Action bar */}
+      {/* Action bar: a floating panel over the page, not a plain sticky
+          strip — backdrop-blur + shadow-lg reads as an app-level command
+          bar rather than another stacked section. */}
       {order ? (
-        <div className="sticky bottom-0 grid gap-3 border-t border-[var(--line)] bg-[var(--paper)] py-4">
-          {actionError ? <ErrorNotice message={actionError} /> : null}
-          <div className="flex flex-wrap items-center gap-2">
-            {isDraft ? (
-              <Button
-                type="button"
-                busy={actionBusy === "confirm"}
-                disabled={(lines?.length ?? 0) === 0}
-                onClick={() => void runAction("confirm")}
-              >
-                <CheckCircle size={16} weight="bold" aria-hidden="true" />
-                Confirmar pedido
-              </Button>
-            ) : null}
-            {isConfirmed ? (
-              <Button type="button" busy={actionBusy === "fulfill"} onClick={() => void runAction("fulfill")}>
-                <Package size={16} weight="bold" aria-hidden="true" />
-                Despachar
-              </Button>
-            ) : null}
-            {isDraft || isConfirmed ? (
-              <Button
-                type="button"
-                variant="quiet"
-                busy={actionBusy === "cancel"}
-                onClick={() => void runAction("cancel")}
-              >
-                <XCircle size={16} weight="bold" aria-hidden="true" />
-                Cancelar pedido
-              </Button>
-            ) : null}
-            <span className="ml-auto font-mono text-[15px] font-extrabold text-[var(--ink)]">
-              {formatMoney(order.total, order.currency)}
-            </span>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-4 sm:px-6">
+          <div className="pointer-events-auto grid w-full max-w-3xl gap-3 rounded-[16px] border border-[var(--line)] bg-[var(--paper)]/90 p-4 shadow-[var(--shadow-lg)] backdrop-blur">
+            {actionError ? <ErrorNotice message={actionError} /> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {isDraft ? (
+                <Button
+                  type="button"
+                  busy={actionBusy === "confirm"}
+                  disabled={(lines?.length ?? 0) === 0}
+                  onClick={() => void runAction("confirm")}
+                >
+                  <CheckCircle size={16} weight="bold" aria-hidden="true" />
+                  Confirmar pedido
+                </Button>
+              ) : null}
+              {isConfirmed ? (
+                <Button type="button" busy={actionBusy === "fulfill"} onClick={() => void runAction("fulfill")}>
+                  <Package size={16} weight="bold" aria-hidden="true" />
+                  Despachar
+                </Button>
+              ) : null}
+              {isDraft || isConfirmed ? (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  busy={actionBusy === "cancel"}
+                  onClick={() => void runAction("cancel")}
+                >
+                  <XCircle size={16} weight="bold" aria-hidden="true" />
+                  Cancelar pedido
+                </Button>
+              ) : null}
+              <span className="ml-auto font-mono text-[15px] font-extrabold text-[var(--ink)]">
+                <AnimatedMoney amount={order.total} currency={order.currency} />
+              </span>
+            </div>
           </div>
         </div>
       ) : null}
