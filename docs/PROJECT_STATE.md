@@ -4131,6 +4131,108 @@ real de GitHub Actions confirmada `"conclusion":"success"` tras el push a
 `central-owner@erp-platform.local` / `CentralErp9!Platform`,
 `aurora-owner@erp-platform.local` / `AuroraErp9!Platform`.
 
+### UX: tablas de trabajo reales + editor de pedido a página completa — piloto en Ventas (2026-09-05/07)
+
+A pedido explícito del usuario, tras una auditoría real de UX vía
+Playwright (no especulada): "Ahora veo toda la interfaz grafica como muy
+sencilla... como lo podemos mejorar a nivel de usuario final?" — la
+auditoría mostró evidencia concreta (99 pedidos de venta en una sola lista
+sin buscador ni columnas de fecha/número/total, filas de ~69px, estados en
+texto plano, y una cadena de 5-7 pasos entre modales para crear un solo
+pedido). El usuario eligió explícitamente, vía `AskUserQuestion`,
+**"Tablas + flujo de captura"** (tablas de trabajo reales — búsqueda,
+filtros, orden, paginación, columnas faltantes — y reconstruir la captura
+de documentos como una página completa en vez de la cadena de modales) y
+**"Piloto en Ventas primero"** (construirlo completo ahí, revisar, y
+replicar después a los demás módulos).
+
+**Backend — dos capacidades que no existían y no podían inventarse en el
+frontend**: (1) **`document_sequences`** (tabla nueva) +
+`DocumentNumberService` (`apps/api/src/shared/document-numbering/`,
+detrás de un puerto `DOCUMENT_NUMBER_ALLOCATOR`, mismo patrón token+
+interfaz que cada repositorio de este código base) — asigna correlativos
+legibles por empresa (`COT-000001`, `PED-000001`) bajo `SELECT ... FOR
+UPDATE` dentro de una transacción corta, el mismo patrón de bloqueo de fila
+que `PrismaInventoryBalanceRepository.applyMovement` ya usa. Deliberadamente
+**no gapless** (documentado explícitamente en el propio servicio): el
+número se asigna justo antes de escribir el documento, así que un fallo
+intermedio deja un hueco en la secuencia — un numerado gapless de grado
+fiscal exigiría committear el contador en la *misma* transacción que el
+documento, un problema materialmente más difícil que ninguna jurisdicción
+de este código base pide todavía. `Quote`/`SalesOrder` existentes se
+retro-numeraron vía una migración escrita a mano (columna nullable →
+backfill numerado por `ROW_NUMBER() OVER (PARTITION BY tenant_id,
+company_id ORDER BY created_at, id)` → `NOT NULL` + índice único) — un
+`prisma migrate diff` habría generado un `ADD COLUMN NOT NULL` desnudo,
+inaplicable contra tablas ya pobladas. (2) **`SummarizeSalesTotalsUseCase`**
+(nuevo): agrega el total de un documento sumando sus propias líneas vía un
+solo `groupBy` de Prisma — nunca almacenado, siempre calculado al leer, la
+misma regla "leer el ledger, nunca un contador guardado" que
+`InventoryBalance`/el Balance de Comprobación ya siguen. `QuoteResponseDto`/
+`SalesOrderResponseDto` ganan `number` y `total` reales. Nuevo
+`GET /api/v1/sales/orders/:id` (`GetSalesOrderUseCase.executeForCompany`,
+mismo patrón "empresa incorrecta se lee como no encontrado" que el resto
+del módulo), necesario para que el editor nuevo pueda cargar un pedido
+individual con su total real.
+
+**Frontend — primitivos nuevos y reutilizables** (`apps/erp-web/src/shared/
+ui/data-table.tsx`, `status-badge.tsx`, `shared/format/money.ts`):
+`DataTableToolbar`/`DataTableFilter`/`SortableHead`/`PaginationFooter`/
+`useWorkTable` — búsqueda/filtro/orden/paginación **del lado del cliente**,
+sobre la página ya traída (cada endpoint de listado tope 200 filas y
+ninguno soporta búsqueda del lado del servidor todavía — la capacidad
+honesta, no una grilla server-side simulada) — y `StatusBadge` (cuatro
+tonos semánticos reutilizados en todos los enums de estado). Cotizaciones y
+Pedidos se reescribieron como tablas de trabajo reales con las columnas que
+antes faltaban. **`SalesOrderEditor`** (nuevo): reemplaza la cadena
+crear-modal → buscar-la-fila → modal-detalle → modal-agregar-línea por una
+sola página — encabezado, líneas con totales reales, acciones confirmar/
+cancelar/despachar, y pagos integrados en la misma vista.
+`PaymentsSection` se extrajo a su propio archivo para que tanto el editor
+como el panel de lista puedan usarla.
+
+**Dos correcciones reales encontradas durante la propia reconstrucción, no
+alcance añadido**: el modal de detalle anterior solo mostraba Pagos para un
+pedido que no fuera `DRAFT`, pese a que capturar un pago no tiene esa
+restricción en el backend (`CapturePaymentUseCase` no valida el estado del
+pedido) — preservado el comportamiento original correcto en el editor
+nuevo, en vez de heredar una restricción nunca pedida. Y los cuatro specs
+de integración que construyen `CreateSalesOrderUseCase`/
+`CreateQuoteUseCase`/`ConvertQuoteToSalesOrderUseCase` directamente
+(`commerce`, `payments`, `pos`, `sales`) se actualizaron para inyectar el
+`DocumentNumberService` real contra Postgres, no solo el doble en memoria
+nuevo para tests unitarios.
+
+**Verificado end-to-end**: `apps/api` unitarios 1056/1056, integración
+contra Postgres real 14/14 suites (50/50 tests), `apps/erp-web` unitarios
+120/120, `@erp/api-client` 23/23, monorepo completo vía turbo
+(`lint`/`typecheck`/`build`, 31/31 tareas), y Playwright E2E 20/20
+(incluyendo `sales.spec.ts` reescrito contra el nuevo editor de página
+completa — un fallo aislado por timeout en la corrida completa se investigó
+y confirmó como contención de recursos de la suite completa, no una
+regresión real: la misma prueba en aislamiento pasó limpia en 12.9s, y una
+segunda corrida completa del set de 20 pasó limpia también).
+
+**Efecto colateral real encontrado por la propia corrida de CI de este
+commit, no localmente**: `checkout-view.spec.tsx` (`apps/storefront`, un
+archivo no tocado por este bloque) expiró a ~5.1s bajo el runner de 2
+núcleos de GitHub Actions — la misma clase de fragilidad ya corregida
+antes para `apps/erp-web` (el timeout por defecto de 5000ms de Vitest es
+ajustado para una prueba que hace varias interacciones reales y
+secuenciales de `userEvent.type()`). Corregido aplicando exactamente el
+mismo fix ya probado (`testTimeout`/`hookTimeout` a 20s en
+`vitest.config.ts`, `asyncUtilTimeout` a 15s en `test/setup.ts`),
+confirmado no relacionado con Ventas (`apps/storefront` no aparece en el
+diff de ese commit). Verificado localmente (23/23) y con una segunda
+corrida real de GitHub Actions confirmada `"conclusion":"success"`.
+
+Alcance deliberadamente fuera de este bloque: replicar tablas de trabajo/
+editor de página completa a Compras/POS/Comercio/CRM/etc. — el propio plan
+del usuario fue "piloto en Ventas primero, revisar, luego replicar"; el
+módulo de Devoluciones de Ventas se dejó con su modal existente (una
+edición mucho más simple, de una sola pasada) en vez de forzarlo al mismo
+patrón sin necesidad real.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
@@ -4264,15 +4366,34 @@ recortaba el segmento de timestamp de un UUIDv7 (colisionando bajo
 sucesión rápida), y `TenantsController.provision()` ejecutando sus
 efectos secundarios de forma incondicional incluso ante una repetición
 idempotente ya soportada por `findExisting()`, corregido con el mismo
-patrón `wasReplayed` ya usado por Payments/Commerce. Sin trabajo en curso
-tras este bloque — lo único que queda de todo `docs/ROADMAP.md` §16/§17
-sigue bloqueado por el mismo gate de evidencia que cerró Fase 12
-(SLOs/alertas, capacity tests, runbooks/backup/PITR/DR drills, previews
-de PR, export/legal holds/derecho al olvido) — ninguno tiene un siguiente
-paso real sin tráfico de producción genuino. El siguiente trabajo depende
-de que el usuario aporte esa evidencia, indique otra prioridad, reporte
-otro bug real, o pida iniciar una fase/ítem deliberadamente diferido
-documentado en "## Pending".
+patrón `wasReplayed` ya usado por Payments/Commerce. **Inmediatamente
+después, a pedido explícito del usuario tras una auditoría real de UX
+("Ahora veo toda la interfaz grafica como muy sencilla... como lo podemos
+mejorar a nivel de usuario final?"), se construyó el piloto de tablas de
+trabajo + editor de página completa en Ventas** — ver "UX: tablas de
+trabajo reales + editor de pedido a página completa — piloto en Ventas"
+arriba: `DocumentNumberService` nuevo (correlativos `COT-`/`PED-` reales,
+bajo `SELECT ... FOR UPDATE`, deliberadamente no gapless),
+`SummarizeSalesTotalsUseCase` nuevo (total agregado por `groupBy`, nunca
+almacenado), primitivos de tabla reutilizables
+(`DataTableToolbar`/`SortableHead`/`PaginationFooter`/`useWorkTable`/
+`StatusBadge`), y `SalesOrderEditor` (página completa, reemplazando la
+cadena de modales). De paso, un efecto colateral real encontrado por la
+propia corrida de CI de ese commit —no local— llevó a corregir el mismo
+timeout de Vitest ya conocido (`apps/erp-web`) también en
+`apps/storefront`. Sin trabajo en curso tras este bloque — el siguiente
+paso natural (replicar el mismo patrón de tablas/editor a Compras/POS/
+Comercio/CRM/etc.) fue explícitamente diferido por el propio plan del
+usuario ("piloto en Ventas primero, revisar, luego replicar") hasta que
+el usuario revise el resultado y pida la réplica. Lo único que queda de
+todo `docs/ROADMAP.md` §16/§17 sigue bloqueado por el mismo gate de
+evidencia que cerró Fase 12 (SLOs/alertas, capacity tests, runbooks/
+backup/PITR/DR drills, previews de PR, export/legal holds/derecho al
+olvido) — ninguno tiene un siguiente paso real sin tráfico de producción
+genuino. El siguiente trabajo depende de que el usuario revise el piloto
+de Ventas y pida replicarlo, aporte evidencia de producción, indique otra
+prioridad, reporte otro bug real, o pida iniciar una fase/ítem
+deliberadamente diferido documentado en "## Pending".
 
 ## Revisión de Fase 12 (Scale) — sin evidencia, sesión 36 (2026-09-03)
 

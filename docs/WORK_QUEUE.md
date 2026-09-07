@@ -63,8 +63,22 @@ API real — encontrando y corrigiendo de paso dos bugs reales y no
 relacionados (un generador de código "aleatorio" en Commerce/CRM que en
 realidad recortaba el timestamp de un UUIDv7, y `TenantsController.provision()`
 ejecutando sus efectos secundarios sin condición incluso en una
-repetición idempotente) — los trece bloques a pedido explícito del
-usuario). Modelo operativo actualizado: 2026-08-27.
+repetición idempotente); y, a pedido explícito del usuario, ese mismo
+script se escaló a 3 tenants separados con ≥10 registros reales por
+módulo, encontrando dos bugs reales más acotados a la propia lógica del
+script (un `amountTendered` fijo de POS insuficiente para el bucle
+escalado, y una reapertura de turno POS sobre una caja ya abierta por una
+corrida previa fallida); y, a pedido explícito del usuario tras una
+auditoría real de UX vía Playwright, un piloto de tablas de trabajo
+reales (búsqueda/filtro/orden/paginación/columnas de número-fecha-total)
+más un editor de pedido de venta a página completa (reemplazando la
+cadena de modales) se construyó en Ventas — con correlativos reales
+(`document_sequences`/`DocumentNumberService`) y totales agregados de
+línea (`SummarizeSalesTotalsUseCase`) como los dos habilitadores de
+backend que no existían, y un timeout de Vitest en `apps/storefront`
+(ajeno al propio commit) encontrado y corregido por la corrida real de
+CI — todos estos bloques a pedido explícito del usuario. Modelo operativo
+actualizado: 2026-08-27.
 
 Rama de trabajo de Claude: `ai/claude`. Fuente integrada: `develop`.
 Estable/releases: `main`. La rama `ai/codex` se conserva únicamente como
@@ -132,15 +146,29 @@ convención de seeders reentrantes/observables formalizada
 (`docs/ARCHITECTURE.md` §14.4, con un bug real corregido en
 `StorefrontSystemUserSeeder`), y un module template real
 (`docs/MODULE_TEMPLATE.md`). `docs/ROADMAP.md` §17 quedó reescrito con el
-estado real, ítem por ítem. **Sin ítem de mantenimiento restante
-conocido, y sin ningún ítem restante de `docs/ROADMAP.md` §16/§17
-genuinamente construible hoy**: lo único que queda (SLOs/alertas, capacity
+estado real, ítem por ítem. Sin ítem restante de `docs/ROADMAP.md` §16/§17
+genuinamente construible sin tráfico de producción real, se continuó con
+la propia base instalada de datos de demostración (home dashboard con
+widgets drag-and-drop, seed de "Demo ERP" y luego escalado a 3 tenants con
+≥10 registros por módulo). **Inmediatamente después, a pedido explícito
+del usuario tras una auditoría real de UX ("como lo podemos mejorar a
+nivel de usuario final?"), se construyó el piloto de tablas de trabajo +
+editor de pedido a página completa en Ventas** — ver "Hecho — sesión 36
+(Ventas: tablas de trabajo reales + editor de página completa)" abajo:
+correlativos reales (`COT-`/`PED-`), totales agregados de las líneas,
+primitivos de tabla reutilizables (búsqueda/filtro/orden/paginación/
+badges de estado), y un editor de página completa reemplazando la cadena
+de modales — con un efecto colateral real (un timeout de Vitest en
+`apps/storefront`, no tocado por ese commit) encontrado y corregido por
+la propia corrida de CI. **Sin ítem de mantenimiento restante conocido**:
+lo único que queda de `docs/ROADMAP.md` §16/§17 (SLOs/alertas, capacity
 tests, runbooks/backup/PITR/DR drills, previews de PR, export/legal
-holds) está bloqueado por el mismo gate de evidencia que cerró Fase 12 —
+holds) sigue bloqueado por el mismo gate de evidencia que cerró Fase 12 —
 ninguno tiene un siguiente paso real sin tráfico de producción genuino.
-El siguiente trabajo depende de que el usuario aporte esa evidencia,
-indique otra prioridad, o pida iniciar algo deliberadamente diferido
-documentado en "## Pending" más abajo.
+El siguiente trabajo depende de que el usuario revise el piloto de Ventas
+y pida replicar el mismo patrón a Compras/POS/Comercio/CRM/etc., aporte
+evidencia de producción, indique otra prioridad, o pida iniciar algo
+deliberadamente diferido documentado en "## Pending" más abajo.
 Alcance deliberadamente fuera de Fase 11 y diferido (no
 simulado — decisión central de la fase, ver `docs/DECISIONS.md` ADR-015 y
 "Known limitations" en "App Registry" de `docs/SECURITY.md`): un "Plugin
@@ -223,6 +251,73 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — sesión 36 (Ventas: tablas de trabajo reales + editor de página completa)
+
+A pedido explícito del usuario tras una auditoría real de UX vía
+Playwright (evidencia concreta, no especulada: 99 pedidos en una lista sin
+buscador ni columnas de fecha/número/total, filas de ~69px, estados en
+texto plano, 5-7 pasos entre modales para crear un pedido) y una elección
+explícita vía `AskUserQuestion` — **"Tablas + flujo de captura"** y
+**"Piloto en Ventas primero"**.
+
+- **Backend**: `document_sequences` + `DocumentNumberService`
+  (`apps/api/src/shared/document-numbering/`, puerto
+  `DOCUMENT_NUMBER_ALLOCATOR`) asigna correlativos reales (`COT-000001`,
+  `PED-000001`) bajo `SELECT ... FOR UPDATE`, deliberadamente no gapless
+  (documentado en el propio servicio). `Quote`/`SalesOrder` existentes
+  retro-numerados vía migración escrita a mano (nullable → backfill
+  numerado por `ROW_NUMBER()` → `NOT NULL` + índice único), ya que
+  `prisma migrate diff` habría generado un `ADD COLUMN NOT NULL` inválido
+  contra tablas pobladas. `SummarizeSalesTotalsUseCase` (nuevo) agrega el
+  total de un documento por `groupBy` sobre sus líneas — nunca
+  almacenado, misma regla que `InventoryBalance`/el Balance de
+  Comprobación. `QuoteResponseDto`/`SalesOrderResponseDto` ganan
+  `number`/`total` reales; `GET /api/v1/sales/orders/:id` nuevo.
+- **Frontend**: primitivos nuevos y reutilizables
+  (`DataTableToolbar`/`DataTableFilter`/`SortableHead`/
+  `PaginationFooter`/`useWorkTable`, `StatusBadge`, `formatMoney`) —
+  búsqueda/filtro/orden/paginación del lado del cliente sobre la página
+  ya traída (honesto: ningún endpoint de listado soporta búsqueda
+  server-side todavía). Cotizaciones y Pedidos reescritos como tablas de
+  trabajo reales. `SalesOrderEditor` (nuevo): página completa
+  reemplazando la cadena crear-modal → buscar-fila → modal-detalle →
+  modal-agregar-línea, con encabezado, líneas con totales reales,
+  acciones confirmar/cancelar/despachar y pagos integrados
+  (`PaymentsSection` extraído a su propio archivo).
+- **Dos correcciones reales, no alcance añadido**: el modal anterior solo
+  mostraba Pagos para un pedido no-`DRAFT` pese a que
+  `CapturePaymentUseCase` no tiene esa restricción — preservado el
+  comportamiento original correcto; y los 4 specs de integración que
+  construyen los use cases de Sales directamente (`commerce`, `payments`,
+  `pos`, `sales`) se actualizaron para inyectar el `DocumentNumberService`
+  real, no solo el doble en memoria para tests unitarios.
+- Ver el detalle completo en `docs/PROJECT_STATE.md` — "UX: tablas de
+  trabajo reales + editor de pedido a página completa — piloto en
+  Ventas".
+- **Efecto colateral real encontrado por la propia corrida de CI, no
+  localmente**: `checkout-view.spec.tsx` (`apps/storefront`, archivo no
+  tocado por este bloque) expiró bajo el runner de 2 núcleos de GitHub
+  Actions — la misma clase de fragilidad ya corregida para `apps/erp-web`
+  (timeout de Vitest ajustado para interacciones reales secuenciales de
+  `userEvent.type()`). Corregido con el mismo fix ya probado
+  (`testTimeout`/`hookTimeout` a 20s, `asyncUtilTimeout` a 15s),
+  confirmado ajeno a Ventas por diff, verificado local (23/23) y con una
+  segunda corrida real de CI.
+- Validación completa: `apps/api` unitarios 1056/1056, integración contra
+  Postgres real 14/14 suites (50/50 tests), `apps/erp-web` unitarios
+  120/120, `@erp/api-client` 23/23, monorepo vía turbo
+  (`lint`/`typecheck`/`build`, 31/31 tareas), Playwright E2E 20/20 (un
+  fallo aislado por timeout en la corrida completa investigado y
+  confirmado como contención de recursos, no regresión — la misma prueba
+  en aislamiento pasó en 12.9s, y una segunda corrida completa pasó
+  limpia), y dos corridas reales de GitHub Actions confirmadas
+  `"conclusion":"success"` tras cada push a `develop`.
+- Alcance deliberadamente diferido: replicar el mismo patrón de tablas/
+  editor a Compras/POS/Comercio/CRM/etc. — el propio plan del usuario fue
+  "piloto en Ventas primero, revisar, luego replicar"; Devoluciones de
+  Ventas se dejó con su modal existente (edición mucho más simple) en vez
+  de forzarlo al mismo patrón sin necesidad real.
 
 ### Hecho — sesión 36 (3 tenants con ≥10 registros en cada módulo)
 
