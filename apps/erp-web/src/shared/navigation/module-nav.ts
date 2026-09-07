@@ -18,11 +18,20 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import type { AppPath } from "./router";
+import { TONE } from "../ui/tone-colors";
 
 export interface ModuleNavItem {
   path: AppPath;
   label: string;
   icon: Icon;
+  /**
+   * Fixed, theme-independent icon color — each module gets its own
+   * identity instead of every nav icon sharing the single user-chosen
+   * accent color (see `shared/ui/tone-colors.ts`). Only applied while the
+   * item is inactive; the active item already stands out via a solid
+   * accent-colored background.
+   */
+  color: string;
 }
 
 export interface ModuleNavSection {
@@ -39,41 +48,41 @@ export interface ModuleNavSection {
 export const moduleNavSections: ModuleNavSection[] = [
   {
     label: "General",
-    items: [{ path: "/workspace", label: "Inicio", icon: SquaresFour }],
+    items: [{ path: "/workspace", label: "Inicio", icon: SquaresFour, color: TONE.sky }],
   },
   {
     label: "Ventas y clientes",
     items: [
-      { path: "/sales", label: "Ventas", icon: ShoppingCartSimple },
-      { path: "/pos", label: "Punto de venta", icon: Coins },
-      { path: "/commerce", label: "Comercio", icon: Globe },
-      { path: "/crm", label: "CRM", icon: Target },
-      { path: "/contacts", label: "Contactos", icon: Users },
+      { path: "/sales", label: "Ventas", icon: ShoppingCartSimple, color: TONE.blue },
+      { path: "/pos", label: "Punto de venta", icon: Coins, color: TONE.orange },
+      { path: "/commerce", label: "Comercio", icon: Globe, color: TONE.cyan },
+      { path: "/crm", label: "CRM", icon: Target, color: TONE.pink },
+      { path: "/contacts", label: "Contactos", icon: Users, color: TONE.violet },
     ],
   },
   {
     label: "Compras e inventario",
     items: [
-      { path: "/purchasing", label: "Compras", icon: Truck },
-      { path: "/inventory", label: "Inventario", icon: Package },
-      { path: "/catalog", label: "Catálogo", icon: TShirt },
-      { path: "/commercial", label: "Comercial", icon: Wallet },
+      { path: "/purchasing", label: "Compras", icon: Truck, color: TONE.green },
+      { path: "/inventory", label: "Inventario", icon: Package, color: TONE.amber },
+      { path: "/catalog", label: "Catálogo", icon: TShirt, color: TONE.indigo },
+      { path: "/commercial", label: "Comercial", icon: Wallet, color: TONE.teal },
     ],
   },
   {
     label: "Producción y finanzas",
     items: [
-      { path: "/manufacturing", label: "Manufactura", icon: Factory },
-      { path: "/accounting", label: "Contabilidad", icon: Calculator },
+      { path: "/manufacturing", label: "Manufactura", icon: Factory, color: TONE.red },
+      { path: "/accounting", label: "Contabilidad", icon: Calculator, color: TONE.emerald },
     ],
   },
   {
     label: "Administración",
     items: [
-      { path: "/apps", label: "Apps", icon: Storefront },
-      { path: "/roles", label: "Roles y permisos", icon: ShieldCheck },
-      { path: "/settings", label: "Ajustes", icon: SlidersHorizontal },
-      { path: "/appearance", label: "Apariencia", icon: PaintBrush },
+      { path: "/apps", label: "Apps", icon: Storefront, color: TONE.fuchsia },
+      { path: "/roles", label: "Roles y permisos", icon: ShieldCheck, color: TONE.rose },
+      { path: "/settings", label: "Ajustes", icon: SlidersHorizontal, color: TONE.slate },
+      { path: "/appearance", label: "Apariencia", icon: PaintBrush, color: TONE.purple },
     ],
   },
 ];

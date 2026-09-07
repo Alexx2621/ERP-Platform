@@ -19,6 +19,7 @@ import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { StatusBadge } from "../../shared/ui/status-badge";
+import { TONE } from "../../shared/ui/tone-colors";
 import {
   Table,
   TableBody,
@@ -263,7 +264,7 @@ export function SalesOrderEditor({
       {/* Header: an editable form until the draft exists, then a summary. */}
       {order ? (
         <Card>
-          <CardHeader icon={Receipt} title="Resumen del pedido" description="Datos del documento" />
+          <CardHeader icon={Receipt} title="Resumen del pedido" description="Datos del documento" tone={TONE.blue} />
           <CardBody className="grid gap-4 sm:grid-cols-4">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--muted-strong)]">
@@ -301,6 +302,7 @@ export function SalesOrderEditor({
             icon={Receipt}
             title="Nuevo pedido de venta"
             description="El encabezado se guarda como borrador real"
+            tone={TONE.blue}
           />
           <CardBody>
             <form
@@ -347,6 +349,7 @@ export function SalesOrderEditor({
             icon={ListDashes}
             title="Líneas del pedido"
             description={lines === null ? "Cargando…" : `${lines.length} línea(s)`}
+            tone={TONE.purple}
           />
           {isDraft ? (
             <CardBody className="bg-[var(--canvas)]">

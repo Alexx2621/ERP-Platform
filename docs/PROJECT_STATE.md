@@ -4435,6 +4435,81 @@ campos para agregar productos no?"* — tres problemas reales, no solo uno.
   confirmando que el cambio es puramente de presentación/orden, no de
   contrato de comportamiento.
 
+### Paleta fija de colores por categoría: navegación, widgets del dashboard, encabezados de sección (sesión 36, 2026-09-07)
+
+A pedido explícito del usuario: *"Ahora agrega mas colores fijos en dónde
+corresponda, con los temas personalizados se ve muy triste la combinación
+que se haga, por ejemplo en algunas letras, iconos o investiga las reglas
+de UI/UX para que se vea todo mas vivo e interactivo"* — un problema real
+del propio sistema de personalización construido antes en esta sesión: el
+color de acento elegible por el usuario (Apariencia) se reutilizaba como
+único color para absolutamente todo ícono con fondo suave
+(`--accent-soft`/`--accent-soft-text`) en toda la plataforma — sidebar,
+widgets del dashboard, encabezados de tarjeta — así que un acento apagado
+o monocromático (ej. Pizarra) volvía la interfaz entera visualmente plana.
+
+- **Investigación real antes de implementar** (a pedido explícito del
+  usuario — "investiga las reglas de UI/UX"), no solo intuición: búsquedas
+  web confirmando prácticas 2025/2026 de sistemas de diseño — usar
+  **tokens semánticos por categoría, no un solo color de marca reutilizado
+  para todo**; para tarjetas de KPI, la práctica documentada es un tinte
+  de fondo suave (5-16% de opacidad) + el color pleno tanto para el ícono
+  como para el número/métrica; nunca depender solo del color (mantener
+  íconos y etiquetas); evitar combinaciones rojo-verde puras por
+  daltonismo. Fuentes: uxpin.com (Color Consistency in Design Systems),
+  colorpick.app (Color for Dashboards & Analytics), uxstudioteam.com
+  (Strategic color use in UX design), y patrones de sidebars SaaS
+  (Notion/Linear: un color de ícono por categoría, no monocromo).
+- **`shared/ui/tone-colors.ts`** (nuevo): paleta fija de 16 tonos vivos
+  (`TONE.blue`/`.green`/`.purple`/`.orange`/`.red`/`.teal`/`.pink`/
+  `.amber`/`.indigo`/`.cyan`/`.violet`/`.emerald`/`.rose`/`.sky`/
+  `.fuchsia`/`.slate`), deliberadamente **independiente** del acento
+  personalizable del usuario — misma familia de matices que los 8 presets
+  ya ofrecidos en Apariencia, extendida para dar variedad genuina.
+- **`shared/ui/card.tsx`**: `CardHeader` gana una prop `tone` opcional
+  (un hex). Cuando se especifica, sobreescribe dos variables CSS locales
+  (`--tile-bg`/`--tile-fg`, con `color-mix(in srgb, tone 16%, var(--paper))`
+  para el fondo — respeta automáticamente el tema claro/oscuro/superficie
+  personalizada del usuario sin duplicar lógica de mezcla en JS) en vez
+  de tocar la clase base; sin `tone`, el comportamiento es exactamente el
+  de antes (`--accent-soft`) — cero cambios para cualquier caller
+  existente. Aplicado a los 3 `CardHeader` reales de Ventas (Resumen del
+  pedido/Nuevo pedido de venta → azul, Líneas del pedido → púrpura,
+  Pagos → verde).
+- **`shared/navigation/module-nav.ts`**: `ModuleNavItem` gana un campo
+  `color` obligatorio — cada uno de los 16 módulos (más "Plataforma",
+  agregado en runtime para platform admins) recibe un tono fijo y
+  distinto. **`product-shell.tsx`** aplica ese color al ícono solo cuando
+  el ítem está inactivo (el ítem activo ya se distingue con un fondo de
+  acento sólido — mezclar ambos habría sido ruido visual, no jerarquía),
+  en las 3 superficies que renderizan el mismo `item.icon`: la lista del
+  sidebar, el ítem standalone del navbar, y las entradas de
+  `NavDropdown`.
+- **`features/home/widget-definitions.tsx`**: `WidgetDefinition` gana un
+  campo `color` obligatorio — los 15 widgets del dashboard reciben cada
+  uno un tono distinto. **`home-dashboard.tsx`**: `WidgetIcon` usa el
+  mismo patrón de variables CSS con fallback que `CardHeader`; el valor
+  numérico principal de cada widget `compute`-based (antes `text-[var(--ink)]`
+  neutro) ahora también se pinta con el color propio del widget — la
+  práctica de "tinte de fondo + color pleno para el ícono Y el número"
+  confirmada en la investigación, no solo el ícono.
+- **Verificado visualmente contra el dev server real** (script de
+  Playwright ad hoc, no comiteado) con el tenant "Demo ERP": los 16
+  módulos del sidebar con íconos de color distinto y variado (antes todos
+  del mismo azul de acento), los 15 widgets del dashboard con íconos Y
+  números coloreados de forma distintiva, y el editor de pedidos de
+  Ventas con sus tres `CardHeader` (azul/púrpura/verde) — la interfaz se
+  ve genuinamente más viva sin perder legibilidad ni el acento de marca
+  del usuario (que sigue gobernando botones, enlaces y el estado activo
+  de navegación, sin cambios).
+- Sin tests nuevos — cambio puramente visual; los 132 tests existentes de
+  `apps/erp-web` pasan sin modificar ninguna aserción (ninguna dependía de
+  las clases `bg-[var(--accent-soft)]`/`text-[var(--ink)]` reemplazadas).
+- Validación completa: `pnpm turbo run lint typecheck build` (limpio),
+  `apps/erp-web` 132/132 (serial), y la suite completa de `apps/e2e`
+  contra infraestructura efímera real tras detener los tres servidores
+  persistentes.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la

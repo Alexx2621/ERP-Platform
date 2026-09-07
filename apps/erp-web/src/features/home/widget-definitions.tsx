@@ -18,6 +18,7 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import type { AppPath } from "../../shared/navigation/router";
+import { TONE } from "../../shared/ui/tone-colors";
 import type { DashboardData } from "./use-dashboard-data";
 import { ActivityFeedWidget } from "./widgets/activity-feed-widget";
 import { QuickActionsWidget } from "./widgets/quick-actions-widget";
@@ -35,6 +36,10 @@ export interface WidgetDefinition {
   id: string;
   title: string;
   icon: Icon;
+  /** Fixed, theme-independent icon color (see `shared/ui/tone-colors.ts`)
+   * — every widget tile would otherwise share the same user-chosen accent
+   * color, which is what made the dashboard read as monotone. */
+  color: string;
   /** Which sidebar module this widget summarizes — clicking the header
    * navigates there. Omitted for widgets that span several modules (e.g.
    * the activity feed), which then render a plain, non-clickable header. */
@@ -88,6 +93,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "active-customers",
     title: "Clientes activos",
     icon: Users,
+    color: TONE.violet,
     module: "/contacts",
     compute: (data) => {
       if (!data.customers) return null;
@@ -99,6 +105,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "active-products",
     title: "Productos activos",
     icon: TShirt,
+    color: TONE.indigo,
     module: "/catalog",
     compute: (data) => {
       if (!data.products) return null;
@@ -110,6 +117,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "open-sales-orders",
     title: "Pedidos de venta abiertos",
     icon: ShoppingCartSimple,
+    color: TONE.blue,
     module: "/sales",
     compute: (data) => {
       if (!data.salesOrders) return null;
@@ -123,6 +131,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "captured-today",
     title: "Cobrado hoy",
     icon: CreditCard,
+    color: TONE.green,
     module: "/sales",
     compute: (data) => {
       if (!data.payments) return null;
@@ -139,6 +148,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "pending-purchase-orders",
     title: "Compras pendientes",
     icon: Truck,
+    color: TONE.amber,
     module: "/purchasing",
     compute: (data) => {
       if (!data.purchaseOrders) return null;
@@ -152,6 +162,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "pos-sales-today",
     title: "Ventas POS de hoy",
     icon: Coins,
+    color: TONE.orange,
     module: "/pos",
     compute: (data) => {
       if (!data.posSales) return null;
@@ -166,6 +177,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "crm-pipeline",
     title: "Oportunidades abiertas",
     icon: Target,
+    color: TONE.pink,
     module: "/crm",
     compute: (data) => {
       if (!data.pipelineSummary) return null;
@@ -180,6 +192,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "active-production",
     title: "Producción activa",
     icon: Factory,
+    color: TONE.red,
     module: "/manufacturing",
     compute: (data) => {
       if (!data.productionOrders) return null;
@@ -193,6 +206,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "out-of-stock",
     title: "Productos sin stock",
     icon: Package,
+    color: TONE.rose,
     module: "/inventory",
     compute: (data) => {
       if (!data.inventoryBalances) return null;
@@ -206,6 +220,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "commerce-orders",
     title: "Pedidos de tienda online",
     icon: Globe,
+    color: TONE.cyan,
     module: "/commerce",
     compute: (data) => {
       if (!data.commerceOrders) return null;
@@ -219,6 +234,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "sales-trend",
     title: "Ventas de los últimos 30 días",
     icon: ChartLineUp,
+    color: TONE.sky,
     module: "/sales",
     defaultSize: "wide",
     render: (data) => <SalesTrendWidget data={data} />,
@@ -227,6 +243,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "activity-feed",
     title: "Actividad reciente",
     icon: ClockCounterClockwise,
+    color: TONE.slate,
     defaultSize: "wide",
     render: (data) => <ActivityFeedWidget data={data} />,
   },
@@ -234,6 +251,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "top-customers",
     title: "Top clientes (30 días)",
     icon: Trophy,
+    color: TONE.fuchsia,
     module: "/contacts",
     render: (data) => <TopCustomersWidget data={data} />,
   },
@@ -241,6 +259,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "top-products",
     title: "Top productos (30 días)",
     icon: ChartBar,
+    color: TONE.teal,
     module: "/catalog",
     render: (data) => <TopProductsWidget data={data} />,
   },
@@ -248,6 +267,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     id: "quick-actions",
     title: "Accesos rápidos",
     icon: Lightning,
+    color: TONE.purple,
     render: (_data, navigate) => <QuickActionsWidget navigate={navigate} />,
   },
 ];

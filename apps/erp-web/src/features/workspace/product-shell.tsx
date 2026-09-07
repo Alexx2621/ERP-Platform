@@ -7,6 +7,7 @@ import type { AppPath } from "../../shared/navigation/router";
 import { BrandMark } from "../../shared/ui/brand-mark";
 import { Button } from "../../shared/ui/button";
 import { NavDropdown } from "../../shared/ui/nav-dropdown";
+import { TONE } from "../../shared/ui/tone-colors";
 
 interface ProductShellProps {
   eyebrow?: string;
@@ -44,7 +45,10 @@ export function ProductShell({
         index === moduleNavSections.length - 1
           ? {
               ...section,
-              items: [...section.items, { path: "/platform-admin" as AppPath, label: "Plataforma", icon: ShieldCheck }],
+              items: [
+                ...section.items,
+                { path: "/platform-admin" as AppPath, label: "Plataforma", icon: ShieldCheck, color: TONE.slate },
+              ],
             }
           : section,
       )
@@ -84,6 +88,7 @@ export function ProductShell({
                         weight={active ? "fill" : "regular"}
                         aria-hidden="true"
                         className="shrink-0"
+                        style={active ? undefined : { color: item.color }}
                       />
                       <span className="truncate">{item.label}</span>
                     </button>
@@ -161,7 +166,11 @@ export function ProductShell({
                             : "text-[var(--nav-muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--nav-ink)]"
                         }`}
                       >
-                        <item.icon size={16} aria-hidden="true" />
+                        <item.icon
+                          size={16}
+                          aria-hidden="true"
+                          style={item.path === currentPath ? undefined : { color: item.color }}
+                        />
                         {item.label}
                       </button>
                     ))
@@ -169,17 +178,20 @@ export function ProductShell({
                     <NavDropdown
                       key={section.label}
                       label={section.label}
-                      items={section.items.map((item) => ({
-                        key: item.path,
-                        active: item.path === currentPath,
-                        onSelect: () => navigate?.(item.path),
-                        label: (
-                          <span className="flex items-center gap-2.5">
-                            <item.icon size={16} aria-hidden="true" />
-                            {item.label}
-                          </span>
-                        ),
-                      }))}
+                      items={section.items.map((item) => {
+                        const active = item.path === currentPath;
+                        return {
+                          key: item.path,
+                          active,
+                          onSelect: () => navigate?.(item.path),
+                          label: (
+                            <span className="flex items-center gap-2.5">
+                              <item.icon size={16} aria-hidden="true" style={active ? undefined : { color: item.color }} />
+                              {item.label}
+                            </span>
+                          ),
+                        };
+                      })}
                     />
                   ),
                 )}

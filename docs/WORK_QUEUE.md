@@ -258,6 +258,32 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (paleta fija de colores por categoría)
+
+A pedido explícito del usuario: *"agrega mas colores fijos en dónde
+corresponda, con los temas personalizados se ve muy triste... investiga
+las reglas de UI/UX para que se vea todo mas vivo e interactivo"* — el
+acento personalizable del usuario se reutilizaba como único color para
+todo ícono con fondo suave en toda la plataforma, así que un acento
+apagado volvía la interfaz entera plana.
+
+- Investigación real (web) antes de implementar: tokens semánticos por
+  categoría en vez de un solo color de marca reutilizado; para KPIs,
+  tinte de fondo suave + color pleno para ícono Y número; nunca depender
+  solo del color. Ver el detalle completo y las fuentes en
+  `docs/PROJECT_STATE.md` — "Paleta fija de colores por categoría".
+- `shared/ui/tone-colors.ts` nuevo (16 tonos fijos, independientes del
+  acento del usuario). `CardHeader` gana `tone` opcional (fallback al
+  comportamiento anterior si se omite). Los 16 módulos de navegación y
+  los 15 widgets del dashboard reciben cada uno un color distinto —
+  aplicado al ícono (siempre) y al número principal de cada widget
+  (nuevo). El ítem de navegación activo conserva su fondo de acento
+  sólido sin cambios.
+- Sin tests nuevos — cambio puramente visual, 132/132 sin modificar
+  ninguna aserción. Validación completa: `pnpm turbo run lint typecheck
+  build` limpio, `apps/erp-web` 132/132, `apps/e2e` verificado contra
+  infraestructura efímera real.
+
 ### Hecho — sesión 36 (scroll fluido, modales más anchos, formulario antes que la tabla)
 
 A pedido explícito del usuario tras compartir una captura del modal de

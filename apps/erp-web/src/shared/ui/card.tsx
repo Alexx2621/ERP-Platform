@@ -1,4 +1,4 @@
-import type { HTMLAttributes, PropsWithChildren, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, PropsWithChildren, ReactNode } from "react";
 import type { Icon } from "@phosphor-icons/react";
 
 function mergeClassName(base: string, className?: string): string {
@@ -30,17 +30,34 @@ interface CardHeaderProps {
   title: string;
   description?: string;
   action?: ReactNode;
+  /**
+   * Fixed, theme-independent accent for the icon tile (a hex color). Every
+   * section would otherwise share the exact same tile color — the user's
+   * own customizable accent — which reads as flat and lifeless once they
+   * pick a muted tone. A fixed tone gives each kind of section its own
+   * visual identity, the same "one color per category" pattern SaaS
+   * sidebars (Notion, Linear) and KPI cards use. Falls back to the
+   * theme's own accent-soft when omitted, so every existing call site
+   * keeps working unchanged.
+   */
+  tone?: string;
 }
 
 /** A section header inside a `Card` — icon in a soft accent tile, title,
  * optional description, and a right-aligned action slot (a button, a
  * status badge). */
-export function CardHeader({ icon: HeaderIcon, title, description, action }: CardHeaderProps) {
+export function CardHeader({ icon: HeaderIcon, title, description, action, tone }: CardHeaderProps) {
+  const tileStyle = tone
+    ? ({ "--tile-bg": `color-mix(in srgb, ${tone} 16%, var(--paper))`, "--tile-fg": tone } as CSSProperties)
+    : undefined;
   return (
     <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-4">
       <div className="flex min-w-0 items-center gap-3">
         {HeaderIcon ? (
-          <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
+          <span
+            className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--tile-bg,var(--accent-soft))] text-[var(--tile-fg,var(--accent-soft-text))]"
+            style={tileStyle}
+          >
             <HeaderIcon size={17} weight="bold" aria-hidden="true" />
           </span>
         ) : null}

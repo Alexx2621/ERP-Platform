@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowsOutSimple, DotsSixVertical, Plus, X } from "@phosphor-icons/react";
 import type { TenantSummary } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
@@ -78,9 +78,16 @@ function reconcileLayout(stored: Partial<DashboardLayout> | null): DashboardLayo
   };
 }
 
-function WidgetIcon({ icon: Icon }: { icon: WidgetDefinition["icon"] }) {
+function WidgetIcon({ icon: Icon, color }: { icon: WidgetDefinition["icon"]; color: WidgetDefinition["color"] }) {
+  const tileStyle = {
+    "--tile-bg": `color-mix(in srgb, ${color} 16%, var(--paper))`,
+    "--tile-fg": color,
+  } as CSSProperties;
   return (
-    <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
+    <span
+      className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-[var(--tile-bg,var(--accent-soft))] text-[var(--tile-fg,var(--accent-soft-text))]"
+      style={tileStyle}
+    >
       <Icon size={19} weight="duotone" aria-hidden="true" />
     </span>
   );
@@ -102,7 +109,7 @@ function WidgetHeader({
 }) {
   const inner = (
     <>
-      <WidgetIcon icon={widget.icon} />
+      <WidgetIcon icon={widget.icon} color={widget.color} />
       <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
     </>
   );
@@ -353,14 +360,17 @@ export function HomeDashboard({ selection, navigate }: HomeDashboardProps) {
                       onClick={() => widget.module && navigate(widget.module)}
                       className="flex w-full flex-col items-start gap-4 text-left"
                     >
-                      <WidgetIcon icon={widget.icon} />
+                      <WidgetIcon icon={widget.icon} color={widget.color} />
                       <div className="min-w-0">
                         <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
                         {isLoading && !content ? (
                           <div className="mt-2 h-8 w-24 animate-pulse rounded-[6px] bg-[var(--field-hover)]" />
                         ) : content ? (
                           <>
-                            <p className="mt-1 truncate text-[26px] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
+                            <p
+                              className="mt-1 truncate text-[26px] font-extrabold tracking-[-0.02em]"
+                              style={{ color: widget.color }}
+                            >
                               {content.value}
                             </p>
                             <p className="mt-1 truncate text-[11.5px] font-medium text-[var(--muted)]">

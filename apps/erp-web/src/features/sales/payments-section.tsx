@@ -11,6 +11,7 @@ import { LoadingRows } from "../../shared/ui/loading-rows";
 import { ErrorNotice } from "../../shared/ui/notice";
 import { Select } from "../../shared/ui/select";
 import { StatusBadge } from "../../shared/ui/status-badge";
+import { TONE } from "../../shared/ui/tone-colors";
 import {
   Table,
   TableBody,
@@ -111,6 +112,7 @@ export function PaymentsSection({ order, selection, companyId }: PaymentsSection
         icon={CreditCard}
         title="Pagos"
         description={payments === null ? "Cargando…" : `${payments.length} pago(s) registrados`}
+        tone={TONE.green}
       />
       <CardBody className="bg-[var(--canvas)]">
         <form
