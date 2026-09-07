@@ -43,6 +43,8 @@ const EMPTY_DATA: DashboardData = {
   productionOrders: null,
   inventoryBalances: null,
   commerceOrders: null,
+  auditEntries: null,
+  topProducts: null,
 };
 
 function customer(status: "ACTIVE" | "INACTIVE"): CustomerResponse {
@@ -114,7 +116,7 @@ describe("reorderWidgets (pure function)", () => {
 describe("widget compute functions", () => {
   it("active-customers counts only ACTIVE customers, out of the real total", () => {
     const widget = dashboardWidgets.find((item) => item.id === "active-customers")!;
-    const result = widget.compute({
+    const result = widget.compute!({
       ...EMPTY_DATA,
       customers: [customer("ACTIVE"), customer("ACTIVE"), customer("INACTIVE")],
     });
@@ -124,7 +126,7 @@ describe("widget compute functions", () => {
   it("captured-today sums only payments captured today, ignoring other statuses/days", () => {
     const widget = dashboardWidgets.find((item) => item.id === "captured-today")!;
     const today = new Date().toISOString();
-    const result = widget.compute({
+    const result = widget.compute!({
       ...EMPTY_DATA,
       payments: [
         payment({ amount: "100.0000", status: "CAPTURED", capturedAt: today }),
@@ -139,7 +141,7 @@ describe("widget compute functions", () => {
 
   it("returns null (not a fabricated zero) when its data source failed to load", () => {
     const widget = dashboardWidgets.find((item) => item.id === "active-customers")!;
-    expect(widget.compute(EMPTY_DATA)).toBeNull();
+    expect(widget.compute!(EMPTY_DATA)).toBeNull();
   });
 });
 

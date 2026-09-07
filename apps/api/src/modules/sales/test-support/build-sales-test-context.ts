@@ -59,6 +59,7 @@ import { ListSalesOrderLinesUseCase } from "../application/use-cases/list-sales-
 import { ListSalesReturnsUseCase } from "../application/use-cases/list-sales-returns.use-case";
 import { ListSalesReturnLinesUseCase } from "../application/use-cases/list-sales-return-lines.use-case";
 import { GetSalesOrderUseCase } from "../application/use-cases/get-sales-order.use-case";
+import { GetTopSellingProductsUseCase } from "../application/use-cases/get-top-selling-products.use-case";
 
 export const TENANT_ID = "tenant-1";
 export const COMPANY_ID = "company-1";
@@ -248,6 +249,7 @@ export async function buildSalesTestContext() {
   const listSalesReturns = new ListSalesReturnsUseCase(salesReturns);
   const listSalesReturnLines = new ListSalesReturnLinesUseCase(salesReturns, salesReturnLines);
   const getSalesOrder = new GetSalesOrderUseCase(salesOrders);
+  const getTopSellingProducts = new GetTopSellingProductsUseCase(salesOrders, salesOrderLines, getProduct);
 
   return {
     tenantId: TENANT_ID,
@@ -294,6 +296,7 @@ export async function buildSalesTestContext() {
     listSalesReturns,
     listSalesReturnLines,
     getSalesOrder,
+    getTopSellingProducts,
   };
 }
 

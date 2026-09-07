@@ -42,9 +42,11 @@ import { ListSalesReturnsUseCase } from "./application/use-cases/list-sales-retu
 import { ListSalesReturnLinesUseCase } from "./application/use-cases/list-sales-return-lines.use-case";
 import { SummarizeSalesTotalsUseCase } from "./application/use-cases/summarize-sales-totals.use-case";
 import { GetSalesOrderUseCase } from "./application/use-cases/get-sales-order.use-case";
+import { GetTopSellingProductsUseCase } from "./application/use-cases/get-top-selling-products.use-case";
 import { QuotesController } from "./presentation/quotes.controller";
 import { SalesOrdersController } from "./presentation/sales-orders.controller";
 import { SalesReturnsController } from "./presentation/sales-returns.controller";
+import { SalesReportsController } from "./presentation/sales-reports.controller";
 
 /**
  * Phase 4A (Sales) module — the most heavily cross-cutting business module
@@ -70,7 +72,7 @@ import { SalesReturnsController } from "./presentation/sales-returns.controller"
     InventoryModule,
     AppRegistryModule,
   ],
-  controllers: [QuotesController, SalesOrdersController, SalesReturnsController],
+  controllers: [QuotesController, SalesOrdersController, SalesReturnsController, SalesReportsController],
   providers: [
     { provide: QUOTE_REPOSITORY, useClass: PrismaQuoteRepository },
     { provide: QUOTE_LINE_REPOSITORY, useClass: PrismaQuoteLineRepository },
@@ -98,6 +100,7 @@ import { SalesReturnsController } from "./presentation/sales-returns.controller"
     ListSalesReturnLinesUseCase,
     GetSalesOrderUseCase,
     SummarizeSalesTotalsUseCase,
+    GetTopSellingProductsUseCase,
   ],
   exports: [
     ListSalesOrdersUseCase,

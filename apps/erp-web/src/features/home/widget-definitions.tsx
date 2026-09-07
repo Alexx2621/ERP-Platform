@@ -1,11 +1,17 @@
+import type { ReactNode } from "react";
 import {
+  ChartBar,
+  ChartLineUp,
+  ClockCounterClockwise,
   Coins,
   CreditCard,
   Factory,
   Globe,
+  Lightning,
   Package,
   ShoppingCartSimple,
   Target,
+  Trophy,
   TShirt,
   Truck,
   Users,
@@ -13,25 +19,45 @@ import {
 } from "@phosphor-icons/react";
 import type { AppPath } from "../../shared/navigation/router";
 import type { DashboardData } from "./use-dashboard-data";
+import { ActivityFeedWidget } from "./widgets/activity-feed-widget";
+import { QuickActionsWidget } from "./widgets/quick-actions-widget";
+import { SalesTrendWidget } from "./widgets/sales-trend-widget";
+import { TopCustomersWidget, TopProductsWidget } from "./widgets/top-lists-widget";
 
 export interface WidgetContent {
   value: string;
   caption: string;
 }
 
+export type WidgetSize = "normal" | "wide";
+
 export interface WidgetDefinition {
   id: string;
   title: string;
   icon: Icon;
-  /** Which sidebar module this widget summarizes — clicking it navigates there. */
-  module: AppPath;
+  /** Which sidebar module this widget summarizes — clicking the header
+   * navigates there. Omitted for widgets that span several modules (e.g.
+   * the activity feed), which then render a plain, non-clickable header. */
+  module?: AppPath;
+  /** How this widget occupies the grid before the user resizes it. */
+  defaultSize?: WidgetSize;
   /**
-   * Returns null when the underlying data source failed to load (module
-   * disabled for this tenant per docs/DECISIONS.md ADR-015, or the current
-   * user lacks that module's read permission) — the card then renders a
-   * quiet "No disponible" state instead of a fabricated zero.
+   * Simple stat-card widgets: a single value + caption. Returns null when
+   * the underlying data source failed to load (module disabled for this
+   * tenant per docs/DECISIONS.md ADR-015, or the current user lacks that
+   * module's read permission) — the card then renders a quiet "No
+   * disponible" state instead of a fabricated zero.
+   *
+   * Mutually exclusive with `render` — a widget picks exactly one shape.
    */
-  compute: (data: DashboardData) => WidgetContent | null;
+  compute?: (data: DashboardData) => WidgetContent | null;
+  /**
+   * Rich-content widgets (a chart, a ranked list, a feed) that need more
+   * than a value+caption. Receives `navigate` directly since a rich
+   * widget's own internal links (e.g. "ver más") may need it independently
+   * of the header's click-to-navigate affordance.
+   */
+  render?: (data: DashboardData, navigate: (path: AppPath) => void) => ReactNode;
 }
 
 /** Display-only decimal formatting — never used for a calculation that
@@ -188,5 +214,40 @@ export const dashboardWidgets: WidgetDefinition[] = [
         caption: formatMoney(sumAmounts(data.commerceOrders.map((order) => order.total))),
       };
     },
+  },
+  {
+    id: "sales-trend",
+    title: "Ventas de los últimos 30 días",
+    icon: ChartLineUp,
+    module: "/sales",
+    defaultSize: "wide",
+    render: (data) => <SalesTrendWidget data={data} />,
+  },
+  {
+    id: "activity-feed",
+    title: "Actividad reciente",
+    icon: ClockCounterClockwise,
+    defaultSize: "wide",
+    render: (data) => <ActivityFeedWidget data={data} />,
+  },
+  {
+    id: "top-customers",
+    title: "Top clientes (30 días)",
+    icon: Trophy,
+    module: "/contacts",
+    render: (data) => <TopCustomersWidget data={data} />,
+  },
+  {
+    id: "top-products",
+    title: "Top productos (30 días)",
+    icon: ChartBar,
+    module: "/catalog",
+    render: (data) => <TopProductsWidget data={data} />,
+  },
+  {
+    id: "quick-actions",
+    title: "Accesos rápidos",
+    icon: Lightning,
+    render: (_data, navigate) => <QuickActionsWidget navigate={navigate} />,
   },
 ];

@@ -44,6 +44,26 @@ export class PrismaSalesOrderLineRepository implements SalesOrderLineRepository 
     return new Map(rows.map((row) => [row.salesOrderId, (row._sum.lineTotal ?? ZERO).toFixed(4)]));
   }
 
+  async topProductTotals(
+    tenantId: string,
+    salesOrderIds: string[],
+    limit: number,
+  ): Promise<Array<{ productId: string; quantity: string; revenue: string }>> {
+    if (salesOrderIds.length === 0) return [];
+    const rows = await this.prisma.salesOrderLine.groupBy({
+      by: ["productId"],
+      where: { tenantId, salesOrderId: { in: salesOrderIds } },
+      _sum: { quantity: true, lineTotal: true },
+      orderBy: { _sum: { lineTotal: "desc" } },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      productId: row.productId,
+      quantity: (row._sum.quantity ?? ZERO).toFixed(4),
+      revenue: (row._sum.lineTotal ?? ZERO).toFixed(4),
+    }));
+  }
+
   private toDomain(record: PrismaSalesOrderLine): SalesOrderLine {
     return SalesOrderLine.fromProps({
       id: record.id,

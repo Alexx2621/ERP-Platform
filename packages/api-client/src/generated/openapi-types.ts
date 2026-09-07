@@ -1625,6 +1625,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sales/reports/top-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Products ranked by revenue over a recent window, aggregated fresh from the sales ledger. */
+        get: operations["SalesReportsController_topProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments": {
         parameters: {
             query?: never;
@@ -4067,6 +4084,15 @@ export interface components {
             quantity: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        TopSellingProductResponseDto: {
+            productId: string;
+            productCode: string;
+            productName: string;
+            /** @example 12.0000 */
+            quantity: string;
+            /** @example 1250.0000 */
+            revenue: string;
         };
         PaymentResponseDto: {
             id: string;
@@ -8323,6 +8349,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SalesReturnLineResponseDto"][];
+                };
+            };
+        };
+    };
+    SalesReportsController_topProducts: {
+        parameters: {
+            query?: {
+                /** @description Ventana en días. */
+                days?: number;
+                limit?: number;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopSellingProductResponseDto"][];
                 };
             };
         };

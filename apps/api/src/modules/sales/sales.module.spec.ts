@@ -9,9 +9,11 @@ import { SalesModule } from "./sales.module";
 import { QuotesController } from "./presentation/quotes.controller";
 import { SalesOrdersController } from "./presentation/sales-orders.controller";
 import { SalesReturnsController } from "./presentation/sales-returns.controller";
+import { SalesReportsController } from "./presentation/sales-reports.controller";
 import { ConfirmSalesOrderUseCase } from "./application/use-cases/confirm-sales-order.use-case";
 import { CreateSalesReturnUseCase } from "./application/use-cases/create-sales-return.use-case";
 import { GetSalesOrderUseCase } from "./application/use-cases/get-sales-order.use-case";
+import { GetTopSellingProductsUseCase } from "./application/use-cases/get-top-selling-products.use-case";
 
 // Same StubInfraModule pattern as pricing.module.spec.ts — SalesModule
 // transitively imports Catalog/Warehouses/Taxes/Pricing/Customers/Inventory,
@@ -52,9 +54,11 @@ describe("SalesModule wiring", () => {
     expect(moduleRef.get(QuotesController)).toBeInstanceOf(QuotesController);
     expect(moduleRef.get(SalesOrdersController)).toBeInstanceOf(SalesOrdersController);
     expect(moduleRef.get(SalesReturnsController)).toBeInstanceOf(SalesReturnsController);
+    expect(moduleRef.get(SalesReportsController)).toBeInstanceOf(SalesReportsController);
     expect(moduleRef.get(ConfirmSalesOrderUseCase)).toBeInstanceOf(ConfirmSalesOrderUseCase);
     expect(moduleRef.get(CreateSalesReturnUseCase)).toBeInstanceOf(CreateSalesReturnUseCase);
     expect(moduleRef.get(GetSalesOrderUseCase)).toBeInstanceOf(GetSalesOrderUseCase);
+    expect(moduleRef.get(GetTopSellingProductsUseCase)).toBeInstanceOf(GetTopSellingProductsUseCase);
 
     await moduleRef.close();
   });

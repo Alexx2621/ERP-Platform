@@ -154,6 +154,7 @@ import type {
   SalesOrderLineResponse,
   SalesOrderResponse,
   SalesReturnLineResponse,
+  TopSellingProductResponse,
   SalesReturnResponse,
   SetAccountStatusInput,
   SetAppConfigurationInput,
@@ -1674,6 +1675,21 @@ export class ApiClient {
     signal?: AbortSignal,
   ): Promise<SalesReturnLineResponse[]> {
     return this.request<SalesReturnLineResponse[]>(`/sales/returns/${encodeURIComponent(salesReturnId)}/lines`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
+  async listTopSellingProducts(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    filter: { days?: number; limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<TopSellingProductResponse[]> {
+    return this.request<TopSellingProductResponse[]>(`/sales/reports/top-products${this.buildQuery(filter)}`, {
       accessToken,
       tenantSlug,
       companyId,

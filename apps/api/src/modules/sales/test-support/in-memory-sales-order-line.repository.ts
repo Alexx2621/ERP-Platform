@@ -25,6 +25,26 @@ export class InMemorySalesOrderLineRepository implements SalesOrderLineRepositor
     return totals;
   }
 
+  async topProductTotals(
+    tenantId: string,
+    salesOrderIds: string[],
+    limit: number,
+  ): Promise<Array<{ productId: string; quantity: string; revenue: string }>> {
+    const totals = new Map<string, { quantity: string; revenue: string }>();
+    for (const line of this.byId.values()) {
+      if (line.tenantId !== tenantId || !salesOrderIds.includes(line.salesOrderId)) continue;
+      const current = totals.get(line.productId) ?? { quantity: "0", revenue: "0" };
+      totals.set(line.productId, {
+        quantity: addDecimal(current.quantity, line.quantity),
+        revenue: addDecimal(current.revenue, line.lineTotal),
+      });
+    }
+    return [...totals.entries()]
+      .map(([productId, aggregate]) => ({ productId, ...aggregate }))
+      .sort((a, b) => Number(b.revenue) - Number(a.revenue))
+      .slice(0, limit);
+  }
+
   async save(line: SalesOrderLine): Promise<void> {
     this.byId.set(line.id, line);
   }

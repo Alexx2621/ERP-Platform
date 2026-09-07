@@ -242,6 +242,8 @@ export type CreateSalesReturnLineInput = components["schemas"]["CreateSalesRetur
 export type CreateSalesReturnInput = components["schemas"]["CreateSalesReturnDto"];
 export type SalesReturnLineResponse = components["schemas"]["SalesReturnLineResponseDto"];
 
+export type TopSellingProductResponse = components["schemas"]["TopSellingProductResponseDto"];
+
 export interface ListQuotesFilter {
   status?: QuoteStatus;
   customerId?: string;

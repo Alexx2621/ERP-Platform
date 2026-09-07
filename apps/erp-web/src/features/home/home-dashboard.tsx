@@ -4,7 +4,7 @@ import type { TenantSummary } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
 import type { AppPath } from "../../shared/navigation/router";
-import { dashboardWidgets, type WidgetDefinition } from "./widget-definitions";
+import { dashboardWidgets, type WidgetDefinition, type WidgetSize } from "./widget-definitions";
 import { useDashboardData } from "./use-dashboard-data";
 
 interface HomeDashboardSelection extends TenantSummary {
@@ -16,8 +16,6 @@ interface HomeDashboardProps {
   navigate: (path: AppPath, replace?: boolean) => void;
 }
 
-type WidgetSize = "normal" | "wide";
-
 interface DashboardLayout {
   order: string[];
   hidden: string[];
@@ -26,9 +24,12 @@ interface DashboardLayout {
 
 const LAYOUT_PREFERENCE_KEY = "ui.dashboardLayout";
 const DEFAULT_ORDER = dashboardWidgets.map((widget) => widget.id);
+const DEFAULT_SIZES: Record<string, WidgetSize> = Object.fromEntries(
+  dashboardWidgets.filter((widget) => widget.defaultSize).map((widget) => [widget.id, widget.defaultSize!]),
+);
 
 function defaultLayout(): DashboardLayout {
-  return { order: [...DEFAULT_ORDER], hidden: [], sizes: {} };
+  return { order: [...DEFAULT_ORDER], hidden: [], sizes: { ...DEFAULT_SIZES } };
 }
 
 /**
@@ -69,8 +70,54 @@ function reconcileLayout(stored: Partial<DashboardLayout> | null): DashboardLayo
   return {
     order: [...storedOrder, ...missing],
     hidden: (stored?.hidden ?? []).filter((id) => knownIds.has(id)),
-    sizes: stored?.sizes ?? {},
+    // A widget's own default size applies until the user's saved layout
+    // overrides it — so a widget introduced after a user's layout was last
+    // saved (e.g. the trend chart, wide by default) doesn't silently start
+    // "normal" just because it's missing from an old preference blob.
+    sizes: { ...DEFAULT_SIZES, ...(stored?.sizes ?? {}) },
   };
+}
+
+function WidgetIcon({ icon: Icon }: { icon: WidgetDefinition["icon"] }) {
+  return (
+    <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
+      <Icon size={19} weight="duotone" aria-hidden="true" />
+    </span>
+  );
+}
+
+/**
+ * Header for a rich (`render`-based) widget: icon + title, clickable only
+ * when `widget.module` names a real place to go — a widget spanning
+ * several modules (the activity feed) has no single destination, so its
+ * header is plain text instead of a button that would navigate nowhere
+ * meaningful.
+ */
+function WidgetHeader({
+  widget,
+  navigate,
+}: {
+  widget: WidgetDefinition;
+  navigate: (path: AppPath) => void;
+}) {
+  const inner = (
+    <>
+      <WidgetIcon icon={widget.icon} />
+      <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
+    </>
+  );
+  if (!widget.module) {
+    return <div className="flex items-center gap-3">{inner}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(widget.module!)}
+      className="flex items-center gap-3 text-left transition-opacity hover:opacity-80"
+    >
+      {inner}
+    </button>
+  );
 }
 
 /**
@@ -226,11 +273,11 @@ export function HomeDashboard({ selection, navigate }: HomeDashboardProps) {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {visibleWidgets.map((widget) => {
           const isDropTarget = dropTargetId === widget.id && draggedId !== null && draggedId !== widget.id;
           const size = layout.sizes[widget.id] ?? "normal";
-          const content = widget.compute(data);
+          const content = widget.compute?.(data) ?? null;
 
           return (
             <div
@@ -295,32 +342,37 @@ export function HomeDashboard({ selection, navigate }: HomeDashboardProps) {
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => navigate(widget.module)}
-                    className="flex w-full flex-col items-start gap-4 text-left"
-                  >
-                    <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
-                      <widget.icon size={19} weight="duotone" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
-                      {isLoading && !content ? (
-                        <div className="mt-2 h-8 w-24 animate-pulse rounded-[6px] bg-[var(--field-hover)]" />
-                      ) : content ? (
-                        <>
-                          <p className="mt-1 truncate text-[26px] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
-                            {content.value}
-                          </p>
-                          <p className="mt-1 truncate text-[11.5px] font-medium text-[var(--muted)]">
-                            {content.caption}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="mt-2 text-[12px] font-semibold text-[var(--muted)]">No disponible</p>
-                      )}
+                  {widget.render ? (
+                    <div className="flex w-full flex-col gap-4">
+                      <WidgetHeader widget={widget} navigate={navigate} />
+                      {widget.render(data, navigate)}
                     </div>
-                  </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => widget.module && navigate(widget.module)}
+                      className="flex w-full flex-col items-start gap-4 text-left"
+                    >
+                      <WidgetIcon icon={widget.icon} />
+                      <div className="min-w-0">
+                        <p className="text-[12.5px] font-bold text-[var(--muted-strong)]">{widget.title}</p>
+                        {isLoading && !content ? (
+                          <div className="mt-2 h-8 w-24 animate-pulse rounded-[6px] bg-[var(--field-hover)]" />
+                        ) : content ? (
+                          <>
+                            <p className="mt-1 truncate text-[26px] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
+                              {content.value}
+                            </p>
+                            <p className="mt-1 truncate text-[11.5px] font-medium text-[var(--muted)]">
+                              {content.caption}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-2 text-[12px] font-semibold text-[var(--muted)]">No disponible</p>
+                        )}
+                      </div>
+                    </button>
+                  )}
                 </>
               )}
             </div>

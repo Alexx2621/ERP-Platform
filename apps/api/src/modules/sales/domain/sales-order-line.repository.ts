@@ -15,6 +15,20 @@ export interface SalesOrderLineRepository {
    * Trial Balance and Manufacturing's `quantityCompleted` already follow.
    */
   sumTotalsByOrders(tenantId: string, salesOrderIds: string[]): Promise<Map<string, string>>;
+
+  /**
+   * Quantity and revenue aggregated per product, over an already-resolved
+   * set of order ids (the caller decides which orders qualify — date
+   * range, status — so this stays a pure aggregation with no knowledge of
+   * `SalesOrder`'s own fields). Sorted by revenue descending, capped at
+   * `limit`. Backs the home dashboard's real "Top productos" widget — no
+   * fabricated ranking, a genuine `groupBy` over this module's own ledger.
+   */
+  topProductTotals(
+    tenantId: string,
+    salesOrderIds: string[],
+    limit: number,
+  ): Promise<Array<{ productId: string; quantity: string; revenue: string }>>;
 }
 
 export const SALES_ORDER_LINE_REPOSITORY = Symbol("SALES_ORDER_LINE_REPOSITORY");

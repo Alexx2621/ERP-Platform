@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
+  AuditEntryResponse,
   CommerceOrderResponse,
   CustomerResponse,
   InventoryBalanceResponse,
@@ -10,6 +11,7 @@ import type {
   ProductionOrderResponse,
   PurchaseOrderResponse,
   SalesOrderResponse,
+  TopSellingProductResponse,
 } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
@@ -30,6 +32,12 @@ export interface DashboardData {
   productionOrders: ProductionOrderResponse[] | null;
   inventoryBalances: InventoryBalanceResponse[] | null;
   commerceOrders: CommerceOrderResponse[] | null;
+  /** Tenant-scoped audit trail — requires `audit.entries.read`; null when
+   * the caller lacks it, same "hide, don't fabricate" rule as every other
+   * source here. */
+  auditEntries: AuditEntryResponse[] | null;
+  /** Real revenue ranking over the last 30 days — see `GetTopSellingProductsUseCase`. */
+  topProducts: TopSellingProductResponse[] | null;
 }
 
 const EMPTY_DATA: DashboardData = {
@@ -43,6 +51,8 @@ const EMPTY_DATA: DashboardData = {
   productionOrders: null,
   inventoryBalances: null,
   commerceOrders: null,
+  auditEntries: null,
+  topProducts: null,
 };
 
 /**
@@ -83,6 +93,8 @@ export function useDashboardData(selection: DashboardSelection) {
         productionOrders,
         inventoryBalances,
         commerceOrders,
+        auditEntries,
+        topProducts,
       ] = await Promise.allSettled([
         apiClient.listCustomers(accessToken, slug, companyId, signal),
         apiClient.listProducts(accessToken, slug, companyId, signal),
@@ -94,6 +106,8 @@ export function useDashboardData(selection: DashboardSelection) {
         apiClient.listProductionOrders(accessToken, slug, companyId, { limit: 200 }, signal),
         apiClient.listInventoryBalances(accessToken, slug, companyId, {}, signal),
         apiClient.listCommerceOrders(accessToken, slug, companyId, { limit: 200 }, signal),
+        apiClient.listAuditEntries(accessToken, slug, 12, signal),
+        apiClient.listTopSellingProducts(accessToken, slug, companyId, { days: 30, limit: 5 }, signal),
       ]);
 
       // The pipeline summary needs a second call keyed off the first real
@@ -128,6 +142,8 @@ export function useDashboardData(selection: DashboardSelection) {
         productionOrders: productionOrders.status === "fulfilled" ? productionOrders.value : null,
         inventoryBalances: inventoryBalances.status === "fulfilled" ? inventoryBalances.value : null,
         commerceOrders: commerceOrders.status === "fulfilled" ? commerceOrders.value : null,
+        auditEntries: auditEntries.status === "fulfilled" ? auditEntries.value : null,
+        topProducts: topProducts.status === "fulfilled" ? topProducts.value : null,
       });
       setIsLoading(false);
     },
