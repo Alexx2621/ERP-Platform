@@ -1,5 +1,5 @@
 import { ArrowRight, ListDashes, Plus, XCircle } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type {
   CustomerResponse,
   ProductResponse,
@@ -12,7 +12,17 @@ import type {
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
+import { formatDate } from "../../shared/format/date";
+import { formatMoney } from "../../shared/format/money";
 import { Button } from "../../shared/ui/button";
+import {
+  DataTableFilter,
+  DataTableToolbar,
+  PaginationFooter,
+  SortableHead,
+  useWorkTable,
+} from "../../shared/ui/data-table";
+import { StatusBadge } from "../../shared/ui/status-badge";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
@@ -36,7 +46,7 @@ import {
   isAbortError,
   productLabel,
   quoteStatusLabel,
-  statusToneClass,
+  quoteStatusTone,
   type WorkspaceSelection,
 } from "./sales-shared";
 
@@ -354,6 +364,42 @@ export function QuotesPanel({ selection, companyId, customers, products, warehou
     return () => controller.abort();
   }, [active, load]);
 
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const rows = useMemo(() => quotes ?? [], [quotes]);
+  const searchable = useCallback(
+    (quote: QuoteResponse) => `${quote.number} ${customerLabel(customers, quote.customerId)} ${quote.currency}`,
+    [customers],
+  );
+  const sortValue = useCallback(
+    (quote: QuoteResponse, column: string): string | number => {
+      switch (column) {
+        case "customer":
+          return customerLabel(customers, quote.customerId);
+        case "createdAt":
+          return new Date(quote.createdAt).getTime();
+        case "total":
+          return Number(quote.total);
+        case "status":
+          return quote.status;
+        default:
+          return quote.number;
+      }
+    },
+    [customers],
+  );
+  const filter = useCallback(
+    (quote: QuoteResponse) => statusFilter === "" || quote.status === statusFilter,
+    [statusFilter],
+  );
+  const table = useWorkTable<QuoteResponse>({
+    rows,
+    searchable,
+    sortValue,
+    filter,
+    initialSort: { column: "createdAt", direction: "desc" },
+  });
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(undefined);
@@ -379,13 +425,6 @@ export function QuotesPanel({ selection, companyId, customers, products, warehou
 
   return (
     <section className="grid gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[12px] font-medium text-[var(--muted-strong)]">Cotizaciones de la empresa activa.</p>
-        <Button type="button" onClick={() => setModalOpen(true)}>
-          <Plus size={17} weight="bold" aria-hidden="true" />
-          Nueva cotización
-        </Button>
-      </div>
       {error ? (
         <div className="grid gap-3">
           <ErrorNotice message={error} />
@@ -394,48 +433,121 @@ export function QuotesPanel({ selection, companyId, customers, products, warehou
           </Button>
         </div>
       ) : (
-        <Table aria-busy={quotes === null}>
-          <TableCaption>Cotizaciones</TableCaption>
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col">Cliente</TableHead>
-              <TableHead scope="col">Canal</TableHead>
-              <TableHead scope="col">Moneda</TableHead>
-              <TableHead scope="col">Estado</TableHead>
-              <TableHead scope="col" className="text-right">
-                Acciones
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {quotes === null ? (
-              <LoadingRows columns={5} />
-            ) : quotes.length === 0 ? (
+        <div>
+          <DataTableToolbar
+            search={table.search}
+            onSearchChange={table.setSearch}
+            searchPlaceholder="Buscar por número o cliente…"
+            filters={
+              <DataTableFilter
+                label="Estado"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: "", label: "Todos los estados" },
+                  { value: "DRAFT", label: "Borrador" },
+                  { value: "CONVERTED", label: "Convertida" },
+                  { value: "CANCELLED", label: "Cancelada" },
+                ]}
+              />
+            }
+            action={
+              <Button type="button" onClick={() => setModalOpen(true)}>
+                <Plus size={17} weight="bold" aria-hidden="true" />
+                Nueva cotización
+              </Button>
+            }
+          />
+          <Table aria-busy={quotes === null}>
+            <TableCaption>Cotizaciones</TableCaption>
+            <TableHeader>
               <TableRow>
-                <TableEmpty colSpan={5} title="Todavía no hay cotizaciones" />
+                <SortableHead scope="col" column="number" sort={table.sort} onSortChange={table.setSort}>
+                  Número
+                </SortableHead>
+                <SortableHead scope="col" column="createdAt" sort={table.sort} onSortChange={table.setSort}>
+                  Fecha
+                </SortableHead>
+                <SortableHead scope="col" column="customer" sort={table.sort} onSortChange={table.setSort}>
+                  Cliente
+                </SortableHead>
+                <TableHead scope="col">Canal</TableHead>
+                <SortableHead
+                  scope="col"
+                  column="total"
+                  sort={table.sort}
+                  onSortChange={table.setSort}
+                  className="text-right"
+                >
+                  Total
+                </SortableHead>
+                <TableHead scope="col">Estado</TableHead>
+                <TableHead scope="col" className="text-right">
+                  Acciones
+                </TableHead>
               </TableRow>
-            ) : (
-              quotes.map((quote) => (
-                <TableRow key={quote.id}>
-                  <TableCell className="text-[12px] font-semibold">{customerLabel(customers, quote.customerId)}</TableCell>
-                  <TableCell className="text-[12px]">{channelLabel(quote.channel)}</TableCell>
-                  <TableCell className="font-mono text-[11px]">{quote.currency}</TableCell>
-                  <TableCell>
-                    <span className={`font-mono text-[10px] font-bold uppercase tracking-[0.08em] ${statusToneClass(quote.status === "DRAFT")}`}>
-                      {quoteStatusLabel(quote.status)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button type="button" variant="secondary" className="h-9 px-3" onClick={() => setDetailQuote(quote)}>
-                      <ListDashes size={16} weight="bold" aria-hidden="true" />
-                      Ver
-                    </Button>
-                  </TableCell>
+            </TableHeader>
+            <TableBody>
+              {quotes === null ? (
+                <LoadingRows columns={7} />
+              ) : table.visible.length === 0 ? (
+                <TableRow>
+                  <TableEmpty
+                    colSpan={7}
+                    title={quotes.length === 0 ? "Todavía no hay cotizaciones" : "Ningún resultado"}
+                    description={
+                      quotes.length === 0
+                        ? undefined
+                        : "Ajusta la búsqueda o el filtro de estado para ver más registros."
+                    }
+                  />
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                table.visible.map((quote) => (
+                  <TableRow key={quote.id} className="cursor-pointer" onClick={() => setDetailQuote(quote)}>
+                    <TableCell className="whitespace-nowrap font-mono text-[12px]">{quote.number}</TableCell>
+                    <TableCell className="whitespace-nowrap text-[12px] font-medium text-[var(--muted-strong)]">
+                      {formatDate(quote.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-[12px] font-semibold">
+                      {customerLabel(customers, quote.customerId)}
+                    </TableCell>
+                    <TableCell className="text-[12px]">{channelLabel(quote.channel)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-mono text-[12px]">
+                      {formatMoney(quote.total, quote.currency)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge tone={quoteStatusTone(quote.status)}>
+                        {quoteStatusLabel(quote.status)}
+                      </StatusBadge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-8 px-3"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDetailQuote(quote);
+                        }}
+                      >
+                        <ListDashes size={16} weight="bold" aria-hidden="true" />
+                        Ver
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <PaginationFooter
+            page={table.page}
+            pageCount={table.pageCount}
+            total={table.total}
+            filtered={table.filteredCount}
+            onPageChange={table.setPage}
+          />
+        </div>
       )}
 
       <Modal

@@ -1,5 +1,6 @@
 import { InMemoryCustomerRepository } from "../../../customers/test-support/in-memory-customer.repository";
 import { CreateCustomerUseCase } from "../../../customers/application/use-cases/create-customer.use-case";
+import { InMemoryDocumentNumberAllocator } from "../../../../shared/document-numbering/test-support/in-memory-document-number.allocator";
 import { InMemorySalesOrderRepository } from "../../../sales/test-support/in-memory-sales-order.repository";
 import { ResolveCustomerTargetUseCase } from "../../../sales/application/use-cases/resolve-customer-target.use-case";
 import { CreateSalesOrderUseCase } from "../../../sales/application/use-cases/create-sales-order.use-case";
@@ -39,7 +40,7 @@ async function buildContext(gateways?: PaymentGateway[]) {
 
   const salesOrders = new InMemorySalesOrderRepository();
   const resolveCustomerTarget = new ResolveCustomerTargetUseCase(getCustomer);
-  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget);
+  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget, new InMemoryDocumentNumberAllocator());
   const getSalesOrder = new GetSalesOrderUseCase(salesOrders);
 
   const order = await createSalesOrder.execute({ tenantId: TENANT_ID, companyId: COMPANY_ID, customerId: customer.id, currency: "USD" });

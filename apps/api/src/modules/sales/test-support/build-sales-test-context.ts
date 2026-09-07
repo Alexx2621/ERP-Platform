@@ -33,6 +33,7 @@ import { ReleaseReservationUseCase } from "../../inventory/application/use-cases
 import { RecordIssueUseCase } from "../../inventory/application/use-cases/record-issue.use-case";
 import { RecordReturnUseCase } from "../../inventory/application/use-cases/record-return.use-case";
 import { RecordReceiptUseCase } from "../../inventory/application/use-cases/record-receipt.use-case";
+import { InMemoryDocumentNumberAllocator } from "../../../shared/document-numbering/test-support/in-memory-document-number.allocator";
 import { InMemoryQuoteRepository } from "./in-memory-quote.repository";
 import { InMemoryQuoteLineRepository } from "./in-memory-quote-line.repository";
 import { InMemorySalesOrderRepository } from "./in-memory-sales-order.repository";
@@ -223,15 +224,17 @@ export async function buildSalesTestContext() {
   const salesReturns = new InMemorySalesReturnRepository();
   const salesReturnLines = new InMemorySalesReturnLineRepository();
 
+  const documentNumbers = new InMemoryDocumentNumberAllocator();
+
   const resolveCustomerTarget = new ResolveCustomerTargetUseCase(getCustomer);
   const resolveSalesLineTarget = new ResolveSalesLineTargetUseCase(getProduct, getProductVariant, getWarehouse, getTax);
 
-  const createQuote = new CreateQuoteUseCase(quotes, resolveCustomerTarget);
+  const createQuote = new CreateQuoteUseCase(quotes, resolveCustomerTarget, documentNumbers);
   const addQuoteLine = new AddQuoteLineUseCase(quotes, quoteLines, resolveSalesLineTarget, getPriceListItem);
-  const convertQuote = new ConvertQuoteToSalesOrderUseCase(quotes, quoteLines, salesOrders, salesOrderLines, getProduct);
+  const convertQuote = new ConvertQuoteToSalesOrderUseCase(quotes, quoteLines, salesOrders, salesOrderLines, getProduct, documentNumbers);
   const cancelQuote = new CancelQuoteUseCase(quotes);
 
-  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget);
+  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget, documentNumbers);
   const addSalesOrderLine = new AddSalesOrderLineUseCase(salesOrders, salesOrderLines, resolveSalesLineTarget, getPriceListItem);
   const confirmSalesOrder = new ConfirmSalesOrderUseCase(salesOrders, salesOrderLines, createReservation, releaseReservation);
   const cancelSalesOrder = new CancelSalesOrderUseCase(salesOrders, salesOrderLines, releaseReservation);

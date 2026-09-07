@@ -12,6 +12,7 @@ import { CreateCustomerUseCase } from "../../src/modules/customers/application/u
 import { GetCustomerUseCase } from "../../src/modules/customers/application/use-cases/get-customer.use-case";
 import { PrismaSalesOrderRepository } from "../../src/modules/sales/infrastructure/prisma-sales-order.repository";
 import { ResolveCustomerTargetUseCase } from "../../src/modules/sales/application/use-cases/resolve-customer-target.use-case";
+import { DocumentNumberService } from "../../src/shared/document-numbering/document-number.service";
 import { CreateSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/create-sales-order.use-case";
 import { GetSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/get-sales-order.use-case";
 import { PrismaPaymentRepository } from "../../src/modules/payments/infrastructure/prisma-payment.repository";
@@ -88,7 +89,8 @@ async function buildFixture(harness: PostgresTestHarness, slugSuffix: string) {
   const customer = await createCustomer.execute({ tenantId: tenant.id, companyId: company.id, code: "CUST-1", name: "Cliente 1" });
 
   const resolveCustomerTarget = new ResolveCustomerTargetUseCase(getCustomer);
-  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget);
+  const documentNumbers = new DocumentNumberService(prisma);
+  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget, documentNumbers);
   const getSalesOrder = new GetSalesOrderUseCase(salesOrders);
   const order = await createSalesOrder.execute({ tenantId: tenant.id, companyId: company.id, customerId: customer.id, currency: "USD" });
 

@@ -3,6 +3,7 @@ import type { CustomerResponse, ProductResponse, ProductVariantResponse, TaxResp
 import { apiClient } from "../../shared/api/client";
 import { useAuth } from "../../shared/auth/auth-context";
 import { Select } from "../../shared/ui/select";
+import type { StatusTone } from "../../shared/ui/status-badge";
 
 export interface WorkspaceSelection extends TenantSummary {
   companyId?: string;
@@ -249,4 +250,27 @@ export function LineTargetFields({
       </div>
     </div>
   );
+}
+
+/**
+ * Status -> badge tone. Each module maps its own enum onto the four shared
+ * tones instead of inventing colours per screen.
+ */
+export function quoteStatusTone(status: string): StatusTone {
+  if (status === "CONVERTED") return "success";
+  if (status === "CANCELLED") return "danger";
+  return "neutral";
+}
+
+export function salesOrderStatusTone(status: string): StatusTone {
+  if (status === "FULFILLED") return "success";
+  if (status === "CONFIRMED") return "progress";
+  if (status === "CANCELLED") return "danger";
+  return "neutral";
+}
+
+export function paymentStatusTone(status: string): StatusTone {
+  if (status === "CAPTURED") return "success";
+  if (status === "FAILED") return "danger";
+  return "neutral";
 }

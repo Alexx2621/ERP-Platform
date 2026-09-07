@@ -6,6 +6,8 @@ export interface QuoteProps {
   tenantId: string;
   companyId: string;
   customerId: string;
+  /** Human-readable per-company correlative, e.g. `COT-000042`. */
+  number: string;
   channel: SalesChannel;
   status: QuoteStatus;
   currency: string;
@@ -48,6 +50,9 @@ export class Quote {
   }
   get customerId(): string {
     return this.props.customerId;
+  }
+  get number(): string {
+    return this.props.number;
   }
   get channel(): SalesChannel {
     return this.props.channel;

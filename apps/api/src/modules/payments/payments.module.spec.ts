@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { PRISMA_CLIENT as NOTIFICATIONS_PRISMA_CLIENT } from "@erp/notifications";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { DocumentNumberingModule } from "../../shared/document-numbering/document-numbering.module";
 import { RedisService } from "../../shared/redis/redis.service";
 import { PaymentsModule } from "./payments.module";
 import { PaymentsController } from "./presentation/payments.controller";
@@ -40,6 +41,7 @@ describe("PaymentsModule wiring", () => {
           ],
         }),
         StubInfraModule,
+        DocumentNumberingModule,
         PaymentsModule,
       ],
     }).compile();

@@ -7,6 +7,7 @@ function buildProps(overrides: Partial<QuoteProps> = {}): QuoteProps {
     tenantId: "tenant-1",
     companyId: "company-1",
     customerId: "customer-1",
+    number: "COT-000001",
     channel: "ERP",
     status: "DRAFT",
     currency: "usd",

@@ -46,6 +46,7 @@ import { ResolveSalesLineTargetUseCase } from "../../src/modules/sales/applicati
 import { CreateQuoteUseCase } from "../../src/modules/sales/application/use-cases/create-quote.use-case";
 import { AddQuoteLineUseCase } from "../../src/modules/sales/application/use-cases/add-quote-line.use-case";
 import { ConvertQuoteToSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/convert-quote-to-sales-order.use-case";
+import { DocumentNumberService } from "../../src/shared/document-numbering/document-number.service";
 import { CreateSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/create-sales-order.use-case";
 import { AddSalesOrderLineUseCase } from "../../src/modules/sales/application/use-cases/add-sales-order-line.use-case";
 import { ConfirmSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/confirm-sales-order.use-case";
@@ -169,6 +170,7 @@ async function buildFixture(harness: PostgresTestHarness, slugSuffix: string) {
   const salesReturnLines = new PrismaSalesReturnLineRepository(prisma);
 
   const resolveCustomerTarget = new ResolveCustomerTargetUseCase(getCustomer);
+  const documentNumbers = new DocumentNumberService(prisma);
   const resolveSalesLineTarget = new ResolveSalesLineTargetUseCase(getProduct, getProductVariant, getWarehouse, getTax);
   const getPriceListItem = new GetPriceListItemUseCase(new PrismaPriceListItemRepository(prisma));
 
@@ -192,10 +194,10 @@ async function buildFixture(harness: PostgresTestHarness, slugSuffix: string) {
         quantity,
       });
     },
-    createQuote: new CreateQuoteUseCase(quotes, resolveCustomerTarget),
+    createQuote: new CreateQuoteUseCase(quotes, resolveCustomerTarget, documentNumbers),
     addQuoteLine: new AddQuoteLineUseCase(quotes, quoteLines, resolveSalesLineTarget, getPriceListItem),
-    convertQuote: new ConvertQuoteToSalesOrderUseCase(quotes, quoteLines, salesOrders, salesOrderLines, getProduct),
-    createSalesOrder: new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget),
+    convertQuote: new ConvertQuoteToSalesOrderUseCase(quotes, quoteLines, salesOrders, salesOrderLines, getProduct, documentNumbers),
+    createSalesOrder: new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget, documentNumbers),
     addSalesOrderLine: new AddSalesOrderLineUseCase(salesOrders, salesOrderLines, resolveSalesLineTarget, getPriceListItem),
     confirmSalesOrder: new ConfirmSalesOrderUseCase(salesOrders, salesOrderLines, createReservation, releaseReservation),
     fulfillSalesOrder: new FulfillSalesOrderUseCase(salesOrders, salesOrderLines, releaseReservation, recordIssue),

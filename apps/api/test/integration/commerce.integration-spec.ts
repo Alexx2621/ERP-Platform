@@ -38,6 +38,7 @@ import { PrismaSalesOrderRepository } from "../../src/modules/sales/infrastructu
 import { PrismaSalesOrderLineRepository } from "../../src/modules/sales/infrastructure/prisma-sales-order-line.repository";
 import { ResolveCustomerTargetUseCase } from "../../src/modules/sales/application/use-cases/resolve-customer-target.use-case";
 import { ResolveSalesLineTargetUseCase } from "../../src/modules/sales/application/use-cases/resolve-sales-line-target.use-case";
+import { DocumentNumberService } from "../../src/shared/document-numbering/document-number.service";
 import { CreateSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/create-sales-order.use-case";
 import { AddSalesOrderLineUseCase } from "../../src/modules/sales/application/use-cases/add-sales-order-line.use-case";
 import { ConfirmSalesOrderUseCase } from "../../src/modules/sales/application/use-cases/confirm-sales-order.use-case";
@@ -148,7 +149,8 @@ async function buildFixture(harness: PostgresTestHarness, slugSuffix: string) {
   const resolveSalesLineTarget = new ResolveSalesLineTargetUseCase(getProduct, getProductVariant, getWarehouse, getTax);
   const getPriceListItem = new GetPriceListItemUseCase(new PrismaPriceListItemRepository(prisma));
 
-  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget);
+  const documentNumbers = new DocumentNumberService(prisma);
+  const createSalesOrder = new CreateSalesOrderUseCase(salesOrders, resolveCustomerTarget, documentNumbers);
   const addSalesOrderLine = new AddSalesOrderLineUseCase(salesOrders, salesOrderLines, resolveSalesLineTarget, getPriceListItem);
   const confirmSalesOrder = new ConfirmSalesOrderUseCase(salesOrders, salesOrderLines, createReservation, releaseReservation);
   const cancelSalesOrder = new CancelSalesOrderUseCase(salesOrders, salesOrderLines, releaseReservation);

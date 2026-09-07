@@ -44,6 +44,7 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
       companyId: record.companyId,
       customerId: record.customerId,
       quoteId: record.quoteId,
+      number: record.number,
       channel: record.channel,
       status: record.status,
       currency: record.currency,

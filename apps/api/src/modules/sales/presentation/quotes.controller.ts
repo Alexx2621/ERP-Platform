@@ -13,6 +13,7 @@ import { ListQuotesUseCase } from "../application/use-cases/list-quotes.use-case
 import { ListQuoteLinesUseCase } from "../application/use-cases/list-quote-lines.use-case";
 import { ConvertQuoteToSalesOrderUseCase } from "../application/use-cases/convert-quote-to-sales-order.use-case";
 import { CancelQuoteUseCase } from "../application/use-cases/cancel-quote.use-case";
+import { SummarizeSalesTotalsUseCase } from "../application/use-cases/summarize-sales-totals.use-case";
 import { CreateQuoteDto, ConvertQuoteDto, ListQuotesQueryDto, QuoteResponseDto } from "./dto/quote.dto";
 import { AddQuoteLineDto, QuoteLineResponseDto } from "./dto/quote-line.dto";
 import { SalesOrderResponseDto } from "./dto/sales-order.dto";
@@ -33,8 +34,16 @@ export class QuotesController {
     private readonly listLines: ListQuoteLinesUseCase,
     private readonly convertQuote: ConvertQuoteToSalesOrderUseCase,
     private readonly cancelQuote: CancelQuoteUseCase,
+    private readonly summarizeTotals: SummarizeSalesTotalsUseCase,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
+
+
+  /** See `SalesOrdersController.toResponse` — same reason. */
+  private async toResponse(tenantId: string, quote: Parameters<typeof QuoteResponseDto.fromDomain>[0]): Promise<QuoteResponseDto> {
+    const totals = await this.summarizeTotals.forQuotes(tenantId, [quote.id]);
+    return QuoteResponseDto.fromDomain(quote, totals.get(quote.id) ?? "0.0000");
+  }
 
   @Get()
   @UseGuards(PermissionGuard)
@@ -52,7 +61,11 @@ export class QuotesController {
         companyId,
         filter: { status: query.status, customerId: query.customerId, limit: query.limit ?? 50 },
       });
-      return quotes.map(QuoteResponseDto.fromDomain);
+      const totals = await this.summarizeTotals.forQuotes(
+        ctx.tenantId,
+        quotes.map((quote) => quote.id),
+      );
+      return quotes.map((quote) => QuoteResponseDto.fromDomain(quote, totals.get(quote.id) ?? "0.0000"));
     } catch (error) {
       handleSalesError(error);
     }
@@ -80,7 +93,7 @@ export class QuotesController {
         newValues: { customerId: quote.customerId, currency: quote.currency },
         correlationId: ctx.correlationId,
       });
-      return QuoteResponseDto.fromDomain(quote);
+      return this.toResponse(ctx.tenantId, quote);
     } catch (error) {
       handleSalesError(error);
     }
@@ -156,7 +169,8 @@ export class QuotesController {
         newValues: { salesOrderId: order.id },
         correlationId: ctx.correlationId,
       });
-      return SalesOrderResponseDto.fromDomain(order);
+      const orderTotals = await this.summarizeTotals.forSalesOrders(ctx.tenantId, [order.id]);
+      return SalesOrderResponseDto.fromDomain(order, orderTotals.get(order.id) ?? "0.0000");
     } catch (error) {
       handleSalesError(error);
     }
@@ -184,7 +198,7 @@ export class QuotesController {
         newValues: { status: quote.status },
         correlationId: ctx.correlationId,
       });
-      return QuoteResponseDto.fromDomain(quote);
+      return this.toResponse(ctx.tenantId, quote);
     } catch (error) {
       handleSalesError(error);
     }

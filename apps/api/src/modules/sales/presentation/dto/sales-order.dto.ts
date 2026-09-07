@@ -27,11 +27,17 @@ export class ListSalesOrdersQueryDto {
 
 export class SalesOrderResponseDto {
   @ApiProperty() id!: string;
+  @ApiProperty({ example: "PED-000001", description: "Correlativo legible por empresa." }) number!: string;
   @ApiProperty() customerId!: string;
   @ApiProperty({ type: String, nullable: true }) quoteId!: string | null;
   @ApiProperty({ enum: CHANNELS }) channel!: string;
   @ApiProperty({ enum: STATUSES }) status!: string;
   @ApiProperty() currency!: string;
+  @ApiProperty({
+    example: "1250.0000",
+    description: "Suma de los totales de línea, calculada al leer — nunca almacenada.",
+  })
+  total!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ format: "date-time", type: String }) createdAt!: string;
   @ApiProperty({ format: "date-time", type: String }) updatedAt!: string;
@@ -39,10 +45,12 @@ export class SalesOrderResponseDto {
   @ApiProperty({ type: String, nullable: true, format: "date-time" }) fulfilledAt!: string | null;
   @ApiProperty({ type: String, nullable: true, format: "date-time" }) cancelledAt!: string | null;
 
-  static fromDomain(order: SalesOrder): SalesOrderResponseDto {
+  static fromDomain(order: SalesOrder, total = "0.0000"): SalesOrderResponseDto {
     const dto = new SalesOrderResponseDto();
     dto.id = order.id;
+    dto.number = order.number;
     dto.customerId = order.customerId;
+    dto.total = total;
     dto.quoteId = order.quoteId;
     dto.channel = order.channel;
     dto.status = order.status;

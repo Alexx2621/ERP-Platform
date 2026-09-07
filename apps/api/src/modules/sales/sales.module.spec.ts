@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { PRISMA_CLIENT as NOTIFICATIONS_PRISMA_CLIENT } from "@erp/notifications";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { DocumentNumberingModule } from "../../shared/document-numbering/document-numbering.module";
 import { RedisService } from "../../shared/redis/redis.service";
 import { SalesModule } from "./sales.module";
 import { QuotesController } from "./presentation/quotes.controller";
@@ -43,6 +44,7 @@ describe("SalesModule wiring", () => {
           ],
         }),
         StubInfraModule,
+        DocumentNumberingModule,
         SalesModule,
       ],
     }).compile();

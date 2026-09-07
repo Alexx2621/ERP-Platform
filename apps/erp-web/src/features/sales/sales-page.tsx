@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowUUpLeft, FileText, ShoppingCartSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import type { CustomerResponse, ProductResponse, SalesOrderResponse, TaxResponse, WarehouseResponse } from "@erp/api-client";
+import type { CustomerResponse, ProductResponse, TaxResponse, WarehouseResponse } from "@erp/api-client";
 import { ProductShell } from "../workspace/product-shell";
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
@@ -11,6 +11,7 @@ import { ErrorNotice, SetupNotice } from "../../shared/ui/notice";
 import { PageLoading } from "../../shared/ui/page-loading";
 import { Tabs } from "../../shared/ui/tabs";
 import { QuotesPanel } from "./quotes-panel";
+import { SalesOrderEditor } from "./sales-order-editor";
 import { SalesOrdersPanel } from "./sales-orders-panel";
 import { SalesReturnsPanel } from "./sales-returns-panel";
 import { isAbortError, type WorkspaceSelection } from "./sales-shared";
@@ -61,7 +62,9 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("quotes");
-  const [focusOrder, setFocusOrder] = useState<SalesOrderResponse | null>(null);
+  // `undefined` = list view; `null` = a blank editor; a string = that order.
+  const [editorOrderId, setEditorOrderId] = useState<string | null | undefined>(undefined);
+  const [ordersReloadToken, setOrdersReloadToken] = useState(0);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -127,6 +130,18 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
               </Button>
             }
           />
+        ) : editorOrderId !== undefined ? (
+          <SalesOrderEditor
+            selection={selection}
+            companyId={companyId}
+            customers={customers}
+            products={products}
+            warehouses={warehouses}
+            taxes={taxes}
+            orderId={editorOrderId}
+            onClose={() => setEditorOrderId(undefined)}
+            onOrderChanged={() => setOrdersReloadToken((token) => token + 1)}
+          />
         ) : (
           <Tabs
             ariaLabel="Administración de ventas"
@@ -151,8 +166,10 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
                     taxes={taxes}
                     active={activeTab === "quotes"}
                     onConverted={(order) => {
-                      setFocusOrder(order);
+                      // Converting a quote lands the user directly in the
+                      // resulting order, instead of leaving them to find it.
                       setActiveTab("orders");
+                      setEditorOrderId(order.id);
                     }}
                   />
                 ),
@@ -170,12 +187,9 @@ function SalesWorkspace({ selection, companyId, navigate }: SalesWorkspaceProps)
                     selection={selection}
                     companyId={companyId}
                     customers={customers}
-                    products={products}
-                    warehouses={warehouses}
-                    taxes={taxes}
                     active={activeTab === "orders"}
-                    focusOrder={activeTab === "orders" ? focusOrder : null}
-                    onFocusOrderConsumed={() => setFocusOrder(null)}
+                    onOpenEditor={setEditorOrderId}
+                    reloadToken={ordersReloadToken}
                   />
                 ),
               },

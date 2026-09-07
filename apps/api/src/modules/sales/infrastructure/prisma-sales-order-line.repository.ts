@@ -1,8 +1,12 @@
 import { Injectable } from "@nestjs/common";
-import type { SalesOrderLine as PrismaSalesOrderLine } from "@erp/database";
+import { Prisma, type SalesOrderLine as PrismaSalesOrderLine } from "@erp/database";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
 import { SalesOrderLine } from "../domain/sales-order-line.entity";
 import { SalesOrderLineRepository } from "../domain/sales-order-line.repository";
+
+/** `groupBy._sum` is null for a group with no rows; it cannot happen for a
+ * group that exists, but the type is nullable, so this is the explicit zero. */
+const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
 export class PrismaSalesOrderLineRepository implements SalesOrderLineRepository {
@@ -28,6 +32,16 @@ export class PrismaSalesOrderLineRepository implements SalesOrderLineRepository 
       create: props,
       update: { reservationId: props.reservationId },
     });
+  }
+
+  async sumTotalsByOrders(tenantId: string, salesOrderIds: string[]): Promise<Map<string, string>> {
+    if (salesOrderIds.length === 0) return new Map();
+    const rows = await this.prisma.salesOrderLine.groupBy({
+      by: ["salesOrderId"],
+      where: { tenantId, salesOrderId: { in: salesOrderIds } },
+      _sum: { lineTotal: true },
+    });
+    return new Map(rows.map((row) => [row.salesOrderId, (row._sum.lineTotal ?? ZERO).toFixed(4)]));
   }
 
   private toDomain(record: PrismaSalesOrderLine): SalesOrderLine {

@@ -8,6 +8,7 @@ function buildProps(overrides: Partial<SalesOrderProps> = {}): SalesOrderProps {
     companyId: "company-1",
     customerId: "customer-1",
     quoteId: null,
+    number: "PED-000001",
     channel: "ERP",
     status: "DRAFT",
     currency: "usd",

@@ -1,8 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import type { QuoteLine as PrismaQuoteLine } from "@erp/database";
+import { Prisma, type QuoteLine as PrismaQuoteLine } from "@erp/database";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
 import { QuoteLine } from "../domain/quote-line.entity";
 import { QuoteLineRepository } from "../domain/quote-line.repository";
+
+/** See the same constant in `PrismaSalesOrderLineRepository`. */
+const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
 export class PrismaQuoteLineRepository implements QuoteLineRepository {
@@ -28,6 +31,16 @@ export class PrismaQuoteLineRepository implements QuoteLineRepository {
       create: props,
       update: {},
     });
+  }
+
+  async sumTotalsByQuotes(tenantId: string, quoteIds: string[]): Promise<Map<string, string>> {
+    if (quoteIds.length === 0) return new Map();
+    const rows = await this.prisma.quoteLine.groupBy({
+      by: ["quoteId"],
+      where: { tenantId, quoteId: { in: quoteIds } },
+      _sum: { lineTotal: true },
+    });
+    return new Map(rows.map((row) => [row.quoteId, (row._sum.lineTotal ?? ZERO).toFixed(4)]));
   }
 
   private toDomain(record: PrismaQuoteLine): QuoteLine {

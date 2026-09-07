@@ -8,6 +8,8 @@ export interface SalesOrderProps {
   companyId: string;
   customerId: string;
   quoteId: string | null;
+  /** Human-readable per-company correlative, e.g. `PED-000042`. */
+  number: string;
   channel: SalesChannel;
   status: SalesOrderStatus;
   currency: string;
@@ -61,6 +63,9 @@ export class SalesOrder {
   }
   get quoteId(): string | null {
     return this.props.quoteId;
+  }
+  get number(): string {
+    return this.props.number;
   }
   get channel(): SalesChannel {
     return this.props.channel;

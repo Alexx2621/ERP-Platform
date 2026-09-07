@@ -1,5 +1,5 @@
 import { ListDashes, Plus, Trash } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type {
   CreateSalesReturnLineInput,
   ProductResponse,
@@ -11,7 +11,14 @@ import type {
 import { apiClient } from "../../shared/api/client";
 import { getErrorMessage } from "../../shared/api/error-message";
 import { useAuth } from "../../shared/auth/auth-context";
+import { formatDate } from "../../shared/format/date";
 import { Button } from "../../shared/ui/button";
+import {
+  DataTableToolbar,
+  PaginationFooter,
+  SortableHead,
+  useWorkTable,
+} from "../../shared/ui/data-table";
 import { FormField } from "../../shared/ui/form-field";
 import { LoadingRows } from "../../shared/ui/loading-rows";
 import { Modal } from "../../shared/ui/modal";
@@ -133,6 +140,7 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
   const [modalOpen, setModalOpen] = useState(false);
   const [detailReturn, setDetailReturn] = useState<SalesReturnResponse | null>(null);
 
+  const [orderNumbers, setOrderNumbers] = useState<Map<string, string>>(new Map());
   const [fulfilledOrders, setFulfilledOrders] = useState<SalesOrderResponse[]>([]);
   const [salesOrderId, setSalesOrderId] = useState("");
   const [orderLines, setOrderLines] = useState<SalesOrderLineResponse[]>([]);
@@ -148,7 +156,15 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
       setError(undefined);
       try {
         const accessToken = await getAccessToken();
-        setReturns(await apiClient.listSalesReturns(accessToken, selection.slug, companyId, {}, signal));
+        // Returns only carry `salesOrderId`, so the order list is fetched
+        // alongside them purely to render a readable order number instead of
+        // a raw UUID (and to make that number searchable).
+        const [loadedReturns, loadedOrders] = await Promise.all([
+          apiClient.listSalesReturns(accessToken, selection.slug, companyId, {}, signal),
+          apiClient.listSalesOrders(accessToken, selection.slug, companyId, { limit: 200 }, signal),
+        ]);
+        setReturns(loadedReturns);
+        setOrderNumbers(new Map(loadedOrders.map((order) => [order.id, order.number])));
       } catch (caught) {
         if (!isAbortError(caught)) setError(getErrorMessage(caught));
       }
@@ -162,6 +178,31 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
     void load(controller.signal);
     return () => controller.abort();
   }, [active, load]);
+
+  const orderNumberOf = useCallback(
+    (salesOrderId: string) => orderNumbers.get(salesOrderId) ?? salesOrderId,
+    [orderNumbers],
+  );
+
+  const rows = useMemo(() => returns ?? [], [returns]);
+  const searchable = useCallback(
+    (salesReturn: SalesReturnResponse) =>
+      `${orderNumberOf(salesReturn.salesOrderId)} ${salesReturn.reason ?? ""}`,
+    [orderNumberOf],
+  );
+  const sortValue = useCallback(
+    (salesReturn: SalesReturnResponse, column: string): string | number => {
+      if (column === "createdAt") return new Date(salesReturn.createdAt).getTime();
+      return orderNumberOf(salesReturn.salesOrderId);
+    },
+    [orderNumberOf],
+  );
+  const table = useWorkTable<SalesReturnResponse>({
+    rows,
+    searchable,
+    sortValue,
+    initialSort: { column: "createdAt", direction: "desc" },
+  });
 
   const openModal = async () => {
     setModalOpen(true);
@@ -235,13 +276,6 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
 
   return (
     <section className="grid gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[12px] font-medium text-[var(--muted-strong)]">Devoluciones registradas contra pedidos despachados.</p>
-        <Button type="button" onClick={() => void openModal()}>
-          <Plus size={17} weight="bold" aria-hidden="true" />
-          Nueva devolución
-        </Button>
-      </div>
       {error ? (
         <div className="grid gap-3">
           <ErrorNotice message={error} />
@@ -250,40 +284,88 @@ export function SalesReturnsPanel({ selection, companyId, products, active }: Sa
           </Button>
         </div>
       ) : (
-        <Table aria-busy={returns === null}>
-          <TableCaption>Devoluciones</TableCaption>
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col">Pedido</TableHead>
-              <TableHead scope="col">Motivo</TableHead>
-              <TableHead scope="col" className="text-right">
-                Acciones
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {returns === null ? (
-              <LoadingRows columns={3} />
-            ) : returns.length === 0 ? (
+        <div>
+          <DataTableToolbar
+            search={table.search}
+            onSearchChange={table.setSearch}
+            searchPlaceholder="Buscar por pedido o motivo…"
+            action={
+              <Button type="button" onClick={() => void openModal()}>
+                <Plus size={17} weight="bold" aria-hidden="true" />
+                Nueva devolución
+              </Button>
+            }
+          />
+          <Table aria-busy={returns === null}>
+            <TableCaption>Devoluciones</TableCaption>
+            <TableHeader>
               <TableRow>
-                <TableEmpty colSpan={3} title="Todavía no hay devoluciones" />
+                <SortableHead scope="col" column="createdAt" sort={table.sort} onSortChange={table.setSort}>
+                  Fecha
+                </SortableHead>
+                <SortableHead scope="col" column="order" sort={table.sort} onSortChange={table.setSort}>
+                  Pedido
+                </SortableHead>
+                <TableHead scope="col">Motivo</TableHead>
+                <TableHead scope="col" className="text-right">
+                  Acciones
+                </TableHead>
               </TableRow>
-            ) : (
-              returns.map((salesReturn) => (
-                <TableRow key={salesReturn.id}>
-                  <TableCell className="font-mono text-[11px]">{salesReturn.salesOrderId}</TableCell>
-                  <TableCell className="text-[12px]">{salesReturn.reason ?? "—"}</TableCell>
-                  <TableCell className="text-right">
-                    <Button type="button" variant="secondary" className="h-9 px-3" onClick={() => setDetailReturn(salesReturn)}>
-                      <ListDashes size={16} weight="bold" aria-hidden="true" />
-                      Ver
-                    </Button>
-                  </TableCell>
+            </TableHeader>
+            <TableBody>
+              {returns === null ? (
+                <LoadingRows columns={4} />
+              ) : table.visible.length === 0 ? (
+                <TableRow>
+                  <TableEmpty
+                    colSpan={4}
+                    title={returns.length === 0 ? "Todavía no hay devoluciones" : "Ningún resultado"}
+                    description={
+                      returns.length === 0 ? undefined : "Ajusta la búsqueda para ver más registros."
+                    }
+                  />
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                table.visible.map((salesReturn) => (
+                  <TableRow
+                    key={salesReturn.id}
+                    className="cursor-pointer"
+                    onClick={() => setDetailReturn(salesReturn)}
+                  >
+                    <TableCell className="whitespace-nowrap text-[12px] font-medium text-[var(--muted-strong)]">
+                      {formatDate(salesReturn.createdAt)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-[12px]">
+                      {orderNumberOf(salesReturn.salesOrderId)}
+                    </TableCell>
+                    <TableCell className="text-[12px]">{salesReturn.reason ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-8 px-3"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDetailReturn(salesReturn);
+                        }}
+                      >
+                        <ListDashes size={16} weight="bold" aria-hidden="true" />
+                        Ver
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <PaginationFooter
+            page={table.page}
+            pageCount={table.pageCount}
+            total={table.total}
+            filtered={table.filteredCount}
+            onPageChange={table.setPage}
+          />
+        </div>
       )}
 
       <Modal

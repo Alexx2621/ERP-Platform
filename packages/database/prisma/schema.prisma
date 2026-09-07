@@ -180,6 +180,7 @@ model Tenant {
   productionOrderMaterialMovements     ProductionOrderMaterialMovement[]
   productionOrderOperations            ProductionOrderOperation[]
   productionOrderFinishedGoodsReceipts ProductionOrderFinishedGoodsReceipt[]
+  documentSequences                    DocumentSequence[]
 
   @@map("tenants")
 }
@@ -300,6 +301,7 @@ model Company {
   activities            Activity[]
   billOfMaterials       BillOfMaterial[]
   productionOrders      ProductionOrder[]
+  documentSequences     DocumentSequence[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -1408,11 +1410,43 @@ enum QuoteStatus {
 /// A non-binding proposal with its own pricing snapshot, convertible into a
 /// real SalesOrder (`ConvertQuoteToSalesOrderUseCase`). Never reserves
 /// inventory — only a confirmed SalesOrder does.
+/// Per-company, per-document-type counter behind human-readable document
+/// numbers (COT-000001, PED-000001). Allocated under `SELECT ... FOR
+/// UPDATE` inside its own short transaction — the same row-locking pattern
+/// `inventory_balances` already uses — because MASTER_SPEC §35 lists
+/// "correlativos" as concurrency-critical alongside inventory and payments.
+///
+/// Deliberately NOT gapless: the number is allocated just before the
+/// document row is written, so a failure in between burns that number.
+/// Real gapless (fiscal-grade) numbering needs the counter to commit in the
+/// same transaction as the document and a documented recovery procedure for
+/// crashes — a separate, much harder problem this does not claim to solve.
+model DocumentSequence {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  /// Free-form key owned by the calling module, e.g. "SALES_QUOTE".
+  documentType String   @map("document_type") @db.VarChar(40)
+  prefix       String   @db.VarChar(10)
+  nextValue    Int      @default(1) @map("next_value")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, documentType])
+  @@map("document_sequences")
+}
+
 model Quote {
   id          String       @id @db.Uuid
   tenantId    String       @map("tenant_id") @db.Uuid
   companyId   String       @map("company_id") @db.Uuid
   customerId  String       @map("customer_id") @db.Uuid
+  /// Human-readable correlative (COT-000001), unique per company — what a
+  /// user actually searches and quotes on the phone. See DocumentSequence.
+  number      String       @db.VarChar(30)
   channel     SalesChannel @default(ERP)
   status      QuoteStatus  @default(DRAFT)
   currency    String       @db.VarChar(3)
@@ -1430,6 +1464,7 @@ model Quote {
   salesOrders SalesOrder[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, number])
   @@index([tenantId, companyId, status])
   @@map("quotes")
 }
@@ -1483,6 +1518,10 @@ model SalesOrder {
   companyId   String           @map("company_id") @db.Uuid
   customerId  String           @map("customer_id") @db.Uuid
   quoteId     String?          @map("quote_id") @db.Uuid
+  /// Human-readable correlative (PED-000001), unique per company. See
+  /// DocumentSequence. Every channel that creates a sales order (ERP, POS,
+  /// Commerce) goes through CreateSalesOrderUseCase, so all of them get one.
+  number      String           @db.VarChar(30)
   channel     SalesChannel     @default(ERP)
   status      SalesOrderStatus @default(DRAFT)
   currency    String           @db.VarChar(3)
@@ -1504,6 +1543,7 @@ model SalesOrder {
   commerceOrder CommerceOrder?
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, number])
   @@index([tenantId, companyId, status])
   @@index([tenantId, customerId])
   @@map("sales_orders")

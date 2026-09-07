@@ -40,6 +40,7 @@ import { ListSalesOrdersUseCase } from "./application/use-cases/list-sales-order
 import { ListSalesOrderLinesUseCase } from "./application/use-cases/list-sales-order-lines.use-case";
 import { ListSalesReturnsUseCase } from "./application/use-cases/list-sales-returns.use-case";
 import { ListSalesReturnLinesUseCase } from "./application/use-cases/list-sales-return-lines.use-case";
+import { SummarizeSalesTotalsUseCase } from "./application/use-cases/summarize-sales-totals.use-case";
 import { GetSalesOrderUseCase } from "./application/use-cases/get-sales-order.use-case";
 import { QuotesController } from "./presentation/quotes.controller";
 import { SalesOrdersController } from "./presentation/sales-orders.controller";
@@ -96,6 +97,7 @@ import { SalesReturnsController } from "./presentation/sales-returns.controller"
     ListSalesReturnsUseCase,
     ListSalesReturnLinesUseCase,
     GetSalesOrderUseCase,
+    SummarizeSalesTotalsUseCase,
   ],
   exports: [
     ListSalesOrdersUseCase,

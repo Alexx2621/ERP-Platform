@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { validateEnvironment } from "./shared/config/environment-variables";
 import { PrismaModule } from "./shared/prisma/prisma.module";
+import { DocumentNumberingModule } from "./shared/document-numbering/document-numbering.module";
 import { RedisModule } from "./shared/redis/redis.module";
 import { EmailModule } from "./shared/email/email.module";
 import { CorrelationIdMiddleware } from "./shared/http/correlation-id.middleware";
@@ -40,6 +41,7 @@ import { ManufacturingModule } from "./modules/manufacturing";
       validate: validateEnvironment,
     }),
     PrismaModule,
+    DocumentNumberingModule,
     RedisModule,
     EmailModule,
     UsersModule,

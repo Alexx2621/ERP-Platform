@@ -1,6 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { newId } from "@erp/database";
 import { GetProductUseCase } from "../../../catalog";
+import {
+  DOCUMENT_NUMBER_ALLOCATOR,
+  DocumentNumberAllocator,
+} from "../../../../shared/document-numbering/document-number.port";
 import { SalesOrder } from "../../domain/sales-order.entity";
 import { SalesOrderLine } from "../../domain/sales-order-line.entity";
 import { SALES_ORDER_REPOSITORY, SalesOrderRepository } from "../../domain/sales-order.repository";
@@ -8,6 +12,7 @@ import { SALES_ORDER_LINE_REPOSITORY, SalesOrderLineRepository } from "../../dom
 import { QUOTE_REPOSITORY, QuoteRepository } from "../../domain/quote.repository";
 import { QUOTE_LINE_REPOSITORY, QuoteLineRepository } from "../../domain/quote-line.repository";
 import { ProductNotFoundError, QuoteHasNoLinesError, QuoteNotDraftError, QuoteNotFoundError } from "../errors";
+import { SALES_ORDER_DOCUMENT_TYPE, SALES_ORDER_NUMBER_PREFIX } from "./create-sales-order.use-case";
 
 export interface ConvertQuoteToSalesOrderInput {
   tenantId: string;
@@ -37,6 +42,7 @@ export class ConvertQuoteToSalesOrderUseCase {
     @Inject(SALES_ORDER_REPOSITORY) private readonly salesOrders: SalesOrderRepository,
     @Inject(SALES_ORDER_LINE_REPOSITORY) private readonly salesOrderLines: SalesOrderLineRepository,
     private readonly getProduct: GetProductUseCase,
+    @Inject(DOCUMENT_NUMBER_ALLOCATOR) private readonly documentNumbers: DocumentNumberAllocator,
   ) {}
 
   async execute(input: ConvertQuoteToSalesOrderInput): Promise<SalesOrder> {
@@ -53,6 +59,13 @@ export class ConvertQuoteToSalesOrderUseCase {
       throw new QuoteHasNoLinesError();
     }
 
+    const number = await this.documentNumbers.allocate({
+      tenantId: input.tenantId,
+      companyId: input.companyId,
+      documentType: SALES_ORDER_DOCUMENT_TYPE,
+      prefix: SALES_ORDER_NUMBER_PREFIX,
+    });
+
     const now = new Date();
     const order = SalesOrder.create({
       id: newId(),
@@ -60,6 +73,7 @@ export class ConvertQuoteToSalesOrderUseCase {
       companyId: input.companyId,
       customerId: quote.customerId,
       quoteId: quote.id,
+      number,
       channel: quote.channel,
       status: "DRAFT",
       currency: quote.currency,

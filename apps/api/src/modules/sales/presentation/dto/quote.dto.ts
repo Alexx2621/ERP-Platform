@@ -36,10 +36,16 @@ export class ConvertQuoteDto {
 
 export class QuoteResponseDto {
   @ApiProperty() id!: string;
+  @ApiProperty({ example: "COT-000001", description: "Correlativo legible por empresa." }) number!: string;
   @ApiProperty() customerId!: string;
   @ApiProperty({ enum: CHANNELS }) channel!: string;
   @ApiProperty({ enum: ["DRAFT", "CONVERTED", "CANCELLED"] }) status!: string;
   @ApiProperty() currency!: string;
+  @ApiProperty({
+    example: "1250.0000",
+    description: "Suma de los totales de línea, calculada al leer — nunca almacenada.",
+  })
+  total!: string;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
   @ApiProperty() version!: number;
   @ApiProperty({ format: "date-time", type: String }) createdAt!: string;
@@ -47,10 +53,12 @@ export class QuoteResponseDto {
   @ApiProperty({ type: String, nullable: true, format: "date-time" }) convertedAt!: string | null;
   @ApiProperty({ type: String, nullable: true, format: "date-time" }) cancelledAt!: string | null;
 
-  static fromDomain(quote: Quote): QuoteResponseDto {
+  static fromDomain(quote: Quote, total = "0.0000"): QuoteResponseDto {
     const dto = new QuoteResponseDto();
     dto.id = quote.id;
+    dto.number = quote.number;
     dto.customerId = quote.customerId;
+    dto.total = total;
     dto.channel = quote.channel;
     dto.status = quote.status;
     dto.currency = quote.currency;

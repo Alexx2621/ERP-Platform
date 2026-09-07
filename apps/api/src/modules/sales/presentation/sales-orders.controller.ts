@@ -14,6 +14,8 @@ import { ListSalesOrderLinesUseCase } from "../application/use-cases/list-sales-
 import { ConfirmSalesOrderUseCase } from "../application/use-cases/confirm-sales-order.use-case";
 import { CancelSalesOrderUseCase } from "../application/use-cases/cancel-sales-order.use-case";
 import { FulfillSalesOrderUseCase } from "../application/use-cases/fulfill-sales-order.use-case";
+import { GetSalesOrderUseCase } from "../application/use-cases/get-sales-order.use-case";
+import { SummarizeSalesTotalsUseCase } from "../application/use-cases/summarize-sales-totals.use-case";
 import { CreateSalesOrderDto, ListSalesOrdersQueryDto, SalesOrderResponseDto } from "./dto/sales-order.dto";
 import { AddSalesOrderLineDto, SalesOrderLineResponseDto } from "./dto/sales-order-line.dto";
 import { handleSalesError } from "./sales-error.mapper";
@@ -34,8 +36,19 @@ export class SalesOrdersController {
     private readonly confirmOrder: ConfirmSalesOrderUseCase,
     private readonly cancelOrder: CancelSalesOrderUseCase,
     private readonly fulfillOrder: FulfillSalesOrderUseCase,
+    private readonly getOrder: GetSalesOrderUseCase,
+    private readonly summarizeTotals: SummarizeSalesTotalsUseCase,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
+
+
+  /** One aggregate query so a single-order response carries its real total
+   * instead of the zero default (correct only for a brand-new, line-less
+   * order, which is not what confirm/cancel/fulfill return). */
+  private async toResponse(tenantId: string, order: Parameters<typeof SalesOrderResponseDto.fromDomain>[0]): Promise<SalesOrderResponseDto> {
+    const totals = await this.summarizeTotals.forSalesOrders(tenantId, [order.id]);
+    return SalesOrderResponseDto.fromDomain(order, totals.get(order.id) ?? "0.0000");
+  }
 
   @Get()
   @UseGuards(PermissionGuard)
@@ -53,7 +66,11 @@ export class SalesOrdersController {
         companyId,
         filter: { status: query.status, customerId: query.customerId, limit: query.limit ?? 50 },
       });
-      return orders.map(SalesOrderResponseDto.fromDomain);
+      const totals = await this.summarizeTotals.forSalesOrders(
+        ctx.tenantId,
+        orders.map((order) => order.id),
+      );
+      return orders.map((order) => SalesOrderResponseDto.fromDomain(order, totals.get(order.id) ?? "0.0000"));
     } catch (error) {
       handleSalesError(error);
     }
@@ -81,7 +98,28 @@ export class SalesOrdersController {
         newValues: { customerId: order.customerId, currency: order.currency },
         correlationId: ctx.correlationId,
       });
-      return SalesOrderResponseDto.fromDomain(order);
+      return this.toResponse(ctx.tenantId, order);
+    } catch (error) {
+      handleSalesError(error);
+    }
+  }
+
+  @Get(":id")
+  @UseGuards(PermissionGuard)
+  @RequirePermission("sales.orders.read")
+  @ApiOperation({
+    summary: "Read one sales order, including its total aggregated from its lines.",
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: SalesOrderResponseDto })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: "SALES_ORDER_NOT_FOUND" })
+  async getOne(
+    @Param("id") id: string,
+    @CurrentTenantContext() ctx: TenantExecutionContext,
+  ): Promise<SalesOrderResponseDto> {
+    try {
+      const companyId = requireCompanyId(ctx);
+      const order = await this.getOrder.executeForCompany(ctx.tenantId, companyId, id);
+      return this.toResponse(ctx.tenantId, order);
     } catch (error) {
       handleSalesError(error);
     }
@@ -163,7 +201,7 @@ export class SalesOrdersController {
         newValues: { status: order.status },
         correlationId: ctx.correlationId,
       });
-      return SalesOrderResponseDto.fromDomain(order);
+      return this.toResponse(ctx.tenantId, order);
     } catch (error) {
       handleSalesError(error);
     }
@@ -197,7 +235,7 @@ export class SalesOrdersController {
         newValues: { status: order.status },
         correlationId: ctx.correlationId,
       });
-      return SalesOrderResponseDto.fromDomain(order);
+      return this.toResponse(ctx.tenantId, order);
     } catch (error) {
       handleSalesError(error);
     }
@@ -231,7 +269,7 @@ export class SalesOrdersController {
         newValues: { status: order.status },
         correlationId: ctx.correlationId,
       });
-      return SalesOrderResponseDto.fromDomain(order);
+      return this.toResponse(ctx.tenantId, order);
     } catch (error) {
       handleSalesError(error);
     }

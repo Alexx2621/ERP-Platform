@@ -330,6 +330,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/apps/definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The global, code-owned app catalog — every app deployed to the platform. */
+        get: operations["AppsController_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The catalog joined with this tenant's own enablement state. */
+        get: operations["AppsController_mine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apps/{key}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable an app for this tenant. Idempotent; rejects if a required dependency isn't enabled. */
+        post: operations["AppsController_enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apps/{key}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable an app for this tenant. Idempotent; rejects if another enabled app still depends on it. */
+        post: operations["AppsController_disable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apps/{key}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Configuration values for this tenant's enabled app. */
+        get: operations["AppsController_configuration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apps/{key}/configuration/{configKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set a configuration value for this tenant's enabled app. */
+        put: operations["AppsController_setConfigurationValue"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/definitions": {
         parameters: {
             query?: never;
@@ -562,108 +664,6 @@ export interface paths {
         /** Platform-scoped audit entries (login, logout, user status changes) — no tenant owns these. */
         get: operations["PlatformAuditEntriesController_list"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps/definitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The global, code-owned app catalog — every app deployed to the platform. */
-        get: operations["AppsController_catalog"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The catalog joined with this tenant's own enablement state. */
-        get: operations["AppsController_mine"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps/{key}/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enable an app for this tenant. Idempotent; rejects if a required dependency isn't enabled. */
-        post: operations["AppsController_enable"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps/{key}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Disable an app for this tenant. Idempotent; rejects if another enabled app still depends on it. */
-        post: operations["AppsController_disable"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps/{key}/configuration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Configuration values for this tenant's enabled app. */
-        get: operations["AppsController_configuration"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/apps/{key}/configuration/{configKey}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set a configuration value for this tenant's enabled app. */
-        put: operations["AppsController_setConfigurationValue"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1498,6 +1498,23 @@ export interface paths {
         put?: never;
         /** Create a DRAFT sales order directly (without a quote). */
         post: operations["SalesOrdersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one sales order, including its total aggregated from its lines. */
+        get: operations["SalesOrdersController_getOne"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3142,6 +3159,41 @@ export interface components {
             /** @description When a pending invitation stops being acceptable. Null for any other status. */
             expiresAt: string | null;
         };
+        AppDefinitionResponseDto: {
+            /** @example manufacturing */
+            key: string;
+            name: string;
+            /** @example 1.0.0 */
+            version: string;
+            /** @enum {string} */
+            kind: "BUSINESS_APP" | "CHANNEL" | "INTEGRATION" | "INDUSTRY_EXTENSION";
+            dependsOnKeys: string[];
+        };
+        TenantAppResponseDto: {
+            /** @example manufacturing */
+            key: string;
+            name: string;
+            /** @example 1.0.0 */
+            version: string;
+            /** @enum {string} */
+            kind: "BUSINESS_APP" | "CHANNEL" | "INTEGRATION" | "INDUSTRY_EXTENSION";
+            dependsOnKeys: string[];
+            /**
+             * @description This tenant's own enablement state for the app.
+             * @enum {string}
+             */
+            status: "ENABLED" | "DISABLED";
+        };
+        AppConfigurationResponseDto: {
+            key: string;
+            value: Record<string, never>;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SetAppConfigurationDto: {
+            /** @description Any JSON-serializable value. */
+            value: Record<string, never>;
+        };
         SettingDefinitionResponseDto: {
             /** @example localization.currency */
             key: string;
@@ -3244,41 +3296,6 @@ export interface components {
             value: Record<string, never>;
             /** Format: date-time */
             updatedAt: string;
-        };
-        AppDefinitionResponseDto: {
-            /** @example manufacturing */
-            key: string;
-            name: string;
-            /** @example 1.0.0 */
-            version: string;
-            /** @enum {string} */
-            kind: "BUSINESS_APP" | "CHANNEL" | "INTEGRATION" | "INDUSTRY_EXTENSION";
-            dependsOnKeys: string[];
-        };
-        TenantAppResponseDto: {
-            /** @example manufacturing */
-            key: string;
-            name: string;
-            /** @example 1.0.0 */
-            version: string;
-            /** @enum {string} */
-            kind: "BUSINESS_APP" | "CHANNEL" | "INTEGRATION" | "INDUSTRY_EXTENSION";
-            dependsOnKeys: string[];
-            /**
-             * @description This tenant's own enablement state for the app.
-             * @enum {string}
-             */
-            status: "ENABLED" | "DISABLED";
-        };
-        AppConfigurationResponseDto: {
-            key: string;
-            value: Record<string, never>;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        SetAppConfigurationDto: {
-            /** @description Any JSON-serializable value. */
-            value: Record<string, never>;
         };
         UnitOfMeasureResponseDto: {
             id: string;
@@ -3871,12 +3888,22 @@ export interface components {
         };
         QuoteResponseDto: {
             id: string;
+            /**
+             * @description Correlativo legible por empresa.
+             * @example COT-000001
+             */
+            number: string;
             customerId: string;
             /** @enum {string} */
             channel: "ERP" | "POS" | "ECOMMERCE" | "B2B" | "MARKETPLACE" | "MOBILE" | "API";
             /** @enum {string} */
             status: "DRAFT" | "CONVERTED" | "CANCELLED";
             currency: string;
+            /**
+             * @description Suma de los totales de línea, calculada al leer — nunca almacenada.
+             * @example 1250.0000
+             */
+            total: string;
             notes: string | null;
             version: number;
             /** Format: date-time */
@@ -3941,6 +3968,11 @@ export interface components {
         };
         SalesOrderResponseDto: {
             id: string;
+            /**
+             * @description Correlativo legible por empresa.
+             * @example PED-000001
+             */
+            number: string;
             customerId: string;
             quoteId: string | null;
             /** @enum {string} */
@@ -3948,6 +3980,11 @@ export interface components {
             /** @enum {string} */
             status: "DRAFT" | "CONFIRMED" | "FULFILLED" | "CANCELLED";
             currency: string;
+            /**
+             * @description Suma de los totales de línea, calculada al leer — nunca almacenada.
+             * @example 1250.0000
+             */
+            total: string;
             version: number;
             /** Format: date-time */
             createdAt: string;
@@ -5557,6 +5594,205 @@ export interface operations {
             };
         };
     };
+    AppsController_catalog: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppDefinitionResponseDto"][];
+                };
+            };
+        };
+    };
+    AppsController_mine: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAppResponseDto"][];
+                };
+            };
+        };
+    };
+    AppsController_enable: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAppResponseDto"];
+                };
+            };
+            /** @description Unknown app key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A required dependency is not enabled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AppsController_disable: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAppResponseDto"];
+                };
+            };
+            /** @description Unknown app key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not enabled, or a dependent app is still enabled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AppsController_configuration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfigurationResponseDto"][];
+                };
+            };
+            /** @description The app is not enabled for this tenant. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AppsController_setConfigurationValue: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                key: string;
+                configKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAppConfigurationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfigurationResponseDto"];
+                };
+            };
+            /** @description The app is not enabled for this tenant. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     SettingsController_listCatalog: {
         parameters: {
             query?: never;
@@ -5972,205 +6208,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditEntryResponseDto"][];
                 };
-            };
-        };
-    };
-    AppsController_catalog: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppDefinitionResponseDto"][];
-                };
-            };
-        };
-    };
-    AppsController_mine: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantAppResponseDto"][];
-                };
-            };
-        };
-    };
-    AppsController_enable: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path: {
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantAppResponseDto"];
-                };
-            };
-            /** @description Unknown app key. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A required dependency is not enabled. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AppsController_disable: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path: {
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantAppResponseDto"];
-                };
-            };
-            /** @description Unknown app key. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not enabled, or a dependent app is still enabled. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AppsController_configuration: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path: {
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppConfigurationResponseDto"][];
-                };
-            };
-            /** @description The app is not enabled for this tenant. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AppsController_setConfigurationValue: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Slug of the tenant to operate in. */
-                "X-Tenant-Slug": string;
-                /** @description Optional company scope within the tenant. */
-                "X-Company-Id"?: string;
-            };
-            path: {
-                key: string;
-                configKey: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetAppConfigurationDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AppConfigurationResponseDto"];
-                };
-            };
-            /** @description The app is not enabled for this tenant. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -8025,6 +8062,39 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SalesOrderResponseDto"];
                 };
+            };
+        };
+    };
+    SalesOrdersController_getOne: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderResponseDto"];
+                };
+            };
+            /** @description SALES_ORDER_NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

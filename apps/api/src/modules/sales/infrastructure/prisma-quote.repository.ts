@@ -43,6 +43,7 @@ export class PrismaQuoteRepository implements QuoteRepository {
       tenantId: record.tenantId,
       companyId: record.companyId,
       customerId: record.customerId,
+      number: record.number,
       channel: record.channel,
       status: record.status,
       currency: record.currency,

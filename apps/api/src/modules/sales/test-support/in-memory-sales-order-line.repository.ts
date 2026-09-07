@@ -1,4 +1,5 @@
 import { SalesOrderLine } from "../domain/sales-order-line.entity";
+import { addDecimal } from "../domain/decimal";
 import { SalesOrderLineRepository } from "../domain/sales-order-line.repository";
 
 export class InMemorySalesOrderLineRepository implements SalesOrderLineRepository {
@@ -13,6 +14,15 @@ export class InMemorySalesOrderLineRepository implements SalesOrderLineRepositor
     return [...this.byId.values()]
       .filter((l) => l.tenantId === tenantId && l.salesOrderId === salesOrderId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async sumTotalsByOrders(tenantId: string, salesOrderIds: string[]): Promise<Map<string, string>> {
+    const totals = new Map<string, string>();
+    for (const line of this.byId.values()) {
+      if (line.tenantId !== tenantId || !salesOrderIds.includes(line.salesOrderId)) continue;
+      totals.set(line.salesOrderId, addDecimal(totals.get(line.salesOrderId) ?? "0", line.lineTotal));
+    }
+    return totals;
   }
 
   async save(line: SalesOrderLine): Promise<void> {

@@ -134,36 +134,35 @@ test("runs the full Quote -> SalesOrder -> Confirm -> Fulfill -> Payment -> Retu
   await quoteDetail.getByRole("button", { name: /Convertir a pedido/ }).click();
   expect((await convertResponse).status()).toBe(201);
 
-  // Converting switches to the "Pedidos" tab and opens the new order's detail automatically.
-  const orderDetail = page.getByRole("dialog", { name: /^Pedido/ });
-  await expect(orderDetail).toBeVisible();
-  await expect(orderDetail.getByText("100.0000")).toBeVisible();
+  // Converting lands the user directly in the new order's full-page editor
+  // (no dialog to close first — creating/editing an order is now a page, not
+  // a modal chain).
+  await expect(page.getByText("100.0000")).toBeVisible();
 
   const confirmResponse = page.waitForResponse(
     (response) => /\/api\/v1\/sales\/orders\/[^/]+\/confirm$/.test(response.url()) && response.request().method() === "POST",
   );
-  await orderDetail.getByRole("button", { name: /Confirmar/ }).click();
+  await page.getByRole("button", { name: /Confirmar pedido/ }).click();
   expect((await confirmResponse).status()).toBe(201);
-  await expect(orderDetail.getByText("Reservada")).toBeVisible();
+  await expect(page.getByText("Reservada")).toBeVisible();
 
   // --- Payment: capture CASH ---
-  await orderDetail.getByLabel(/Monto/).fill("100.0000");
+  await page.getByLabel(/Monto/).fill("100.0000");
   const captureResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/v1/payments/capture") && response.request().method() === "POST",
   );
-  await orderDetail.getByRole("button", { name: "Cobrar" }).click();
+  await page.getByRole("button", { name: "Cobrar" }).click();
   expect((await captureResponse).status()).toBe(201);
-  await expect(orderDetail.getByText("Cobrado")).toBeVisible();
+  await expect(page.getByText("Cobrado")).toBeVisible();
 
   // --- Fulfill ---
   const fulfillResponse = page.waitForResponse(
     (response) => /\/api\/v1\/sales\/orders\/[^/]+\/fulfill$/.test(response.url()) && response.request().method() === "POST",
   );
-  await orderDetail.getByRole("button", { name: "Despachar" }).click();
+  await page.getByRole("button", { name: "Despachar" }).click();
   expect((await fulfillResponse).status()).toBe(201);
 
-  await orderDetail.getByRole("button", { name: "Cerrar modal" }).click();
-  await expect(orderDetail).not.toBeVisible();
+  await page.getByRole("button", { name: "Volver a pedidos" }).click();
 
   // Balance reflects the real ledger: 50 received - 4 issued = 46 on hand.
   await page.getByRole("button", { name: "Volver al workspace" }).click();

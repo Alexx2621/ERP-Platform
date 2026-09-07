@@ -82,6 +82,8 @@ const product = {
 const quote = {
   id: "quote-1",
   customerId: "customer-1",
+  number: "COT-000001",
+  total: "0.0000",
   channel: "ERP" as const,
   status: "DRAFT" as const,
   currency: "USD",
@@ -141,11 +143,27 @@ describe("SalesPage", () => {
 
   it("creates a quote, adds a line, and converts it into a sales order", async () => {
     const user = userEvent.setup();
-    // A longer-than-default timeout: this test drives four sequential
+    // A longer-than-default timeout: this test drives several sequential
     // modal/form interactions (create → open detail → add line → convert),
     // each awaiting a real state update, which the default 5s budget can
     // miss under concurrent test-suite load even though every step itself
     // is fast in isolation.
+    const convertedOrder = {
+      id: "order-1",
+      customerId: "customer-1",
+      quoteId: "quote-1",
+      number: "PED-000001",
+      total: "39.9800",
+      channel: "ERP" as const,
+      status: "DRAFT" as const,
+      currency: "USD",
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      confirmedAt: null,
+      fulfilledAt: null,
+      cancelledAt: null,
+    };
     vi.spyOn(apiClient, "listCustomers").mockResolvedValue([customer]);
     vi.spyOn(apiClient, "listProducts").mockResolvedValue([product]);
     vi.spyOn(apiClient, "listWarehouses").mockResolvedValue([]);
@@ -166,21 +184,9 @@ describe("SalesPage", () => {
       lineTotal: "39.9800",
       createdAt: "2026-08-31T00:00:00.000Z",
     });
-    const convertQuote = vi.spyOn(apiClient, "convertQuoteToSalesOrder").mockResolvedValue({
-      id: "order-1",
-      customerId: "customer-1",
-      quoteId: "quote-1",
-      channel: "ERP",
-      status: "DRAFT",
-      currency: "USD",
-      version: 1,
-      createdAt: "2026-08-31T00:00:00.000Z",
-      updatedAt: "2026-08-31T00:00:00.000Z",
-      confirmedAt: null,
-      fulfilledAt: null,
-      cancelledAt: null,
-    });
-    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([]);
+    const convertQuote = vi.spyOn(apiClient, "convertQuoteToSalesOrder").mockResolvedValue(convertedOrder);
+    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([convertedOrder]);
+    vi.spyOn(apiClient, "getSalesOrder").mockResolvedValue(convertedOrder);
     vi.spyOn(apiClient, "listSalesOrderLines").mockResolvedValue([]);
     vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
 
@@ -225,33 +231,37 @@ describe("SalesPage", () => {
       }),
     );
 
-    // Converting switches to the "Pedidos" tab and opens the new order's detail.
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /Pedido/i })).toBeInTheDocument());
+    // Converting lands the user directly in the new order's full-page editor
+    // (no dialog to close first, no need to find it in the list).
+    await waitFor(() => expect(screen.getByText("PED-000001")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Confirmar pedido/i })).toBeInTheDocument();
   }, 15_000);
 
   it("captures a CASH payment against a sales order", async () => {
     const user = userEvent.setup();
+    const order = {
+      id: "order-1",
+      customerId: "customer-1",
+      quoteId: null,
+      number: "PED-000001",
+      total: "39.9800",
+      channel: "ERP" as const,
+      status: "DRAFT" as const,
+      currency: "USD",
+      version: 1,
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      confirmedAt: null,
+      fulfilledAt: null,
+      cancelledAt: null,
+    };
     vi.spyOn(apiClient, "listCustomers").mockResolvedValue([customer]);
     vi.spyOn(apiClient, "listProducts").mockResolvedValue([product]);
     vi.spyOn(apiClient, "listWarehouses").mockResolvedValue([]);
     vi.spyOn(apiClient, "listTaxes").mockResolvedValue([]);
     vi.spyOn(apiClient, "listQuotes").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([
-      {
-        id: "order-1",
-        customerId: "customer-1",
-        quoteId: null,
-        channel: "ERP",
-        status: "DRAFT",
-        currency: "USD",
-        version: 1,
-        createdAt: "2026-08-31T00:00:00.000Z",
-        updatedAt: "2026-08-31T00:00:00.000Z",
-        confirmedAt: null,
-        fulfilledAt: null,
-        cancelledAt: null,
-      },
-    ]);
+    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([order]);
+    vi.spyOn(apiClient, "getSalesOrder").mockResolvedValue(order);
     vi.spyOn(apiClient, "listSalesOrderLines").mockResolvedValue([]);
     vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
     const capturePayment = vi.spyOn(apiClient, "capturePayment").mockResolvedValue({
@@ -270,12 +280,13 @@ describe("SalesPage", () => {
 
     render(<SalesPage selection={selection} navigate={navigate} />);
 
+    // Orders now open a full-page editor, not a dialog.
     await user.click(await screen.findByRole("tab", { name: /Pedidos/i }));
-    await user.click(await screen.findByRole("button", { name: "Ver" }));
-    const detailModal = await screen.findByRole("dialog", { name: /Pedido/i });
+    await user.click(await screen.findByRole("button", { name: "Abrir" }));
+    await screen.findByText("PED-000001");
 
-    await user.type(within(detailModal).getByLabelText(/Monto/i), "50.0000");
-    await user.click(within(detailModal).getByRole("button", { name: "Cobrar" }));
+    await user.type(screen.getByLabelText(/Monto/i), "50.0000");
+    await user.click(screen.getByRole("button", { name: "Cobrar" }));
 
     await waitFor(() =>
       expect(capturePayment).toHaveBeenCalledWith(

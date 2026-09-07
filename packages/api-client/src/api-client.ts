@@ -1548,6 +1548,21 @@ export class ApiClient {
     });
   }
 
+  async getSalesOrder(
+    accessToken: string,
+    tenantSlug: string,
+    companyId: string,
+    salesOrderId: string,
+    signal?: AbortSignal,
+  ): Promise<SalesOrderResponse> {
+    return this.request<SalesOrderResponse>(`/sales/orders/${encodeURIComponent(salesOrderId)}`, {
+      accessToken,
+      tenantSlug,
+      companyId,
+      signal,
+    });
+  }
+
   async listSalesOrderLines(
     accessToken: string,
     tenantSlug: string,
