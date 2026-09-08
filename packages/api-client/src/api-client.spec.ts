@@ -1822,10 +1822,22 @@ describe("ApiClient", () => {
   });
 
   it("getTenantSubscription returns null for a tenant with no subscription yet", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("null", { status: 200 }));
+    // Real backend behavior (confirmed via live verification, not assumed):
+    // NestJS sends a genuinely empty 200 body for a controller returning
+    // `null`, not the JSON text "null" — this mock matches that reality.
+    // `getTenantSubscription` itself normalizes `request()`'s raw
+    // `undefined` back to this method's documented `| null` contract.
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
     const client = new ApiClient({ fetch: fetchMock });
 
     await expect(client.getTenantSubscription("access-token", "grupo-aurora")).resolves.toBeNull();
+  });
+
+  it("request() resolves to undefined for any 2xx response with a genuinely empty body, not just 204", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listPlans()).resolves.toBeUndefined();
   });
 
   it("listBillingActivity gets the tenant-scoped billing activity endpoint", async () => {

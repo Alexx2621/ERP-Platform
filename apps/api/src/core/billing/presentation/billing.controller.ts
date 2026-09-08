@@ -42,7 +42,16 @@ export class BillingController {
   @UseGuards(PermissionGuard)
   @RequirePermission("billing.subscription.read")
   @ApiOperation({ summary: "View this tenant's own subscription, if any." })
-  @ApiResponse({ status: HttpStatus.OK, type: TenantSubscriptionResponseDto, description: "Or 204 if the tenant never subscribed." })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    type: TenantSubscriptionResponseDto,
+    description:
+      "A plain 200 with a genuinely empty body if the tenant never subscribed " +
+      "— NestJS's own behavior for a handler returning null/undefined, " +
+      "confirmed by live verification, not the literal JSON text \"null\". " +
+      "Callers must treat any empty-bodied 2xx as \"no subscription\", not " +
+      "parse it as JSON.",
+  })
   async getSubscription(@CurrentTenantContext() ctx: TenantExecutionContext): Promise<TenantSubscriptionResponseDto | null> {
     const subscription = await this.getTenantSubscription.execute(ctx.tenantId);
     if (!subscription) return null;

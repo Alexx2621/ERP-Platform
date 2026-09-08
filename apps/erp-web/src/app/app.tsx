@@ -65,7 +65,8 @@ export function App() {
         path === "/accounting" ||
         path === "/crm" ||
         path === "/manufacturing" ||
-        path === "/appearance") &&
+        path === "/appearance" ||
+        path === "/billing") &&
       !selection
     ) {
       navigate("/tenants", true);

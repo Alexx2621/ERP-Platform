@@ -3054,11 +3054,14 @@ export class ApiClient {
     tenantSlug: string,
     signal?: AbortSignal,
   ): Promise<TenantSubscriptionResponse | null> {
-    return this.request<TenantSubscriptionResponse | null>("/billing/subscription", {
-      accessToken,
-      tenantSlug,
-      signal,
-    });
+    // `request()` resolves an empty body to `undefined`, not `null` — this
+    // method's own documented contract is `| null`, so that internal detail
+    // is normalized here rather than leaked to every caller's type.
+    const result = await this.request<TenantSubscriptionResponse | undefined>(
+      "/billing/subscription",
+      { accessToken, tenantSlug, signal },
+    );
+    return result ?? null;
   }
 
   async createCheckoutSession(
@@ -3153,10 +3156,19 @@ export class ApiClient {
     }
 
     if (response.ok) {
-      if (response.status === 204) {
+      // A genuinely empty body — not just an explicit 204 — resolves to
+      // `undefined` rather than parsing. A real bug found via live
+      // verification: NestJS treats a controller returning `null`/`undefined`
+      // (e.g. `BillingController.getSubscription()` for a tenant with no
+      // subscription yet) as "no body" and sends a plain `200` with zero
+      // bytes, not the literal JSON text `"null"` — `response.json()` on
+      // that throws a raw `SyntaxError`, which is not an `ApiError` and so
+      // bypassed every friendly-error mapping in the UI.
+      const text = await response.text();
+      if (text.length === 0) {
         return undefined as T;
       }
-      return (await response.json()) as T;
+      return JSON.parse(text) as T;
     }
 
     const payload: unknown = await response.json().catch(() => undefined);
