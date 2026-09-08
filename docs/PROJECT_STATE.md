@@ -5054,13 +5054,113 @@ Recurrente, e historial de movimientos.
   tareas), `apps/api` 1125/1125 (`npx jest` directo), `apps/erp-web`
   147/147 (`--no-file-parallelism`), `@erp/api-client` 28/28.
 
+### Bug real: /billing mostraba un error genérico para cualquier tenant sin suscripción — un cuerpo 2xx vacío nunca se distinguía de un 204 real
+
+Reportado por el usuario con una captura real de su propio navegador:
+`/billing` mostraba únicamente el banner rojo genérico "Ocurrió un error
+inesperado. Inténtalo de nuevo." en vez de la pantalla completa —
+exactamente el string de fallback de `getErrorMessage()`
+(`apps/erp-web/src/shared/api/error-message.ts`), que solo se produce
+cuando el error capturado **no** es una instancia de `ApiError` del SDK.
+
+**Causa raíz confirmada contra el backend real, no supuesta**: aprovisionar
+un tenant nuevo y real por HTTP (`curl -v`) y golpear
+`GET /api/v1/billing/subscription` para ese tenant (sin ninguna fila de
+`TenantSubscription` todavía, exactamente el estado de cualquier tenant
+recién aprovisionado — incluyendo "Web Space", el propio tenant original
+del usuario, confirmado sin fila de suscripción vía consulta directa a
+Postgres) mostró la respuesta real: `HTTP/1.1 200 OK`,
+`Content-Length: 0` — un cuerpo **genuinamente vacío**, no el texto JSON
+`"null"` que el propio docstring del endpoint (`@ApiResponse({...,
+description: "Or 204 if the tenant never subscribed."})`) asumía. Este es
+el comportamiento real y documentado de NestJS: un handler que retorna
+`null`/`undefined` termina la respuesta sin cuerpo (`response.end()`), sin
+importar el status code real (`200` por defecto, no `204`, salvo que se
+fuerce explícitamente). `ApiClient.request()`
+(`packages/api-client/src/api-client.ts`) solo trataba `response.status
+=== 204` como caso especial devolviendo `undefined`; para cualquier otro
+código `2xx` llamaba `response.json()` incondicionalmente — sobre un
+cuerpo de cero bytes esto lanza un `SyntaxError` real (`"Unexpected end
+of JSON input"`), que **no** es instancia de `ApiError` y por lo tanto
+nunca pasa por ningún mapeo de mensaje amigable, cayendo directo en el
+fallback genérico. El test unitario existente
+(`"getTenantSubscription returns null for a tenant with no subscription
+yet"`) nunca detectó esto porque su mock usaba
+`new Response("null", { status: 200 })` — un cuerpo con el texto literal
+`"null"` (4 bytes), no un cuerpo genuinamente vacío como el real — dando
+falsa confianza, el mismo patrón de "el mock no coincide con la
+infraestructura real" ya documentado repetidamente en el historial de
+este proyecto.
+
+**Corregido en `request()` de forma general, no solo para este
+endpoint**: ahora lee el cuerpo como texto primero y trata **cualquier**
+respuesta `2xx` con cuerpo de longitud cero como `undefined` — no solo
+`204` — generalizando el caso ya cubierto y protegiendo cualquier otro
+endpoint presente o futuro que retorne `null`/`undefined` desde NestJS de
+la misma forma. `getTenantSubscription()` normaliza ese `undefined` de
+vuelta a `null` para no filtrar el detalle interno del SDK al contrato ya
+documentado (`Promise<TenantSubscriptionResponse | null>`) de sus
+llamadores. El docstring/`@ApiResponse` del endpoint se corrigió para
+describir el comportamiento real (`200` con cuerpo vacío), no el `204`
+que nunca ocurría.
+
+**Segundo bug real, más pequeño, encontrado durante la propia
+investigación**: `apps/erp-web/src/app/app.tsx` tenía `/billing` en la
+rama de renderizado (`path === "/billing" && selection`) pero **no** en
+la lista de rutas que el `useEffect` redirige a `/tenants` cuando
+`selection` es `null` — a diferencia de cada otra ruta de módulo
+(`/sales`, `/inventory`, etc.). Corregido agregando `/billing` a esa
+lista, consistente con el resto de rutas.
+
+**Verificado en vivo, dos veces, contra infraestructura real**: (1) un
+script de Playwright ad hoc registrando un usuario y tenant genuinamente
+nuevos (sin ninguna fila de suscripción, por construcción) contra el dev
+server real, confirmando la pantalla completa sin el banner de error; (2)
+la suite completa de `apps/e2e` con un archivo nuevo,
+`apps/e2e/tests/billing.spec.ts` (Chromium vía Testcontainers), que
+reproduce exactamente el escenario real reportado — un tenant recién
+aprovisionado, sin ninguna suscripción — y afirma directamente sobre la
+respuesta HTTP real (`status() === 200`, `body()` de longitud `0`) antes
+de confirmar que la UI muestra el estado honesto "Sin suscripción
+activa"/"Planes disponibles" sin ningún banner de error, con cero errores
+de consola del navegador.
+
+Tests: 2 tests nuevos en `@erp/api-client`
+(`"getTenantSubscription returns null for a tenant with no subscription
+yet"` corregido con un mock realista —cuerpo genuinamente vacío, no el
+texto `"null"`—, más uno nuevo,
+`"request() resolves to undefined for any 2xx response with a genuinely
+empty body, not just 204"`) — 29/29 en total (antes 27). 1 escenario E2E
+real nuevo — 21/21 Playwright en total (antes 20, corrida completa
+verificada sin regresiones en los 20 preexistentes tras detener los tres
+servidores persistentes). Validación completa:
+`pnpm turbo run lint typecheck build` (31/31 tareas), `apps/api`
+1125/1125 (sin cambios de comportamiento, solo el docstring del
+controller), `apps/erp-web` 147/147, `@erp/api-client` 29/29, `apps/e2e`
+21/21 Playwright contra infraestructura efímera real, y una corrida real
+de GitHub Actions confirmada verde (`gh run watch`) tras el push a
+`develop`.
+
 ## In Progress
 
-Ninguno activo — el bloque más reciente fue la **UI de Facturación
-tenant-facing**, construida a pedido explícito del usuario inmediatamente
-después de entregar el backend de Platform Billing sin ninguna pantalla
-propia (ver "UI de Facturación (tenant-facing) + corrección de un bug
-real de estado optimista" arriba) — incluye dos bugs reales encontrados y
+Ninguno activo — el bloque más reciente fue un **bug real reportado por
+el usuario contra su propio navegador**: `/billing` mostraba un error
+genérico para cualquier tenant sin suscripción, incluyendo su propio
+tenant original "Web Space" (ver "Bug real: /billing mostraba un error
+genérico para cualquier tenant sin suscripción" arriba) — causa raíz
+confirmada contra el backend real (NestJS envía un `200` con cuerpo
+genuinamente vacío para un handler que retorna `null`, no el texto JSON
+`"null"` que el propio docstring del endpoint asumía), corregido de forma
+general en `ApiClient.request()` para tratar cualquier `2xx` de cuerpo
+vacío como `undefined`, no solo `204` — protegiendo cualquier otro
+endpoint presente o futuro con el mismo patrón. Verificado en vivo dos
+veces (script de Playwright ad hoc, luego un E2E real nuevo) contra el
+escenario exacto reportado. Antes de ese bug, el bloque previo fue la
+**UI de Facturación tenant-facing**, construida a pedido explícito del
+usuario inmediatamente después de entregar el backend de Platform
+Billing sin ninguna pantalla propia (ver "UI de Facturación
+(tenant-facing) + corrección de un bug real de estado optimista"
+arriba) — incluye dos bugs reales encontrados y
 corregidos durante la propia verificación visual contra el sandbox real
 (el orden de los planes, y un estado "Activa" mostrado antes de cualquier
 confirmación real de pago). Sin trabajo pendiente dentro de ese bloque.

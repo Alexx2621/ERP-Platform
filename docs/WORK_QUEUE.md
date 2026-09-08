@@ -97,6 +97,17 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
+**Un bug real reportado por el usuario contra su propio navegador quedó
+corregido en un solo bloque de trabajo** — ver "Hecho — Bug real: /billing
+mostraba un error genérico para cualquier tenant sin suscripción" abajo:
+`/billing` mostraba el banner genérico de error para cualquier tenant sin
+suscripción (incluyendo el tenant original del usuario, "Web Space"),
+causa raíz confirmada contra el backend real (NestJS envía un `200` con
+cuerpo genuinamente vacío para un handler que retorna `null`, no el texto
+JSON `"null"` que el docstring del endpoint asumía), corregido de forma
+general en `ApiClient.request()` en vez de parcheado solo para este
+endpoint.
+
 **La UI de Facturación tenant-facing quedó cerrada en un solo bloque de
 trabajo** — ver "Hecho — UI de Facturación (tenant-facing)" abajo:
 pantalla real en `/billing` (plan activo, grilla de planes, checkout real
@@ -279,6 +290,53 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — Bug real: /billing mostraba un error genérico para cualquier tenant sin suscripción
+
+Reportado por el usuario con una captura real de su propio navegador,
+inmediatamente después de entregar la UI de Facturación: `/billing`
+mostraba únicamente "Ocurrió un error inesperado. Inténtalo de nuevo."
+
+- **Causa raíz confirmada contra el backend real** (`curl -v` contra un
+  tenant genuinamente nuevo, sin fila de `TenantSubscription`, el mismo
+  estado exacto que el propio tenant original del usuario, "Web Space",
+  confirmado vía consulta directa a Postgres): `GET
+  /api/v1/billing/subscription` responde `200 OK` con `Content-Length: 0`
+  — un cuerpo genuinamente vacío, comportamiento real y documentado de
+  NestJS para un handler que retorna `null`/`undefined`, no el texto JSON
+  `"null"` que el docstring del endpoint asumía (`"Or 204 if the tenant
+  never subscribed"`). `ApiClient.request()` solo trataba `status === 204`
+  como caso especial; para cualquier otro `2xx` llamaba
+  `response.json()` sin condición, lanzando un `SyntaxError` real sobre un
+  cuerpo vacío — un error que no es instancia de `ApiError` y por lo tanto
+  nunca pasa por ningún mapeo de mensaje amigable.
+- **El test unitario existente daba falsa confianza**: su mock usaba
+  `new Response("null", { status: 200 })` (el texto `"null"`, 4 bytes),
+  no un cuerpo genuinamente vacío como el real — mismo patrón de "mock no
+  coincide con la infraestructura real" ya documentado repetidamente en
+  este proyecto.
+- Corregido de forma general en `request()`: cualquier respuesta `2xx`
+  con cuerpo de longitud cero se trata como `undefined`, no solo `204` —
+  protegiendo cualquier otro endpoint presente o futuro con el mismo
+  patrón. `getTenantSubscription()` normaliza ese `undefined` de vuelta a
+  `null` para no romper su contrato ya documentado. Docstring del
+  endpoint corregido para describir el comportamiento real.
+- **Segundo bug real, más pequeño, encontrado durante la propia
+  investigación**: `/billing` faltaba en la lista de rutas que
+  `app.tsx` redirige a `/tenants` cuando `selection` es `null` —
+  corregido, ahora consistente con el resto de rutas de módulo.
+- **Verificado en vivo dos veces**: un script de Playwright ad hoc contra
+  el dev server real con un tenant genuinamente nuevo, y un E2E real
+  nuevo (`apps/e2e/tests/billing.spec.ts`) que afirma directamente sobre
+  la respuesta HTTP real (`status() === 200`, `body()` de longitud `0`)
+  antes de confirmar la UI honesta sin ningún banner de error.
+- Tests: 2 en `@erp/api-client` (uno corregido con un mock realista, uno
+  nuevo) — 29/29 en total (antes 27). 1 E2E real nuevo — 21/21 Playwright
+  en total (antes 20, sin regresiones). Validación completa: `pnpm turbo
+  run lint typecheck build` (31/31), `apps/api` 1125/1125, `apps/erp-web`
+  147/147, `@erp/api-client` 29/29, `apps/e2e` 21/21 contra
+  infraestructura efímera real, y una corrida real de GitHub Actions
+  confirmada verde tras el push a `develop`.
 
 ### Hecho — UI de Facturación (tenant-facing)
 
