@@ -138,6 +138,13 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
                         ? ` · Próxima renovación: ${formatDateTime(subscription.currentPeriodEnd)}`
                         : null}
                     </p>
+                    {subscription.status === "PENDING" ? (
+                      <p className="text-[12px] font-medium text-[var(--muted)]">
+                        Todavía no se ha confirmado ningún cobro — completa el pago en Recurrente
+                        para activar este plan. Ningún módulo se habilita hasta que Recurrente lo
+                        confirme.
+                      </p>
+                    ) : null}
                   </div>
                   {currentPlan ? (
                     <p className="text-[20px] font-extrabold text-[var(--ink)]">
@@ -165,7 +172,21 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {plans.map((plan) => {
-                  const isCurrent = plan.key === subscription?.planKey;
+                  const isThisPlan = plan.key === subscription?.planKey;
+                  // A checkout being created writes the row immediately so
+                  // Recurrente has something to correlate its webhook
+                  // against — the plan is only genuinely "current" once a
+                  // real charge activated it. Treating PENDING the same as
+                  // ACTIVE here was a real bug: a shopper who started
+                  // checkout and came back without paying (or without
+                  // finishing) saw this plan marked "Plan actual" with a
+                  // checkmark, with no way to retry — indistinguishable
+                  // from having actually subscribed, even though no app
+                  // access was ever granted (that only happens from a real
+                  // webhook, see HandleRecurrenteWebhookUseCase).
+                  const isCurrent =
+                    isThisPlan && (subscription?.status === "ACTIVE" || subscription?.status === "PAST_DUE");
+                  const isPendingHere = isThisPlan && subscription?.status === "PENDING";
                   return (
                     <div
                       key={plan.key}
@@ -201,6 +222,20 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
                           <CheckCircle size={16} weight="fill" aria-hidden="true" />
                           Plan actual
                         </span>
+                      ) : isPendingHere ? (
+                        <div className="grid gap-2">
+                          <StatusBadge tone={subscriptionStatusTone("PENDING")} pulse>
+                            {subscriptionStatusLabel("PENDING")}
+                          </StatusBadge>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            busy={checkoutKey === plan.key}
+                            onClick={() => void startCheckout(plan.key)}
+                          >
+                            Completar pago
+                          </Button>
+                        </div>
                       ) : plan.isSelfServe ? (
                         <Button
                           type="button"

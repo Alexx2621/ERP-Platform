@@ -95,6 +95,47 @@ describe("BillingPage", () => {
     expect(screen.getByText("Plan actual")).toBeInTheDocument();
   });
 
+  it("never shows a pending, unpaid plan as 'Plan actual' — and offers a real way to finish paying it", async () => {
+    // Regresses a real bug: CreateCheckoutSessionUseCase writes the row as
+    // soon as checkout starts (so Recurrente's webhook has something to
+    // correlate against), so a shopper who starts checkout and comes back
+    // without paying lands here with status PENDING for that exact plan —
+    // this must never read as "you already have this plan".
+    vi.spyOn(apiClient, "listPlans").mockResolvedValue(plans);
+    vi.spyOn(apiClient, "getTenantSubscription").mockResolvedValue({
+      tenantId: "tenant-1",
+      planKey: "starter",
+      status: "PENDING",
+      seatCount: 1,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelledAt: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    vi.spyOn(apiClient, "listBillingActivity").mockResolvedValue([]);
+    const checkout = vi
+      .spyOn(apiClient, "createCheckoutSession")
+      .mockResolvedValue({ checkoutUrl: "https://app.recurrente.com/checkout-session/ch_2" });
+
+    render(<BillingPage selection={selection} navigate={navigate} />);
+
+    expect(await screen.findAllByText("Pendiente de confirmación")).not.toHaveLength(0);
+    expect(screen.queryByText("Plan actual")).not.toBeInTheDocument();
+    expect(screen.getByText(/completa el pago en Recurrente/i)).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    const retryButton = screen.getByRole("button", { name: "Completar pago" });
+    await user.click(retryButton);
+
+    await waitFor(() =>
+      expect(checkout).toHaveBeenCalledWith(
+        "access-token",
+        "grupo-aurora",
+        expect.objectContaining({ planKey: "starter" }),
+      ),
+    );
+  });
+
   it("starts a real checkout session and never fabricates a paid plan without a real click", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "listPlans").mockResolvedValue(plans);
