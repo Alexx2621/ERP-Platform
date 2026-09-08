@@ -119,13 +119,21 @@ describe("BillingPage", () => {
 
     render(<BillingPage selection={selection} navigate={navigate} />);
 
-    expect(await screen.findAllByText("Pendiente de confirmación")).not.toHaveLength(0);
+    // The top summary card must never present an unconfirmed checkout as
+    // "your subscription" — it gets the same empty-state treatment as
+    // having no subscription at all, naming the pending plan honestly.
+    expect(await screen.findByText("Sin plan activo todavía")).toBeInTheDocument();
+    expect(screen.getByText(/Recurrente todavía no ha confirmado/i)).toBeInTheDocument();
+    expect(screen.getByText("Pendiente de confirmación")).toBeInTheDocument();
     expect(screen.queryByText("Plan actual")).not.toBeInTheDocument();
-    expect(screen.getByText(/completa el pago en Recurrente/i)).toBeInTheDocument();
+
+    // Two independent, equally real ways to retry the same checkout: the
+    // summary card's own action, and the matching plan card in the grid.
+    const retryButtons = screen.getAllByRole("button", { name: "Completar pago" });
+    expect(retryButtons).toHaveLength(2);
 
     const user = userEvent.setup();
-    const retryButton = screen.getByRole("button", { name: "Completar pago" });
-    await user.click(retryButton);
+    await user.click(retryButtons[0]);
 
     await waitFor(() =>
       expect(checkout).toHaveBeenCalledWith(

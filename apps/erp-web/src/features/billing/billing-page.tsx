@@ -98,6 +98,11 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
   );
 
   const currentPlan = plans.find((plan) => plan.key === subscription?.planKey) ?? null;
+  // Only ACTIVE/PAST_DUE mean Recurrente has actually confirmed a charge —
+  // PENDING is just the latest unpaid checkout attempt (docs/DECISIONS.md
+  // ADR-016), and must never be presented as "your plan".
+  const hasConfirmedPlan =
+    subscription?.status === "ACTIVE" || subscription?.status === "PAST_DUE";
 
   return (
     <ProductShell
@@ -117,19 +122,16 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
               icon={CreditCard}
               tone={TONE.emerald}
               title="Suscripción actual"
-              description={subscription ? undefined : "Este espacio todavía no tiene un plan activo."}
+              description={hasConfirmedPlan ? undefined : "Este espacio todavía no tiene un plan activo."}
             />
             <CardBody>
-              {subscription ? (
+              {hasConfirmedPlan && subscription ? (
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="grid gap-1">
                     <p className="text-[16px] font-extrabold text-[var(--ink)]">
                       {currentPlan?.name ?? subscription.planKey}
                     </p>
-                    <StatusBadge
-                      tone={subscriptionStatusTone(subscription.status)}
-                      pulse={subscription.status === "PENDING"}
-                    >
+                    <StatusBadge tone={subscriptionStatusTone(subscription.status)}>
                       {subscriptionStatusLabel(subscription.status)}
                     </StatusBadge>
                     <p className="text-[12.5px] font-medium text-[var(--muted)]">
@@ -138,13 +140,6 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
                         ? ` · Próxima renovación: ${formatDateTime(subscription.currentPeriodEnd)}`
                         : null}
                     </p>
-                    {subscription.status === "PENDING" ? (
-                      <p className="text-[12px] font-medium text-[var(--muted)]">
-                        Todavía no se ha confirmado ningún cobro — completa el pago en Recurrente
-                        para activar este plan. Ningún módulo se habilita hasta que Recurrente lo
-                        confirme.
-                      </p>
-                    ) : null}
                   </div>
                   {currentPlan ? (
                     <p className="text-[20px] font-extrabold text-[var(--ink)]">
@@ -153,6 +148,35 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
                     </p>
                   ) : null}
                 </div>
+              ) : subscription?.status === "PENDING" ? (
+                // A checkout starting writes this row immediately so
+                // Recurrente's webhook has something to correlate against
+                // (docs/DECISIONS.md ADR-016) — but nothing was ever
+                // confirmed or paid, and clicking a *different* plan's
+                // checkout overwrites it again just as immediately. A real
+                // bug reported by the user: presenting this as "Suscripción
+                // actual: <plan>" made every one of those clicks look like
+                // it had already switched their plan, with no charge ever
+                // made. This state is now visually distinct from an actual
+                // plan — same empty-state shape as "no subscription at
+                // all", naming the pending plan and offering the one real
+                // action available (retry/finish that same checkout).
+                <SetupNotice
+                  title="Sin plan activo todavía"
+                  description={`Iniciaste un pago para ${
+                    currentPlan?.name ?? subscription.planKey
+                  } que Recurrente todavía no ha confirmado. Ningún módulo se habilita hasta que se confirme el cobro.`}
+                  action={
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      busy={checkoutKey === subscription.planKey}
+                      onClick={() => void startCheckout(subscription.planKey)}
+                    >
+                      Completar pago
+                    </Button>
+                  }
+                />
               ) : (
                 <SetupNotice
                   title="Sin suscripción activa"
@@ -184,8 +208,7 @@ export function BillingPage({ selection, navigate }: BillingPageProps) {
                   // from having actually subscribed, even though no app
                   // access was ever granted (that only happens from a real
                   // webhook, see HandleRecurrenteWebhookUseCase).
-                  const isCurrent =
-                    isThisPlan && (subscription?.status === "ACTIVE" || subscription?.status === "PAST_DUE");
+                  const isCurrent = isThisPlan && hasConfirmedPlan;
                   const isPendingHere = isThisPlan && subscription?.status === "PENDING";
                   return (
                     <div
