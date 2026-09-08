@@ -11,6 +11,19 @@ import { configure } from "@testing-library/react";
 // was the real remaining bottleneck under genuine CI contention.
 configure({ asyncUtilTimeout: 15_000 });
 
+// jsdom has no ResizeObserver implementation at all — needed by
+// react-grid-layout's WidthProvider (the home dashboard), which measures
+// its container on mount to size the grid. A minimal no-op stand-in is
+// enough: nothing under test asserts on a real resize callback firing.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   window.sessionStorage.clear();

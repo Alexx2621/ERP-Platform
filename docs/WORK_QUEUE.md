@@ -258,6 +258,59 @@ variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
 
+### Hecho — sesión 36 (Home dashboard: grilla libre real + sombra de drop fija + 3 perfiles)
+
+A pedido explícito del usuario, con capturas reales del dashboard de
+widgets: *"Debe haber una sombra de un color por defecto en dónde caiga
+el widget, no me gusta que tome un color de las preferencias establecidas
+por el usuario... el usuario debe poder tener la libertad de ponerlos
+dónde quiera y con el tamaño que quiera en dónde hayan espacios vacios,
+siempre y cuando no se desborde o se vea feo todo, deben poder guardarse
+y persistir el orden... hasta un maximo de 3 perfiles"*.
+
+- **Sombra de drop fija**: dos tokens CSS nuevos (`--grid-drop-outline`/
+  `--grid-drop-fill`, azul fijo tipo `TONE.blue`), nunca tocados por
+  `AppearanceProvider` — a diferencia de `--accent`/`--accent-soft`, que
+  el "Soltar aquí" anterior usaba y que un acento oscuro personalizado
+  volvía casi negro. Verificado programáticamente (no solo visual) con un
+  acento negro real activo: el placeholder computa el azul fijo exacto.
+- **Grilla libre real**: reconstrucción sobre `react-grid-layout` v2
+  (nueva dependencia, investigada su compatibilidad real con React 19
+  antes de instalar — peer deps abiertos, sin `--legacy-peer-deps`),
+  reemplazando el orden lineal + tamaño "normal"/"ancho" por una grilla
+  de 12 columnas con `compactType={null}` (respeta los espacios vacíos
+  que el usuario deja) + `preventCollision` (nunca se solapan/desbordan).
+  react-grid-layout v2 no trae CSS propio — el bloque completo de reglas
+  se escribió a mano.
+- **Hasta 3 perfiles**: `ProfileTabs` nuevo, cada uno con su propia
+  disposición independiente, persistidos en un único `UserPreference`
+  nuevo (`ui.dashboardProfiles`) vía el mismo mecanismo ya probado por
+  Apariencia. La preferencia de un solo layout previa se migra a Perfil 1
+  en vez de descartarse.
+- **Tres bugs reales encontrados y corregidos durante la propia
+  verificación contra el backend real**: escrituras fire-and-forget
+  completándose fuera de orden (corregido encadenándolas en una cola);
+  un efecto secundario dentro de un actualizador funcional de `useState`
+  que React invocaba hasta 3 veces por acción (aislado con una traza de
+  pila real, corregido con el patrón "ref con el valor más reciente");
+  y — la causa raíz más profunda — un guardia de carga (`loadedRef`) que
+  quedaba "consumido" por un intento abortado por el doble-montaje de
+  StrictMode, bloqueando para siempre el reintento real, así que el
+  dashboard nunca cargaba un layout guardado en desarrollo. Ver el
+  detalle completo en `docs/PROJECT_STATE.md`.
+- **Verificado end-to-end con dos sesiones de navegador completamente
+  separadas**: sesión A guarda cambios reales; sesión B, minutos
+  después, confirma leyendo la respuesta cruda de la API que los datos
+  coinciden exactamente.
+- Tests: `home-dashboard.spec.tsx` reescrito (15 tests de funciones
+  puras nuevas, 2 de componente nuevos, el bloque `reorderWidgets` y el
+  test de arrastre vía DnD nativo eliminados por ya no aplicar) — 142
+  tests unitarios totales en `apps/erp-web` (antes 132). Stub mínimo de
+  `ResizeObserver` agregado a `test/setup.ts` (ausente en jsdom).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31),
+  `apps/erp-web` 142/142, y la suite completa de `apps/e2e` contra
+  infraestructura efímera real.
+
 ### Hecho — sesión 36 (animaciones modernas + StatusBadge semántico en 6 módulos más)
 
 A pedido explícito del usuario, inmediatamente después de la paleta fija

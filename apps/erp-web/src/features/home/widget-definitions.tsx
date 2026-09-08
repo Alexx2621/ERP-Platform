@@ -30,8 +30,6 @@ export interface WidgetContent {
   caption: string;
 }
 
-export type WidgetSize = "normal" | "wide";
-
 export interface WidgetDefinition {
   id: string;
   title: string;
@@ -44,8 +42,12 @@ export interface WidgetDefinition {
    * navigates there. Omitted for widgets that span several modules (e.g.
    * the activity feed), which then render a plain, non-clickable header. */
   module?: AppPath;
-  /** How this widget occupies the grid before the user resizes it. */
-  defaultSize?: WidgetSize;
+  /** Starting width/height in grid columns/rows (12-column grid), before
+   * the user drags/resizes it freely. Defaults to 4x4 (a third of the
+   * grid's width) when omitted — only widgets that genuinely need more
+   * room (a chart, a feed, a ranked list) declare their own. */
+  defaultW?: number;
+  defaultH?: number;
   /**
    * Simple stat-card widgets: a single value + caption. Returns null when
    * the underlying data source failed to load (module disabled for this
@@ -236,7 +238,8 @@ export const dashboardWidgets: WidgetDefinition[] = [
     icon: ChartLineUp,
     color: TONE.sky,
     module: "/sales",
-    defaultSize: "wide",
+    defaultW: 8,
+    defaultH: 7,
     render: (data) => <SalesTrendWidget data={data} />,
   },
   {
@@ -244,7 +247,8 @@ export const dashboardWidgets: WidgetDefinition[] = [
     title: "Actividad reciente",
     icon: ClockCounterClockwise,
     color: TONE.slate,
-    defaultSize: "wide",
+    defaultW: 8,
+    defaultH: 7,
     render: (data) => <ActivityFeedWidget data={data} />,
   },
   {
@@ -253,6 +257,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     icon: Trophy,
     color: TONE.fuchsia,
     module: "/contacts",
+    defaultH: 7,
     render: (data) => <TopCustomersWidget data={data} />,
   },
   {
@@ -261,6 +266,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     icon: ChartBar,
     color: TONE.teal,
     module: "/catalog",
+    defaultH: 7,
     render: (data) => <TopProductsWidget data={data} />,
   },
   {
@@ -268,6 +274,7 @@ export const dashboardWidgets: WidgetDefinition[] = [
     title: "Accesos rápidos",
     icon: Lightning,
     color: TONE.purple,
+    defaultH: 7,
     render: (_data, navigate) => <QuickActionsWidget navigate={navigate} />,
   },
 ];

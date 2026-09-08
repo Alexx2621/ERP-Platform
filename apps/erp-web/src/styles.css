@@ -50,6 +50,14 @@
   --danger: #c53434;
   --danger-soft: #fceeed;
   --danger-line: #f3c9c5;
+  /* Home dashboard drag/resize drop-target highlight — fixed, matching
+     shared/ui/tone-colors.ts's TONE.blue, deliberately NOT --accent or
+     --accent-soft. Both of those are user-customizable (Apariencia), and
+     a user who picks a dark/muted accent (e.g. Pizarra) ended up with a
+     near-black "Soltar aquí" box — the drop shadow needs one predictable
+     color for every user, not a derivative of their theme pick. */
+  --grid-drop-outline: #2563eb;
+  --grid-drop-fill: rgb(37 99 235 / 0.1);
   --overlay: rgb(15 23 32 / 0.5);
   --shadow-sm: 0 1px 2px rgb(27 39 51 / 0.06);
   --shadow-md: 0 4px 16px rgb(27 39 51 / 0.08);
@@ -145,6 +153,8 @@ a:focus-visible {
     --danger: #f0918c;
     --danger-soft: #3a1e1c;
     --danger-line: #5c302c;
+    --grid-drop-outline: #6ea8fe;
+    --grid-drop-fill: rgb(110 168 254 / 0.18);
     --overlay: rgb(5 8 12 / 0.65);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
     --shadow-md: 0 4px 16px rgb(0 0 0 / 0.4);
@@ -254,6 +264,62 @@ dialog:not([open])::backdrop {
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* react-grid-layout v2 ships no CSS of its own (a real, notable change
+   from v1) — this is the complete set of rules its positioning/drag/
+   resize model needs. `.react-grid-item` gets its `position/left/top/
+   width/height` inline from the library on every render; only the
+   *transition* (for a smooth glide when a layout change is applied
+   programmatically, e.g. switching dashboard profiles) and the
+   drag/resize/placeholder visuals below are ours to define. */
+.react-grid-layout {
+  position: relative;
+}
+.react-grid-item {
+  transition: left var(--duration-base) var(--ease-out), top var(--duration-base) var(--ease-out),
+    width var(--duration-base) var(--ease-out), height var(--duration-base) var(--ease-out);
+}
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  cursor: grabbing;
+}
+.react-grid-item.resizing {
+  transition: none;
+  z-index: 3;
+}
+/* The live preview of where a dragged/resized widget will land — see
+   --grid-drop-outline/--grid-drop-fill above for why these are fixed
+   colors, not --accent/--accent-soft. */
+.react-grid-item.react-grid-placeholder {
+  z-index: 2;
+  border-radius: 14px;
+  background: var(--grid-drop-fill);
+  border: 2px dashed var(--grid-drop-outline);
+  transition-duration: 100ms;
+}
+.react-resizable-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  cursor: se-resize;
+  color: var(--muted);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease, background-color var(--duration-fast) ease;
+}
+.react-grid-item:hover .react-resizable-handle,
+.react-grid-item:focus-within .react-resizable-handle {
+  opacity: 1;
+}
+.react-resizable-handle:hover {
+  background: var(--field-hover);
+  color: var(--ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

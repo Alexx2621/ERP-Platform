@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CustomerResponse, PaymentResponse } from "@erp/api-client";
 import { apiClient } from "../../shared/api/client";
-import { HomeDashboard, reorderWidgets } from "./home-dashboard";
+import {
+  HomeDashboard,
+  findFreeSlot,
+  migrateLegacyLayout,
+  reconcileLayout,
+  rectsOverlap,
+  type WidgetRect,
+} from "./home-dashboard";
 import { dashboardWidgets } from "./widget-definitions";
 import type { DashboardData } from "./use-dashboard-data";
 
@@ -82,34 +89,122 @@ function payment(overrides: Partial<PaymentResponse>): PaymentResponse {
   };
 }
 
-describe("reorderWidgets (pure function)", () => {
-  it("dragging a widget onto its immediate next neighbor swaps them", () => {
-    // Regression test: the first implementation always inserted the dragged
-    // widget "before" the target, which for an immediate-neighbor drag put
-    // it right back where it started — a silent no-op the drop placeholder
-    // still animated for. Found by this file's own drag-and-drop render
-    // test failing on exactly this scenario (index 0 dragged onto index 1).
-    expect(reorderWidgets(["a", "b", "c"], "a", "b")).toEqual(["b", "a", "c"]);
+function rect(x: number, y: number, w: number, h: number): WidgetRect {
+  return { x, y, w, h };
+}
+
+describe("rectsOverlap (pure function)", () => {
+  it("detects a genuine overlap", () => {
+    expect(rectsOverlap(rect(0, 0, 4, 4), rect(2, 2, 4, 4))).toBe(true);
   });
 
-  it("moves a widget forward multiple positions, landing right after its target", () => {
-    expect(reorderWidgets(["a", "b", "c"], "a", "c")).toEqual(["b", "c", "a"]);
+  it("two rects sharing only an edge do not overlap", () => {
+    expect(rectsOverlap(rect(0, 0, 4, 4), rect(4, 0, 4, 4))).toBe(false);
+    expect(rectsOverlap(rect(0, 0, 4, 4), rect(0, 4, 4, 4))).toBe(false);
   });
 
-  it("moves a widget backward, landing right before its target", () => {
-    expect(reorderWidgets(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
+  it("rects far apart never overlap", () => {
+    expect(rectsOverlap(rect(0, 0, 2, 2), rect(10, 10, 2, 2))).toBe(false);
+  });
+});
+
+describe("findFreeSlot (pure function)", () => {
+  it("places the first widget at the origin when nothing is occupied", () => {
+    expect(findFreeSlot({}, 4, 4, 12)).toEqual(rect(0, 0, 4, 4));
   });
 
-  it("is a no-op when the dragged widget is dropped on itself", () => {
-    expect(reorderWidgets(["a", "b", "c"], "b", "b")).toEqual(["a", "b", "c"]);
+  it("never returns a rect that overlaps an already-occupied one", () => {
+    const occupied = { a: rect(0, 0, 4, 4) };
+    const found = findFreeSlot(occupied, 4, 4, 12);
+    expect(rectsOverlap(found, occupied.a)).toBe(false);
   });
 
-  it("returns the original order when the target id no longer exists", () => {
-    expect(reorderWidgets(["a", "b", "c"], "a", "missing")).toEqual(["a", "b", "c"]);
+  it("packs left-to-right before wrapping to the next row", () => {
+    const occupied = { a: rect(0, 0, 4, 4) };
+    expect(findFreeSlot(occupied, 4, 4, 12)).toEqual(rect(4, 0, 4, 4));
   });
 
-  it("returns the original order when the dragged id no longer exists", () => {
-    expect(reorderWidgets(["a", "b", "c"], "missing", "a")).toEqual(["a", "b", "c"]);
+  it("wraps to a new row once a row's width is exhausted", () => {
+    const occupied = { a: rect(0, 0, 8, 4), b: rect(8, 0, 4, 4) };
+    expect(findFreeSlot(occupied, 4, 4, 12)).toEqual(rect(0, 4, 4, 4));
+  });
+
+  it("fits into a genuinely empty gap left in the middle of the grid", () => {
+    // a leaves x=4..8 free on row 0; a 4-wide widget should reclaim it
+    // instead of being pushed to a brand-new row.
+    const occupied = { a: rect(0, 0, 4, 4), b: rect(8, 0, 4, 4) };
+    expect(findFreeSlot(occupied, 4, 4, 12)).toEqual(rect(4, 0, 4, 4));
+  });
+});
+
+describe("reconcileLayout (pure function)", () => {
+  const knownIds = new Set(dashboardWidgets.map((widget) => widget.id));
+
+  it("assigns every known widget a real, collision-free position from a blank profile", () => {
+    const result = reconcileLayout(null);
+    const placed = Object.values(result.positions);
+    expect(Object.keys(result.positions).sort()).toEqual([...knownIds].sort());
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        expect(rectsOverlap(placed[i], placed[j])).toBe(false);
+      }
+    }
+  });
+
+  it("keeps a valid stored position for a known widget untouched", () => {
+    const stored = { hidden: [], positions: { "active-customers": rect(5, 3, 4, 4) } };
+    const result = reconcileLayout(stored);
+    expect(result.positions["active-customers"]).toEqual(rect(5, 3, 4, 4));
+  });
+
+  it("drops a widget id no longer present in the registry", () => {
+    const stored = { hidden: [], positions: { "ghost-widget": rect(0, 0, 4, 4) } };
+    const result = reconcileLayout(stored);
+    expect(result.positions["ghost-widget"]).toBeUndefined();
+  });
+
+  it("discards an invalid stored rect (out of bounds) and re-places the widget for real", () => {
+    const stored = { hidden: [], positions: { "active-customers": rect(10, 0, 8, 4) } };
+    const result = reconcileLayout(stored);
+    expect(result.positions["active-customers"]).not.toEqual(rect(10, 0, 8, 4));
+    expect(result.positions["active-customers"].x + result.positions["active-customers"].w).toBeLessThanOrEqual(12);
+  });
+
+  it("a hidden widget's stale position never blocks a visible widget from reusing that space", () => {
+    // active-customers is hidden and still "parked" at (0,0); with only it
+    // stored, every visible widget should be free to land at (0,0) too.
+    const stored = { hidden: ["active-customers"], positions: { "active-customers": rect(0, 0, 4, 4) } };
+    const result = reconcileLayout(stored);
+    expect(result.positions["active-products"]).toEqual(rect(0, 0, 4, 4));
+  });
+});
+
+describe("migrateLegacyLayout (pure function)", () => {
+  it("converts a real pre-profiles single layout into real, collision-free positions", () => {
+    const migrated = migrateLegacyLayout({
+      order: ["active-customers", "active-products", "sales-trend"],
+      hidden: ["open-sales-orders"],
+      sizes: { "sales-trend": "wide" },
+    });
+    expect(migrated.hidden).toEqual(["open-sales-orders"]);
+    expect(migrated.positions["sales-trend"].w).toBe(8);
+    // Only *visible* widgets are guaranteed collision-free — a hidden
+    // widget's stored spot is deliberately allowed to coincide with a
+    // visible one's (see reconcileLayout's own docstring), so it's
+    // excluded here rather than asserted against.
+    const placed = Object.entries(migrated.positions)
+      .filter(([id]) => !migrated.hidden.includes(id))
+      .map(([, value]) => value);
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        expect(rectsOverlap(placed[i], placed[j])).toBe(false);
+      }
+    }
+  });
+
+  it("still places a widget missing from the legacy order (added to the registry since)", () => {
+    const migrated = migrateLegacyLayout({ order: ["active-customers"], hidden: [], sizes: {} });
+    expect(migrated.positions["sales-trend"]).toBeDefined();
   });
 });
 
@@ -145,22 +240,27 @@ describe("widget compute functions", () => {
   });
 });
 
+function mockAllDataSources() {
+  vi.spyOn(apiClient, "listCustomers").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listProducts").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listPurchaseOrders").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listPosSales").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listPipelines").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listProductionOrders").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listInventoryBalances").mockResolvedValue([]);
+  vi.spyOn(apiClient, "listCommerceOrders").mockResolvedValue([]);
+}
+
 describe("HomeDashboard", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("renders real widget values computed from the loaded data and navigates on click", async () => {
+    mockAllDataSources();
     vi.spyOn(apiClient, "listCustomers").mockResolvedValue([customer("ACTIVE"), customer("ACTIVE")]);
-    vi.spyOn(apiClient, "listProducts").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPurchaseOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPosSales").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPipelines").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listProductionOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listInventoryBalances").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listCommerceOrders").mockResolvedValue([]);
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([]);
     const navigate = vi.fn();
 
@@ -173,21 +273,12 @@ describe("HomeDashboard", () => {
     expect(navigate).toHaveBeenCalledWith("/contacts");
   });
 
-  it("removes a widget, persists it, and restores it from the 'Agregar widget' menu", async () => {
-    vi.spyOn(apiClient, "listCustomers").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listProducts").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPurchaseOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPosSales").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPipelines").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listProductionOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listInventoryBalances").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listCommerceOrders").mockResolvedValue([]);
+  it("removes a widget, persists it under the active profile, and restores it from the 'Agregar widget' menu", async () => {
+    mockAllDataSources();
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([]);
     const setPreference = vi
       .spyOn(apiClient, "setUserPreference")
-      .mockResolvedValue({ key: "ui.dashboardLayout", value: {}, updatedAt: "2026-01-01T00:00:00.000Z" });
+      .mockResolvedValue({ key: "ui.dashboardProfiles", value: {}, updatedAt: "2026-01-01T00:00:00.000Z" });
 
     render(<HomeDashboard selection={selection} navigate={vi.fn()} />);
     await screen.findByText("Clientes activos");
@@ -197,8 +288,11 @@ describe("HomeDashboard", () => {
     await waitFor(() =>
       expect(setPreference).toHaveBeenCalledWith(
         "access-token",
-        "ui.dashboardLayout",
-        expect.objectContaining({ hidden: ["active-customers"] }),
+        "ui.dashboardProfiles",
+        expect.objectContaining({
+          activeProfile: 0,
+          profiles: expect.arrayContaining([expect.objectContaining({ hidden: ["active-customers"] })]),
+        }),
       ),
     );
 
@@ -207,46 +301,42 @@ describe("HomeDashboard", () => {
     expect(await screen.findByText("Clientes activos")).toBeInTheDocument();
   });
 
-  it("reorders widgets via drag-and-drop, showing the drop placeholder while dragging over the target", async () => {
-    vi.spyOn(apiClient, "listCustomers").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listProducts").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listSalesOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPayments").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPurchaseOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPosSales").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listPipelines").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listProductionOrders").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listInventoryBalances").mockResolvedValue([]);
-    vi.spyOn(apiClient, "listCommerceOrders").mockResolvedValue([]);
+  it("migrates a real pre-profiles saved layout into profile 1 instead of discarding it", async () => {
+    mockAllDataSources();
+    vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([
+      {
+        key: "ui.dashboardLayout",
+        value: { order: ["active-customers"], hidden: ["active-products"], sizes: {} },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    render(<HomeDashboard selection={selection} navigate={vi.fn()} />);
+
+    await screen.findByText("Clientes activos");
+    expect(screen.queryByText("Productos activos")).not.toBeInTheDocument();
+  });
+
+  it("switches between the 3 profile tabs, each with its own independent hidden-widget set", async () => {
+    mockAllDataSources();
     vi.spyOn(apiClient, "listUserPreferences").mockResolvedValue([]);
     vi.spyOn(apiClient, "setUserPreference").mockResolvedValue({
-      key: "ui.dashboardLayout",
+      key: "ui.dashboardProfiles",
       value: {},
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
 
     render(<HomeDashboard selection={selection} navigate={vi.fn()} />);
-    const first = await screen.findByText("Clientes activos");
-    const secondTitle = await screen.findByText("Productos activos");
-    const firstCard = first.closest('[draggable="true"]')!;
-    const secondCard = secondTitle.closest('[draggable="true"]')!;
+    await screen.findByText("Clientes activos");
 
-    fireEvent.dragStart(firstCard);
-    fireEvent.dragOver(secondCard);
-    expect(await screen.findByText("Soltar aquí")).toBeInTheDocument();
+    const tabs = screen.getByRole("tablist", { name: "Perfiles del dashboard" });
+    await userEvent.click(screen.getByRole("button", { name: "Quitar Clientes activos" }));
+    await waitFor(() => expect(screen.queryByText("Clientes activos")).not.toBeInTheDocument());
 
-    fireEvent.drop(secondCard);
+    await userEvent.click(within(tabs).getByRole("tab", { name: "Perfil 2" }));
+    expect(await screen.findByText("Clientes activos")).toBeInTheDocument();
 
-    await waitFor(() => {
-      // Query the two title paragraphs directly, in DOM order, rather than
-      // every <button> on the page — each card renders three buttons
-      // (resize/remove/navigate) whose accessible names/text overlap in
-      // ways that made an earlier version of this assertion pass or fail
-      // for reasons unrelated to the actual widget order.
-      const titles = screen
-        .getAllByText(/^(Clientes activos|Productos activos)$/)
-        .map((node) => node.textContent);
-      expect(titles.indexOf("Productos activos")).toBeLessThan(titles.indexOf("Clientes activos"));
-    });
+    await userEvent.click(within(tabs).getByRole("tab", { name: "Perfil 1" }));
+    await waitFor(() => expect(screen.queryByText("Clientes activos")).not.toBeInTheDocument());
   });
 });

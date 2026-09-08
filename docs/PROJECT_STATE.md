@@ -4691,6 +4691,159 @@ de `apps/e2e` (20/20 Playwright) contra infraestructura efímera real tras
 detener los tres servidores persistentes — verde en la segunda corrida,
 tras el fix.
 
+### Home dashboard: grilla libre real (react-grid-layout), sombra de drop fija, hasta 3 perfiles guardables (sesión 36, 2026-09-07/08)
+
+A pedido explícito del usuario, con capturas reales del dashboard de
+widgets: *"Debe haber una sombra de un color por defecto en dónde caiga
+el widget, no me gusta que tome un color de las preferencias establecidas
+por el usuario, hay espacios en dónde no se pueden mover otros widgets,
+el usuario debe poder tener la libertad de ponerlos dónde quiera y con el
+tamaño que quiera en dónde hayan espacios vacios, siempre y cuando no se
+desborde o se vea feo todo, deben poder guardarse y persistir el orden en
+que el usuario guardo su dashboard... se deben poder guardar hasta un
+maximo de 3 perfiles de los widgets."* Cuatro pedidos distintos, todos
+atendidos en un solo bloque.
+
+**Sombra de drop fija, independiente de Apariencia**: el "Soltar aquí"
+del sistema anterior usaba `border-[var(--accent)] bg-[var(--accent-soft)]`
+— ambos tokens sobreescritos en vivo por `AppearanceProvider` cuando el
+usuario personaliza su color principal (Apariencia), así que un acento
+oscuro/casi negro (confirmado reproduciendo el escenario exacto: `#0a0a0a`
+como color principal) producía la caja casi negra que el usuario reportó.
+Corregido con dos tokens CSS nuevos, genuinamente fijos —
+`--grid-drop-outline`/`--grid-drop-fill` (`styles.css`, mismo azul que
+`TONE.blue` del sistema de colores fijos ya establecido, con su propia
+variante para modo oscuro del SO — nunca tocados por
+`AppearanceProvider`, a diferencia de `--accent`/`--accent-soft`).
+**Verificado programáticamente, no solo visualmente**: con el acento
+personalizado a negro real, `getComputedStyle()` del placeholder durante
+un arrastre real confirmó `rgba(37, 99, 235, 0.1)`/`rgb(37, 99, 235)` —
+el azul fijo exacto, sin ninguna influencia del acento negro activo en el
+resto de la interfaz en ese mismo instante.
+
+**Grilla libre real, reemplazando el sistema de orden lineal +
+"normal"/"ancho"**: el dashboard reconstruido sobre `react-grid-layout`
+v2 (nueva dependencia — investigado su compatibilidad real con React 19
+antes de instalar: peer deps `>= 16.3.0` sin tope superior, confirmado sin
+`--legacy-peer-deps`; se usa el subpath `/legacy`, que expone la API v1
+clásica y bien documentada — `layout`, `onLayoutChange`, `cols`,
+`rowHeight`, `preventCollision`, `compactType`, `draggableHandle`,
+`resizeHandle` — en vez de la API v2 nativa, recién rediseñada y con
+mucha menos documentación/precedente). Grilla de 12 columnas,
+`compactType={null}` (nunca compacta/reordena widgets automáticamente —
+los espacios vacíos que el usuario deja se quedan exactamente donde los
+dejó) + `preventCollision` (un arrastre o resize que terminaría
+solapando otro widget queda bloqueado, nunca se desborda ni se ve roto).
+`react-grid-layout` v2 **no incluye ningún CSS propio** (un cambio real
+respecto a v1) — el bloque completo de reglas (`.react-grid-item`,
+`.react-grid-placeholder`, `.react-resizable-handle`, transiciones) se
+escribió a mano en `styles.css`. El botón de "cambiar tamaño" (toggle
+normal/ancho) del sistema anterior se eliminó — el resize ahora es un
+arrastre real desde la esquina inferior derecha de cada tarjeta
+(`resizeHandle` custom con el ícono `ArrowsOutSimple`, revelado al pasar
+el mouse); el arrastre para reordenar sigue siendo mouse/touch únicamente
+vía un handle explícito (`draggableHandle=".widget-drag-handle"`, el
+mismo ícono de puntos de antes) — mismo hueco de accesibilidad ya
+disclosed, ahora heredado de la librería en vez de la implementación
+nativa anterior.
+
+**Hasta 3 perfiles guardables**: `ProfileTabs` nuevo (pestañas "Perfil
+1/2/3" sobre el propio dashboard) — cada perfil guarda su propia
+disposición (`hidden`+`positions`) de forma independiente; un perfil
+nunca tocado cae en la disposición por defecto (empaquetado determinista
+vía `findFreeSlot`, la misma función que resuelve dónde colocar un widget
+restaurado o recién agregado al catálogo). Un botón de reset por perfil
+(ícono `X` revelado al pasar el mouse sobre la pestaña) lo limpia de
+vuelta al default. Persistido como un único `UserPreference` nuevo
+(`ui.dashboardProfiles`, `{activeProfile, profiles: [layout|null,
+layout|null, layout|null]}`) vía el mismo mecanismo genérico ya probado
+por Apariencia — **sin backend nuevo**. La preferencia previa de un solo
+layout (`ui.dashboardLayout`, sesión 36 anterior) se migra una sola vez a
+Perfil 1 si existe, en vez de descartarse silenciosamente.
+
+**Dos bugs reales de persistencia encontrados y corregidos durante la
+propia verificación contra el backend real, no simulados** — ambos
+encontrados porque la primera ronda de pruebas (arrastrar/redimensionar
+en una sesión, verificar en una sesión de navegador completamente nueva)
+mostraba el layout guardado revirtiendo silenciosamente al default:
+
+1. **Escrituras fire-and-forget completándose fuera de orden.** Cada
+   arrastre/resize/ocultar/restaurar/cambio de perfil dispara su propio
+   guardado independiente (`setUserPreference`) sin ninguna garantía de
+   orden de finalización — una escritura más lenta para un cambio
+   *anterior* podía completarse *después* de una más rápida para un
+   cambio *posterior*, sobrescribiendo silenciosamente el más reciente en
+   el servidor. Corregido encadenando cada guardado sobre una promesa
+   compartida (`persistQueueRef`), forzando que el servidor los procese
+   siempre en el mismo orden en que el cliente los generó.
+2. **Causa raíz real, más profunda: un efecto secundario dentro de un
+   actualizador funcional de `useState`.** Aislado con una traza de pila
+   temporal: un solo click en "Perfil 3" disparaba `persist()` **3
+   veces** — React (la doble-renderización de StrictMode combinada con la
+   optimización de "eager bailout" de `useState`) puede invocar un
+   actualizador funcional hasta 3 veces por una sola llamada lógica;
+   inofensivo para un actualizador puro, pero el código anterior llamaba
+   `persist()` (un efecto secundario de red real) *dentro* del
+   actualizador — exactamente la impureza que la propia documentación de
+   React prohíbe. Corregido con el patrón "ref con el valor más
+   reciente" (`profilesStateRef`, sincronizado en cada render):
+   `updateLayout`/`selectProfile`/`resetProfile` ahora calculan el
+   siguiente estado leyendo el ref directamente (nunca vía un
+   actualizador funcional) y llaman `setProfilesState`/`persist`
+   exactamente una vez, como sentencias hermanas normales, nunca como
+   efecto colateral de un cálculo que React puede repetir.
+3. **Un tercer bug real, el más sutil, encontrado investigando por qué el
+   fix anterior seguía sin resolverlo del todo**: el efecto de carga
+   inicial (`useEffect` con guardia `loadedRef`) marcaba
+   `loadedRef.current = true` **antes** de que el `fetch` siquiera
+   comenzara — bajo el ciclo montaje→limpieza→remontaje sintético de
+   StrictMode (solo en desarrollo), la limpieza del *primer* montaje
+   aborta esa petición en curso, pero el guardado ya había quedado
+   "consumido" para siempre, así que el *segundo* montaje (el real) nunca
+   volvía a intentar cargar — el dashboard renderizaba el layout por
+   defecto en cada carga de página en desarrollo, descartando en silencio
+   cualquier layout guardado. Corregido marcando el guardia solo cuando
+   la petición realmente se completa (éxito o fallo genuino), no cuando
+   apenas comienza — un aborto (`controller.signal.aborted`) deja el
+   guardia intacto para que el remontaje real lo reintente. Sin impacto
+   en producción (la doble-invocación de StrictMode es exclusiva de
+   desarrollo), pero es exactamente el flujo que se usa para probar
+   guardar/recargar un layout localmente — el mismo patrón preexistente
+   (`loadedRef` + `AbortController`) ya se usaba en el código heredado de
+   este mismo archivo antes de esta sesión, y probablemente en
+   `AppearanceProvider` también (no tocado en este bloque, fuera de
+   alcance).
+
+**Verificado end-to-end contra el backend real, con dos sesiones de
+navegador completamente separadas** (`chromium.launch()` distinto cada
+vez, sin cookies/sessionStorage compartido): sesión A restablece un
+perfil, oculta un widget, redimensiona otro (interceptando la petición
+`PUT /preferences/ui.dashboardProfiles` real); sesión B, minutos después,
+inicia sesión desde cero y confirma — leyendo la respuesta cruda de `GET
+/preferences` — que los valores en unidades de grilla (`x`, `y`, `w`,
+`h`) y la lista de ocultos coinciden exactamente con lo que la sesión A
+envió, byte a byte.
+
+Tests: `home-dashboard.spec.tsx` reescrito — el bloque `reorderWidgets`
+(la reordenación lineal, ahora inexistente) se reemplazó por 15 tests de
+funciones puras nuevas (`rectsOverlap`, `findFreeSlot`, `reconcileLayout`,
+`migrateLegacyLayout`), y el test de arrastre-y-suelta vía eventos HTML5
+nativos (`fireEvent.dragStart/dragOver/drop`) se eliminó — ya no aplica,
+`react-grid-layout` arrastra vía mouse/touch real (`react-draggable`), no
+DnD nativo; su cobertura la asume la verificación real contra el backend
+descrita arriba, no una simulación de jsdom. 2 tests de componente
+nuevos (migración de la preferencia legacy, cambio entre las 3 pestañas
+de perfil) — 142 tests unitarios totales en `apps/erp-web` (antes 132,
+neto: +15 funciones puras +2 componente −6 reorderWidgets −1 test de
+arrastre). `apps/erp-web/src/test/setup.ts` gana un stub mínimo de
+`ResizeObserver` — jsdom no implementa esa API en absoluto, requerida por
+el `WidthProvider` de la librería para medir su contenedor.
+
+Validación completa: `pnpm turbo run lint typecheck build` (limpio,
+31/31 tareas), `apps/erp-web` 142/142, y la suite completa de `apps/e2e`
+contra infraestructura efímera real tras detener los tres servidores
+persistentes.
+
 ## In Progress
 
 Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
