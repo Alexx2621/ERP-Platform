@@ -519,6 +519,7 @@ export type PlatformSubscriptionResponse = components["schemas"]["PlatformSubscr
 export type CreateCheckoutSessionInput = components["schemas"]["CreateCheckoutSessionDto"];
 export type CheckoutSessionResponse = components["schemas"]["CheckoutSessionResponseDto"];
 export type AssignTenantPlanInput = components["schemas"]["AssignTenantPlanDto"];
+export type BillingActivityResponse = components["schemas"]["BillingActivityResponseDto"];
 
 export interface ApiErrorEnvelope {
   statusCode: number;

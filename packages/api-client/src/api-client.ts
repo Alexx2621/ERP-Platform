@@ -132,6 +132,7 @@ import type {
   CreateCheckoutSessionInput,
   CheckoutSessionResponse,
   AssignTenantPlanInput,
+  BillingActivityResponse,
   ProductResponse,
   ProductVariantResponse,
   ProvisionTenantInput,
@@ -3071,6 +3072,14 @@ export class ApiClient {
       tenantSlug,
       body: input,
     });
+  }
+
+  async listBillingActivity(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<BillingActivityResponse[]> {
+    return this.request<BillingActivityResponse[]>("/billing/activity", { accessToken, tenantSlug, signal });
   }
 
   async getPlatformTenantSubscription(

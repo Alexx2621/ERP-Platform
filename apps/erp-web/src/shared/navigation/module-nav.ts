@@ -1,6 +1,7 @@
 import {
   Calculator,
   Coins,
+  CreditCard,
   Factory,
   Globe,
   Package,
@@ -83,6 +84,7 @@ export const moduleNavSections: ModuleNavSection[] = [
       { path: "/roles", label: "Roles y permisos", icon: ShieldCheck, color: TONE.rose },
       { path: "/settings", label: "Ajustes", icon: SlidersHorizontal, color: TONE.slate },
       { path: "/appearance", label: "Apariencia", icon: PaintBrush, color: TONE.purple },
+      { path: "/billing", label: "Facturación", icon: CreditCard, color: TONE.emerald },
     ],
   },
 ];

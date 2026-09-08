@@ -4983,17 +4983,94 @@ puede usar técnicamente* un tenant.
   pueda usar honestamente), y revocación automática de acceso ante
   `PAST_DUE`.
 
+### UI de Facturación (tenant-facing) + corrección de un bug real de estado optimista
+
+A pedido explícito del usuario, tras entregar el backend de Platform
+Billing sin ninguna pantalla que lo consumiera ("no veo esa pantalla"):
+pantalla "Facturación" real dentro del workspace del tenant
+(`apps/erp-web/src/features/billing/`, ruta `/billing`, entrada nueva en
+el sidebar bajo "Administración") — plan activo con estado y fecha de
+renovación, grilla de los 4 planes con botón real de checkout hacia
+Recurrente, e historial de movimientos.
+
+- **Nuevo endpoint real, no fabricado**: `GET /api/v1/billing/activity`
+  (`ListBillingActivityUseCase`) expone el historial de
+  `BillingWebhookEvent` ya almacenado internamente para idempotencia
+  desde la sesión anterior — nunca expuesto por HTTP hasta ahora.
+  Correlaciona por `recurrenteCustomerId` del propio
+  `TenantSubscription` (mismo campo que `HandleRecurrenteWebhookUseCase`
+  ya usa), vía un filtro JSON real de Prisma sobre
+  `payload.customer_id` (`Prisma`'s `path`/`equals` en Postgres). DTO
+  deliberadamente mínimo (`id`, `eventType`, `createdAt`) — nunca expone
+  el payload crudo del webhook a un tenant.
+- **Bug real encontrado durante la propia verificación visual contra el
+  sandbox real, antes de dar el trabajo por terminado**: el listado
+  público de planes (`GET /api/v1/billing/plans`) ordenaba por
+  `basePriceAmount ASC` — como Enterprise es "a medida"
+  (`basePriceAmount: "0.0000"`), esto lo ponía **primero** en la grilla,
+  antes que Starter/Profesional/Business, invirtiendo la jerarquía real
+  de los planes. Corregido a `orderBy: { createdAt: "asc" }`, que
+  coincide con el orden fijo en que `PlanCatalogSeeder` siempre siembra
+  el catálogo (Starter, Profesional, Business, Enterprise) y nunca
+  cambia en un re-seed.
+- **Segundo bug real, más significativo, encontrado por la misma
+  verificación visual**: `CreateCheckoutSessionUseCase` llamaba
+  `subscription.assignPlan(plan.id, now)` de forma incondicional al
+  iniciar un checkout — para una suscripción ya `ACTIVE` que cambia de
+  plan, esto reasignaba el plan de inmediato, **antes de que el tenant
+  pagara nada o Recurrente confirmara algo real** — un cliente real podía
+  abandonar el checkout y la pantalla seguiría mostrando "Activa" en el
+  plan nuevo. Confirmado en vivo: tras iniciar (e interceptar, sin pagar)
+  un checkout real de Business→Starter, la pantalla mostraba "Starter" /
+  "Activa" sin ninguna confirmación real. Corregido en el dominio:
+  `TenantSubscription.assignPlan()` ahora vuelve el estado a `PENDING`
+  cuando el plan genuinamente cambia (nunca cuando se reasigna el mismo
+  plan que ya tenía) — `AssignTenantPlanUseCase` (la vía manual de
+  Platform Admin) no se ve afectado en la práctica, ya que siempre llama
+  `activate()` inmediatamente después, sobrescribiendo ese `PENDING`
+  transitorio antes de que nadie lo observe. Re-verificado en vivo contra
+  el sandbox real: el mismo flujo ahora muestra "Pendiente de
+  confirmación" honestamente.
+- Tests: 4 tests unitarios nuevos para `ListBillingActivityUseCase`, 2
+  nuevos para el reseteo a `PENDING` en `TenantSubscription`, 1 nuevo
+  para `CreateCheckoutSessionUseCase` reproduciendo exactamente el
+  escenario del segundo bug — 1125 tests unitarios totales en `apps/api`
+  (antes 1118). `app.module.spec.ts` ampliado con
+  `ListBillingActivityUseCase`. `@erp/api-client`: 1 tipo y 1 método
+  nuevos (`listBillingActivity`), 28/28 tests (antes 27). 5 tests nuevos
+  en `apps/erp-web` (`billing-page.spec.tsx`) — 147/147 en total (antes
+  142).
+- **Verificado con un script real de Playwright contra el dev server y el
+  sandbox real de Recurrente** (no comiteado): login real, navegación
+  real por el sidebar hasta "Facturación", los 4 planes en el orden
+  correcto tras el fix, clic real en "Cambiar a este plan" produciendo un
+  `checkout_url` real de `app.recurrente.com` (interceptado antes de
+  navegar, nunca completando un pago real), y una segunda corrida
+  confirmando el estado `PENDING` honesto tras el fix del segundo bug.
+  El tenant de demostración ("Demo ERP") quedó restaurado a su estado
+  real limpio (`business`/`ACTIVE`) vía la propia ruta legítima de
+  Platform Admin al terminar, sin dejar ningún estado de prueba a medias.
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31
+  tareas), `apps/api` 1125/1125 (`npx jest` directo), `apps/erp-web`
+  147/147 (`--no-file-parallelism`), `@erp/api-client` 28/28.
+
 ## In Progress
 
-Ninguno activo — el bloque más reciente fue **Platform Billing con
-Recurrente en GTQ (ADR-016)**, cerrado en un solo bloque de trabajo a
-pedido explícito del usuario (ver "Platform Billing: catálogo de planes
-en GTQ + integración real con Recurrente" arriba). Sin trabajo pendiente
-dentro de ese bloque — lo único fuera de su alcance deliberado (portal de
-autoservicio, facturación anual, sobrecargo por asiento, revocación
-automática ante `PAST_DUE`) queda documentado en `docs/DECISIONS.md`
-ADR-016, no iniciado. El resto de esta sección documenta el estado previo
-a ese bloque.
+Ninguno activo — el bloque más reciente fue la **UI de Facturación
+tenant-facing**, construida a pedido explícito del usuario inmediatamente
+después de entregar el backend de Platform Billing sin ninguna pantalla
+propia (ver "UI de Facturación (tenant-facing) + corrección de un bug
+real de estado optimista" arriba) — incluye dos bugs reales encontrados y
+corregidos durante la propia verificación visual contra el sandbox real
+(el orden de los planes, y un estado "Activa" mostrado antes de cualquier
+confirmación real de pago). Sin trabajo pendiente dentro de ese bloque.
+Antes de él: **Platform Billing con Recurrente en GTQ (ADR-016)**, cerrado
+en un solo bloque de trabajo (ver "Platform Billing: catálogo de planes
+en GTQ + integración real con Recurrente" arriba). Lo único fuera del
+alcance deliberado de ambos bloques (portal de autoservicio, facturación
+anual, sobrecargo por asiento, revocación automática ante `PAST_DUE`)
+queda documentado en `docs/DECISIONS.md` ADR-016, no iniciado. El resto de
+esta sección documenta el estado previo a ambos bloques.
 
 Antes de Platform Billing: **Fase 10 (Manufactura) quedó formalmente cerrada en la
 sesión 34** y **Fase 11 (Plugin Platform) quedó formalmente cerrada en la

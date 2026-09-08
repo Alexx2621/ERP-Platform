@@ -89,6 +89,7 @@ import {
   BillingWebhooksController,
   ListPlansUseCase,
   GetTenantSubscriptionUseCase,
+  ListBillingActivityUseCase,
   PlanCatalogSeeder,
 } from "./core/billing";
 import { PlatformSubscriptionsController } from "./core/platform-admin/presentation/platform-subscriptions.controller";
@@ -209,6 +210,7 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(BillingWebhooksController)).toBeInstanceOf(BillingWebhooksController);
     expect(moduleRef.get(ListPlansUseCase)).toBeInstanceOf(ListPlansUseCase);
     expect(moduleRef.get(GetTenantSubscriptionUseCase)).toBeInstanceOf(GetTenantSubscriptionUseCase);
+    expect(moduleRef.get(ListBillingActivityUseCase)).toBeInstanceOf(ListBillingActivityUseCase);
     expect(moduleRef.get(PlanCatalogSeeder)).toBeInstanceOf(PlanCatalogSeeder);
     expect(moduleRef.get(PlatformSubscriptionsController)).toBeInstanceOf(PlatformSubscriptionsController);
 

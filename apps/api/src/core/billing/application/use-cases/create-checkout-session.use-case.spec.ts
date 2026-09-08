@@ -1,5 +1,6 @@
 import { newId } from "@erp/database";
 import { Plan } from "../../domain/plan.entity";
+import { TenantSubscription } from "../../domain/tenant-subscription.entity";
 import { InMemoryPlanRepository } from "../../test-support/in-memory-plan.repository";
 import { InMemoryTenantSubscriptionRepository } from "../../test-support/in-memory-tenant-subscription.repository";
 import { PlanNotFoundError, PlanNotSelfServeError, RecurrenteNotConfiguredError } from "../errors";
@@ -89,6 +90,46 @@ describe("CreateCheckoutSessionUseCase", () => {
     });
 
     expect(recurrente.createCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops an already-ACTIVE subscription back to PENDING when starting a checkout for a different plan — a real bug, found and fixed during manual verification: starting checkout must never look already-active before the tenant has actually paid or Recurrente has confirmed anything", async () => {
+    const plans = new InMemoryPlanRepository();
+    const currentPlan = selfServePlan({ key: "business", recurrentePriceId: "price_business" });
+    const targetPlan = selfServePlan({ key: "starter", recurrentePriceId: "price_starter" });
+    await plans.upsert(currentPlan);
+    await plans.upsert(targetPlan);
+
+    const subscriptions = new InMemoryTenantSubscriptionRepository();
+    await subscriptions.save(
+      TenantSubscription.create({
+        id: newId(),
+        tenantId: "tenant-1",
+        planId: currentPlan.id,
+        status: "ACTIVE",
+        seatCount: 1,
+        recurrenteCustomerId: "cust_existing",
+        recurrenteSubscriptionId: "rsub_existing",
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        cancelledAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    );
+
+    const useCase = new CreateCheckoutSessionUseCase(plans, subscriptions, fakeRecurrenteClient());
+    await useCase.execute({
+      tenantId: "tenant-1",
+      planKey: "starter",
+      customerEmail: "owner@example.com",
+      customerName: "Owner",
+      successUrl: "https://app.example.com/success",
+      cancelUrl: "https://app.example.com/cancel",
+    });
+
+    const subscription = await subscriptions.findByTenantId("tenant-1");
+    expect(subscription?.status).toBe("PENDING");
+    expect(subscription?.planId).toBe(targetPlan.id);
   });
 
   it("rejects an unknown plan key", async () => {

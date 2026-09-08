@@ -723,6 +723,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This tenant's own billing movements — real Recurrente subscription events, newest first. */
+        get: operations["BillingController_getActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/checkout": {
         parameters: {
             query?: never;
@@ -3431,6 +3448,13 @@ export interface components {
             cancelledAt: string | null;
             /** Format: date-time */
             updatedAt: string;
+        };
+        BillingActivityResponseDto: {
+            id: string;
+            /** @example subscription.create */
+            eventType: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         CreateCheckoutSessionDto: {
             /** @example profesional */
@@ -6452,6 +6476,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantSubscriptionResponseDto"];
+                };
+            };
+        };
+    };
+    BillingController_getActivity: {
+        parameters: {
+            query: {
+                limit: string;
+            };
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingActivityResponseDto"][];
                 };
             };
         };

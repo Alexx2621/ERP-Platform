@@ -94,8 +94,24 @@ export class TenantSubscription {
     this.props.updatedAt = now;
   }
 
-  /** Moves a plan change (manual or self-serve) onto this row before any provider confirmation arrives. */
+  /**
+   * Records the intended plan for this row. When it genuinely changes the
+   * plan the tenant is currently on, this also drops status back to
+   * `PENDING` — a real bug found and fixed during manual verification:
+   * starting a self-serve checkout for a different plan (`CreateCheckoutSessionUseCase`)
+   * used to leave an already-`ACTIVE` subscription looking `ACTIVE` on the
+   * *new* plan the instant the checkout session was created, before the
+   * tenant had paid anything or Recurrente had confirmed a thing — a real
+   * customer could abandon the checkout and the UI would still claim they
+   * were subscribed to (and paying for) the new plan. `AssignTenantPlanUseCase`
+   * (the manual admin path) is unaffected in practice: it always calls
+   * `activate()` again immediately after this, so the transient `PENDING`
+   * here is overwritten before ever being observed.
+   */
   assignPlan(planId: string, now: Date): void {
+    if (this.props.planId !== planId) {
+      this.props.status = "PENDING";
+    }
     this.props.planId = planId;
     this.props.updatedAt = now;
   }

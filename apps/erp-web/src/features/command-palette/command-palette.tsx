@@ -53,6 +53,12 @@ const MODULES: readonly ModuleEntry[] = [
   },
   { id: "apps", label: "Apps", path: "/apps", keywords: "modulos plugins habilitar deshabilitar" },
   {
+    id: "billing",
+    label: "Facturación",
+    path: "/billing",
+    keywords: "planes suscripcion pago recurrente movimientos billing",
+  },
+  {
     id: "catalog",
     label: "Catálogo",
     path: "/catalog",

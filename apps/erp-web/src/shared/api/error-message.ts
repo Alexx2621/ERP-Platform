@@ -17,6 +17,12 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   INVALID_SETTING_VALUE: "El valor no coincide con el tipo definido para este ajuste.",
   COMPANY_CONTEXT_REQUIRED: "Selecciona una empresa para guardar el ajuste en ese alcance.",
   COMPANY_NOT_FOUND: "La empresa no existe dentro del tenant activo.",
+  PLAN_NOT_FOUND: "Ese plan ya no existe en el catálogo.",
+  PLAN_NOT_SELF_SERVE: "Este plan requiere acompañamiento comercial — contáctanos para activarlo.",
+  RECURRENTE_NOT_CONFIGURED: "El cobro en línea no está disponible en este momento. Inténtalo más tarde.",
+  RECURRENTE_API_ERROR: "No fue posible conectar con el proveedor de pagos. Inténtalo de nuevo en unos minutos.",
+  TENANT_SUBSCRIPTION_NOT_FOUND: "Este espacio todavía no tiene una suscripción.",
+  TENANT_SUBSCRIPTION_CONFLICT: "Otra solicitud ya está actualizando la suscripción. Inténtalo de nuevo.",
 };
 
 export function getErrorMessage(error: unknown): string {

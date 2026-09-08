@@ -49,6 +49,15 @@ export class PrismaBillingWebhookEventRepository implements BillingWebhookEventR
     });
   }
 
+  async listByCustomerId(customerId: string, limit: number): Promise<BillingWebhookEvent[]> {
+    const records = await this.prisma.billingWebhookEvent.findMany({
+      where: { payload: { path: ["customer_id"], equals: customerId } },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return records.map((record) => this.toDomain(record));
+  }
+
   private toDomain(record: PrismaBillingWebhookEvent): BillingWebhookEvent {
     return BillingWebhookEvent.create({
       id: record.id,

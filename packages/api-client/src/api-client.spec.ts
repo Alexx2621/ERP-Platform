@@ -1828,6 +1828,18 @@ describe("ApiClient", () => {
     await expect(client.getTenantSubscription("access-token", "grupo-aurora")).resolves.toBeNull();
   });
 
+  it("listBillingActivity gets the tenant-scoped billing activity endpoint", async () => {
+    const activity = [{ id: "evt-1", eventType: "subscription.create", createdAt: "2026-01-01T00:00:00.000Z" }];
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(activity), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listBillingActivity("access-token", "grupo-aurora")).resolves.toEqual(activity);
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/billing/activity");
+    expect(new Headers(request?.headers).get("X-Tenant-Slug")).toBe("grupo-aurora");
+  });
+
   it("assignTenantPlan puts to the platform-admin subscription endpoint", async () => {
     const subscription = { tenantId: "tenant-1", planKey: "business", status: "ACTIVE" };
     const fetchMock = vi

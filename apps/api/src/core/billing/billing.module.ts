@@ -18,6 +18,7 @@ import { WEBHOOK_VERIFIER } from "./application/ports/webhook-verifier.port";
 import { PlanCatalogSeeder } from "./application/plan-catalog-seeder";
 import { ListPlansUseCase } from "./application/use-cases/list-plans.use-case";
 import { GetTenantSubscriptionUseCase } from "./application/use-cases/get-tenant-subscription.use-case";
+import { ListBillingActivityUseCase } from "./application/use-cases/list-billing-activity.use-case";
 import { CreateCheckoutSessionUseCase } from "./application/use-cases/create-checkout-session.use-case";
 import { AssignTenantPlanUseCase } from "./application/use-cases/assign-tenant-plan.use-case";
 import { SyncTenantAppsToPlanUseCase } from "./application/use-cases/sync-tenant-apps-to-plan.use-case";
@@ -67,6 +68,7 @@ import { BillingWebhooksController } from "./presentation/billing-webhooks.contr
     PlanCatalogSeeder,
     ListPlansUseCase,
     GetTenantSubscriptionUseCase,
+    ListBillingActivityUseCase,
     CreateCheckoutSessionUseCase,
     AssignTenantPlanUseCase,
     SyncTenantAppsToPlanUseCase,
@@ -77,6 +79,7 @@ import { BillingWebhooksController } from "./presentation/billing-webhooks.contr
     TENANT_SUBSCRIPTION_REPOSITORY,
     ListPlansUseCase,
     GetTenantSubscriptionUseCase,
+    ListBillingActivityUseCase,
     AssignTenantPlanUseCase,
     SyncTenantAppsToPlanUseCase,
     PlanCatalogSeeder,

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Inject, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpStatus, Inject, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ApiTenantHeaders } from "../../../shared/swagger/api-tenant-headers.decorator";
 import { SessionAuthGuard, CurrentAuth, type AuthContext } from "../../auth";
@@ -8,9 +8,11 @@ import { PermissionGuard, RequirePermission } from "../../access-control";
 import { RecordAuditEntryUseCase } from "../../audit";
 import { CreateCheckoutSessionUseCase } from "../application/use-cases/create-checkout-session.use-case";
 import { GetTenantSubscriptionUseCase } from "../application/use-cases/get-tenant-subscription.use-case";
+import { ListBillingActivityUseCase } from "../application/use-cases/list-billing-activity.use-case";
 import { PLAN_REPOSITORY, PlanRepository } from "../domain/plan.repository";
 import { CheckoutSessionResponseDto, CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
 import { TenantSubscriptionResponseDto } from "./dto/tenant-subscription-response.dto";
+import { BillingActivityResponseDto } from "./dto/billing-activity-response.dto";
 import { handleBillingError } from "./billing-error.mapper";
 
 /**
@@ -31,6 +33,7 @@ export class BillingController {
   constructor(
     private readonly createCheckoutSession: CreateCheckoutSessionUseCase,
     private readonly getTenantSubscription: GetTenantSubscriptionUseCase,
+    private readonly listBillingActivity: ListBillingActivityUseCase,
     @Inject(PLAN_REPOSITORY) private readonly plans: PlanRepository,
     private readonly recordAuditEntry: RecordAuditEntryUseCase,
   ) {}
@@ -45,6 +48,23 @@ export class BillingController {
     if (!subscription) return null;
     const plan = await this.plans.findById(subscription.planId);
     return TenantSubscriptionResponseDto.fromDomain(subscription, plan?.key ?? subscription.planId);
+  }
+
+  @Get("activity")
+  @UseGuards(PermissionGuard)
+  @RequirePermission("billing.subscription.read")
+  @ApiOperation({ summary: "This tenant's own billing movements — real Recurrente subscription events, newest first." })
+  @ApiResponse({ status: HttpStatus.OK, type: [BillingActivityResponseDto] })
+  async getActivity(
+    @CurrentTenantContext() ctx: TenantExecutionContext,
+    @Query("limit") limit?: string,
+  ): Promise<BillingActivityResponseDto[]> {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    const events = await this.listBillingActivity.execute(
+      ctx.tenantId,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
+    return events.map(BillingActivityResponseDto.fromDomain);
   }
 
   @Post("checkout")

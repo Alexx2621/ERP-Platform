@@ -9,6 +9,7 @@ export {
 export { FOUNDATION_PLANS, type PlanManifest, validatePlanCatalog, InvalidPlanCatalogError } from "./application/plan-catalog";
 export { ListPlansUseCase } from "./application/use-cases/list-plans.use-case";
 export { GetTenantSubscriptionUseCase } from "./application/use-cases/get-tenant-subscription.use-case";
+export { ListBillingActivityUseCase } from "./application/use-cases/list-billing-activity.use-case";
 export {
   AssignTenantPlanUseCase,
   type AssignTenantPlanInput,
@@ -28,6 +29,7 @@ export {
 export { handleBillingError } from "./presentation/billing-error.mapper";
 export { PlanResponseDto } from "./presentation/dto/plan-response.dto";
 export { TenantSubscriptionResponseDto } from "./presentation/dto/tenant-subscription-response.dto";
+export { BillingActivityResponseDto } from "./presentation/dto/billing-activity-response.dto";
 export { AssignTenantPlanDto } from "./presentation/dto/assign-tenant-plan.dto";
 export { CreateCheckoutSessionUseCase } from "./application/use-cases/create-checkout-session.use-case";
 export { HandleRecurrenteWebhookUseCase } from "./application/use-cases/handle-recurrente-webhook.use-case";

@@ -18,8 +18,17 @@ export class PrismaPlanRepository implements PlanRepository {
     return record ? this.toDomain(record) : null;
   }
 
+  /**
+   * Ordered by `createdAt`, not price — `basePriceAmount` sorts a real
+   * "a medida" tier like Enterprise (priced `0.0000`, no listed amount)
+   * *first*, ahead of every real self-serve tier, which is backwards for
+   * a tier hierarchy. `createdAt` matches `PlanCatalogSeeder`'s own fixed
+   * array order (Starter, Profesional, Business, Enterprise) and never
+   * changes on re-seed (`existing?.createdAt ?? now`), so the catalog's
+   * intended tier order is stable across restarts.
+   */
   async findAll(): Promise<Plan[]> {
-    const records = await this.prisma.plan.findMany({ orderBy: { basePriceAmount: "asc" } });
+    const records = await this.prisma.plan.findMany({ orderBy: { createdAt: "asc" } });
     return records.map((record) => this.toDomain(record));
   }
 

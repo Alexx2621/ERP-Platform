@@ -97,6 +97,15 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
+**La UI de Facturación tenant-facing quedó cerrada en un solo bloque de
+trabajo** — ver "Hecho — UI de Facturación (tenant-facing)" abajo:
+pantalla real en `/billing` (plan activo, grilla de planes, checkout real
+hacia Recurrente, historial de movimientos), un endpoint nuevo
+(`GET /api/v1/billing/activity`) exponiendo el historial de webhooks ya
+almacenado, y dos bugs reales encontrados y corregidos durante la propia
+verificación visual contra el sandbox real (orden de los planes; un
+estado "Activa" mostrado antes de cualquier confirmación real de pago).
+
 **Platform Billing con Recurrente en GTQ (ADR-016) quedó cerrado en un
 solo bloque de trabajo** — ver "Hecho — Platform Billing con Recurrente
 (ADR-016)" abajo para el detalle completo: catálogo real de 4 planes en
@@ -270,6 +279,31 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — UI de Facturación (tenant-facing)
+
+A pedido explícito del usuario, inmediatamente después de entregar el
+backend de Platform Billing sin ninguna pantalla que lo consumiera. Ver
+el detalle completo (los dos bugs reales encontrados durante la propia
+verificación visual, las cifras exactas de tests, y la verificación real
+contra el sandbox de Recurrente) en la entrada "UI de Facturación
+(tenant-facing) + corrección de un bug real de estado optimista" de
+`docs/PROJECT_STATE.md` — no se repite aquí para no duplicar.
+
+- Pantalla nueva `apps/erp-web/src/features/billing/` (ruta `/billing`,
+  entrada nueva en el sidebar y en el Command Palette).
+- Endpoint nuevo `GET /api/v1/billing/activity`
+  (`ListBillingActivityUseCase`), reutilizando el mismo permiso
+  `billing.subscription.read` — sin permiso RBAC nuevo.
+- Dos bugs reales corregidos: orden de `PlanRepository.findAll()`
+  (`basePriceAmount ASC` ponía Enterprise, "a medida", primero — corregido
+  a `createdAt ASC`); y `TenantSubscription.assignPlan()` ahora resetea a
+  `PENDING` cuando el plan genuinamente cambia, para que iniciar un
+  checkout nunca muestre "Activa" en el plan nuevo antes de una
+  confirmación real.
+- Tests: 1125/1125 en `apps/api` (antes 1118), 28/28 en `@erp/api-client`
+  (antes 27), 147/147 en `apps/erp-web` (antes 142).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31).
 
 ### Hecho — Platform Billing con Recurrente (ADR-016)
 

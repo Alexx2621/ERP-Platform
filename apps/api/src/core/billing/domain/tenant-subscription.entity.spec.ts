@@ -83,4 +83,16 @@ describe("TenantSubscription", () => {
     expect(subscription.planId).toBe("plan-2");
     expect(subscription.updatedAt).toEqual(now);
   });
+
+  it("assignPlan drops an ACTIVE subscription back to PENDING when it genuinely changes plan", () => {
+    const subscription = TenantSubscription.create(baseProps({ status: "ACTIVE", planId: "plan-1" }));
+    subscription.assignPlan("plan-2", new Date());
+    expect(subscription.status).toBe("PENDING");
+  });
+
+  it("assignPlan never resets status when reassigning the same plan it already has", () => {
+    const subscription = TenantSubscription.create(baseProps({ status: "ACTIVE", planId: "plan-1" }));
+    subscription.assignPlan("plan-1", new Date());
+    expect(subscription.status).toBe("ACTIVE");
+  });
 });
