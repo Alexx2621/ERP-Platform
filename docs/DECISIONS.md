@@ -2112,3 +2112,260 @@ real, and scopes everything else in §15 as deliberately deferred.
   dependency shape behind indirection; making `AppRegistryModule` a true
   leaf and moving `AppsController` out is the same pattern this codebase
   already uses consistently for exactly this situation.
+
+---
+
+## ADR-016 — Platform Billing V1 (Recurrente as the Recurring-Payment Provider, Flat GTQ Plans, No Auto-Billed Seat Metering)
+
+**Status:** Accepted (scope: a real `Plan` catalog in GTQ, a `TenantSubscription` per tenant, a real adapter against Recurrente's REST API for checkout creation and webhook-driven status updates, and the connection from an active subscription to App Registry's existing enablement mechanism; not a tenant-facing self-service billing portal, not annual billing, not auto-billed per-seat overage)
+
+**Context**
+
+MASTER_SPEC §56 sketches a plan structure (Starter/Professional/Business/
+Enterprise) conceptually but explicitly defers implementing SaaS billing:
+"No implementar toda la facturación SaaS inicialmente, pero evitar
+decisiones que lo impidan." ADR-015 (Phase 11) already built the
+mechanism that *enforces* which apps a tenant can use
+(`AppEnablementGuard`/`TenantApp`), but nothing decides *which apps a
+tenant is entitled to* based on what they are paying for — that gap is
+what this ADR closes. The user selected **Recurrente**
+(recurrente.com), a Guatemalan payment platform, as the billing
+provider, and asked for the four proposed plans priced in Quetzales
+(GTQ) — the platform's own target market and the currency already used
+throughout this codebase's demo data.
+
+Before writing any adapter code, Recurrente's real API was researched
+(not assumed) against their published documentation
+(docs.recurrente.com): REST API authenticated via an `X-SECRET-KEY`
+header (`sk_test_...`/`sk_live_...`, sandbox vs. production, no OAuth
+flow), first-class `Product`/`Subscription`/`Customer` resources for
+recurring billing (not a bare one-off checkout API repurposed for
+recurring charges), webhooks delivered via Svix with HMAC-SHA256
+signature verification, native GTQ support, and a real, self-serve
+sandbox environment with test API keys and test cards — everything
+needed to build and verify a real integration, not a simulated one, per
+this codebase's unbroken discipline since ADR-009.
+
+**Decision**
+
+1. **A new, platform-scoped bounded context, `core/billing`, not a
+   tenant-scoped business module.** A `Plan`/`TenantSubscription` is the
+   commercial relationship between the platform and a tenant — the exact
+   mirror of `AppDefinition`/`TenantApp` (what a tenant is *entitled* to
+   vs. what a tenant is *technically allowed* to use), not something a
+   tenant's own users manage about their own business data. `Plan` is a
+   code-owned catalog seeded idempotently by `PlanCatalogSeeder`, the
+   same pattern as `AppCatalogSeeder`/`PermissionCatalogSeeder`/
+   `SettingCatalogSeeder`.
+2. **Four flat, monthly, GTQ-only plans in V1** — `Starter` (Q299/mes),
+   `Profesional` (Q699/mes), `Business` (Q1,599/mes), `Enterprise`
+   (sales-assisted, `isSelfServe: false`, no listed price). Each plan's
+   `includesAppKeys` is a real, dependency-closed subset of
+   `FOUNDATION_APPS` — validated at boot by a new `validatePlanCatalog`
+   function (mirroring `validateAppCatalog`'s own fail-fast philosophy):
+   a plan can never list an app without also listing everything that
+   app's own `dependsOnKeys` requires, checked against the *real*
+   dependency graph already established by ADR-015, not a separately
+   hand-maintained one that could drift. `Business` and `Enterprise` both
+   resolve to the full 15-app catalog — there is no 16th app to
+   differentiate them with; the honest difference between those two tiers
+   in V1 is price and support arrangement, not gated features (SSO,
+   named in MASTER_SPEC §56's aspirational Enterprise tier, does not
+   exist as a real capability anywhere in this codebase yet — this ADR
+   does not pretend otherwise).
+3. **`perUserPriceAmount` is informational/display-only, never
+   auto-billed as a real Recurrente charge.** Recurrente's documented
+   `Product`/price model is a flat recurring amount per product, with no
+   quantity/seat/usage-metering primitive found in their API reference.
+   Inventing our own seat-metering logic on top of a flat-charge
+   provider — silently charging a different amount than what Recurrente
+   itself reports as the subscription's price — would be exactly the
+   kind of fabricated billing behavior MASTER_SPEC §90 prohibits, at the
+   highest-stakes point this codebase has ever touched (a customer's real
+   recurring card charge). `TenantSubscription.seatCount` is tracked for
+   display and manual sales reconciliation only.
+4. **One `TenantSubscription` row per tenant, updated in place on a plan
+   change** — no billing-history table beyond the append-only
+   `BillingWebhookEvent` log (below). V1 has no reporting need for a full
+   subscription-change history yet; revisit if that ever becomes real.
+5. **Webhook idempotency via a real unique database constraint on
+   Recurrente's own event id** (`BillingWebhookEvent.providerEventId`,
+   their Svix `svix-id`), the same "unique-constraint-as-idempotency"
+   pattern `Payment.idempotencyKey` already established — deliberately
+   **not** the `@erp/events` inbox (ADR-008), which exists specifically
+   to consume this platform's *own* outbox events exactly-once, not
+   arbitrary third-party webhooks with their own delivery/retry
+   semantics. Signature verification uses the **official `svix` npm
+   package** (`new Webhook(secret).verify(rawBody, headers)`), not a
+   hand-rolled HMAC-SHA256 comparison — Recurrente's own webhook guide
+   names it as the recommended verification method, and this codebase
+   consistently prefers an official, maintained library over reimplementing
+   security-critical comparison logic itself (the same reasoning already
+   applied to `nodemailer` for SMTP and `@aws-sdk/client-s3` for object
+   storage, rather than hand-rolling either protocol). `svix.verify()`
+   internally implements exactly the algorithm Recurrente's manual-
+   verification docs describe (HMAC-SHA256 over
+   `${svix-id}.${svix-timestamp}.${rawBody}`, base64-decoded
+   `whsec_...`-prefixed secret, constant-time comparison, a replay-window
+   check against `svix-timestamp`) — using the package changes only the
+   implementation, not the verification model itself. A request is
+   rejected as `401` before any business logic runs if `verify()` throws.
+   `RECURRENTE_WEBHOOK_SECRET` is the Svix-issued signing secret. Pinned
+   to `svix@^1.99.1`, not the latest `2.x` line — `2.x` ships as an
+   ESM-only package (`"type": "module"`, no CommonJS `exports` entry)
+   while this entire codebase compiles to CommonJS (`tsc`, `ts-node`,
+   Jest, per `tsconfig.base.json`'s `"module": "commonjs"`); `1.99.1` is
+   the last release published as CommonJS (verified against its own
+   `package.json`) and exposes the identical `Webhook`/`.verify()` API.
+6. **On a subscription reaching `ACTIVE`, the platform syncs the
+   tenant's App Registry state to match the plan's `includesAppKeys`** —
+   a new `SyncTenantAppsToPlanUseCase` that enables every included app
+   not yet enabled (the same fixed-point dependency-order iteration
+   `EnableAllCatalogAppsUseCase` already uses) and disables every
+   currently-enabled app *not* in the plan (a symmetric fixed-point pass
+   in the *reverse* direction — an app with an active dependent is
+   skipped and retried once that dependent is disabled first), reusing
+   `EnableAppUseCase`/`DisableAppUseCase` exactly as built, never
+   duplicating their dependency logic.
+7. **`PAST_DUE` changes nothing automatically.** Per MASTER_SPEC §90's
+   same "don't fabricate a policy this codebase has no basis to invent"
+   reasoning already applied in ADR-012 (Accounting) and ADR-014
+   (Manufacturing costing): there is no approved dunning/grace-period/
+   forced-downgrade policy, so a `subscription.past_due` webhook only
+   updates `TenantSubscription.status` for visibility — access is never
+   revoked automatically on a failed renewal charge in V1. Only a real
+   `subscription.cancel` event (or a Platform Admin's own manual action)
+   ever triggers `SyncTenantAppsToPlanUseCase` to remove access.
+8. **Checkout is a redirect to a Recurrente-hosted page, not a
+   card-collecting form of our own** — `CreateCheckoutSessionUseCase`
+   calls Recurrente's real API to create a checkout for the plan's
+   `recurrentePriceId` and returns the hosted URL. This keeps this
+   codebase exactly as far from handling raw card data as ADR-009's
+   `CASH`/`BANK_TRANSFER` adapters already are — MASTER_SPEC §22's "nunca
+   almacenar directamente datos sensibles completos de tarjetas" is
+   satisfied structurally, not by a promise to be careful.
+9. **No official Recurrente Node/TypeScript SDK exists** (confirmed by
+   research, not assumed) — a small, direct `RecurrenteClient`
+   (`core/billing/infrastructure/`) calls their REST API with the native
+   `fetch` already available in this runtime, the same "call the
+   vendor's REST API directly, no SDK dependency" precedent already set
+   by `SmtpEmailDispatcher`/`S3FileStorageAdapter` for other external
+   integrations.
+
+**Amendment (2026-09-08) — Two real API-shape gaps found and fixed by real sandbox verification**
+
+`RecurrenteClient.createRecurringProduct()` was verified against the
+user's real Recurrente sandbox account, per this codebase's unbroken
+discipline of testing an integration against real infrastructure rather
+than assuming it works from documentation alone (MASTER_SPEC §90/§91).
+Two real, non-obvious gaps surfaced, both now fixed and both left as
+regression-relevant comments in the code itself:
+
+1. **`POST /products`'s request body is wrapped under a top-level
+   `product` key** (`{ "product": { name, description, prices_attributes
+   } }`), unlike `/customers`/`/checkouts`, which are flat — confirmed
+   against the real OpenAPI spec's own per-path `requestBody` schema, not
+   the nested schema alone. Missing this wrapper does not error: the
+   request still returns `201` with a real Product created in the user's
+   real sandbox account, silently ignoring every nested field including
+   `prices_attributes` — the product created this way had no price
+   attached to it at all. The first, broken product this produced
+   (`prod_bdqkezuc`) was deleted from the sandbox via a real `DELETE
+   /products/:id` call once found.
+2. **`POST /products`'s own response never includes the nested price it
+   just created** (`prices: []` in the creation response), even once the
+   wrapper above is fixed and the price genuinely validates and saves —
+   confirmed directly: a follow-up `GET /products/:id` immediately after
+   creation reliably returns the real price (`price_...`) that the same
+   `POST` had just silently omitted from its own response body. This is a
+   real response-serialization quirk on Recurrente's side (the
+   association isn't eagerly reloaded into that creation response), not
+   a data problem — `createRecurringProduct()` now always follows its
+   `POST` with a `GET /products/:id` before reading `prices[0]`.
+
+Three more throwaway products created while isolating these two issues
+(`prod_ovtxjgya`, `prod_qds3ltae`, plus the one above) were likewise
+deleted from the real sandbox before this ADR was closed out — no broken
+or orphaned test artifacts were left in the user's account.
+
+A third real gap surfaced by the same verification pass, this time in
+`createCustomer()`: **`POST /customers` requires `full_name`, not
+`name`**, despite both being listed as accepted request properties in
+the spec — sending `name` alone creates nothing and fails closed with a
+real `400` (`{"errors":{"full_name":["no puede estar en blanco"]}}`).
+Recurrente's own response still surfaces the value back under `name`
+regardless of which request field supplied it. `createCustomer()` now
+sends `full_name`. `/customers` and `/checkouts` have no `DELETE`
+endpoint (confirmed against the spec) — the sandbox test customer and
+checkout created while isolating this were left in place, harmless
+sandbox records with no real charge behind them, not orphaned the way a
+broken `Product` would have been.
+
+The full checkout flow was then verified end-to-end for real through
+this codebase's own HTTP surface (not a direct Recurrente call): a real
+tenant logged in, `POST /api/v1/billing/checkout` for the real `starter`
+plan returned a real `checkout_url` on `https://app.recurrente.com/...`,
+confirming `CreateCheckoutSessionUseCase`'s full path — customer
+creation, `TenantSubscription` written as `PENDING` with the real
+`recurrenteCustomerId` attached, and checkout creation against the real
+price — works correctly against the real sandbox.
+
+**Consequences**
+
+- A real business can be onboarded onto a real, paid plan today, with a
+  real recurring charge processed by a real, PCI-compliant provider —
+  not a placeholder "Coming soon" screen.
+- There is deliberately no tenant-facing "mi suscripción" self-service
+  page in this pass — `CreateCheckoutSessionUseCase` exists and is
+  callable, but the only way to *view or manually assign* a tenant's plan
+  today is through the existing Platform Administration plane (ADR-007),
+  extended with a new `PlatformSubscriptionsController`. A self-service
+  billing settings screen for tenant owners is real, valuable, deferred
+  future work — not started here.
+- Annual billing does not exist yet: Recurrente's own `Product` model
+  embeds exactly one price/interval per product, so an annual option
+  would need its own, separate set of Recurrente products/prices (and
+  `Plan` rows) — deliberately out of scope until asked for.
+- A tenant that exceeds its plan's nominal seat count is not blocked, nor
+  billed automatically for the overage — this is flagged for human
+  follow-up (sales/support), not enforced by the platform. Revisit only
+  if Recurrente (or a different provider) ever exposes real
+  quantity-based recurring pricing this codebase can build on honestly.
+- `PAST_DUE` tenants keep full access indefinitely until either
+  Recurrente reports a real cancellation or a human intervenes — a
+  deliberate, documented risk acceptance (bounded by this being a new
+  platform with no production tenants yet), not an oversight.
+
+**Alternatives considered**
+
+- **A generic, provider-agnostic `SubscriptionGateway` port** (mirroring
+  `PaymentGateway`'s own abstraction, to swap Recurrente for Stripe/other
+  later): rejected for V1 — with exactly one real provider, its API
+  actually researched and integrated, and no second provider on the
+  immediate horizon, an abstraction layer today would be guessing at a
+  shape no second implementation has ever validated, the same
+  premature-abstraction risk this codebase has avoided everywhere else
+  (MASTER_SPEC §59/§93). The `RecurrenteClient`/`BillingWebhookEvent`
+  boundary already isolates the vendor-specific code to
+  `core/billing/infrastructure/`, so introducing a port later, if a real
+  second provider ever appears, is a contained, additive change.
+- **Modeling per-seat billing as a synthetic quantity on the Recurrente
+  subscription** (retrying against their API with an unofficial/
+  undocumented parameter to see if it "just works"): rejected outright —
+  building real, recurring, customer-charging behavior on an
+  undocumented guess is precisely the kind of unverified integration
+  MASTER_SPEC §90/§91 warns against ("no inventes APIs de librerías").
+- **Reusing the `@erp/events` inbox for webhook idempotency** instead of
+  a dedicated unique constraint: rejected — the inbox's claim/lease
+  machinery exists to let a consumer safely retry *our own* internally
+  published events; a third-party webhook's redelivery semantics are
+  Recurrente/Svix's own concern, and a plain unique index is the correct,
+  proportionate tool, the same reasoning `Payment.idempotencyKey` already
+  established for a different, but structurally identical, problem.
+- **Immediately revoking access on `PAST_DUE`**: rejected — a
+  transient card decline is not a considered business decision to punish
+  a paying customer for; Recurrente's own retry schedule is the correct
+  first line of recovery, and a real grace-period/dunning policy needs a
+  deliberate product decision this ADR has no basis to invent alone,
+  mirroring ADR-012's identical reasoning for not inventing an accounting
+  policy.

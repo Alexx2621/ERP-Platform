@@ -181,6 +181,7 @@ model Tenant {
   productionOrderOperations            ProductionOrderOperation[]
   productionOrderFinishedGoodsReceipts ProductionOrderFinishedGoodsReceipt[]
   documentSequences                    DocumentSequence[]
+  tenantSubscription                   TenantSubscription?
 
   @@map("tenants")
 }
@@ -2836,4 +2837,111 @@ model ProductionOrderFinishedGoodsReceipt {
 
   @@index([tenantId, productionOrderId])
   @@map("production_order_finished_goods_receipts")
+}
+
+// ---------------------------------------------------------------------------
+// Platform Billing (docs/DECISIONS.md ADR-016). Genuinely platform-scoped,
+// not tenant-owned business data — this is the commercial relationship
+// between the platform and a tenant (what plan it pays for), the mirror
+// image of AppDefinition/TenantApp (what a tenant is technically allowed
+// to use). GTQ only in V1, one flat recurring price per plan billed
+// through Recurrente (docs.recurrente.com) — no per-seat metering (their
+// documented API has no quantity/usage-based recurring primitive), no
+// annual interval yet. See ADR-016 for the full reasoning and what's
+// deliberately deferred.
+// ---------------------------------------------------------------------------
+
+/// Code-owned commercial plan catalog, seeded idempotently by
+/// PlanCatalogSeeder — same pattern as AppDefinition/AppCatalogSeeder.
+/// `includesAppKeys` must be a dependency-closed subset of
+/// AppDefinition.dependsOnKeys (validated by `validatePlanCatalog` at
+/// boot, mirroring `validateAppCatalog`): a plan can never include an app
+/// without also including everything that app requires.
+/// `perUserPriceAmount` is informational/display-only — see the module
+/// docstring above for why it is never auto-billed as a Recurrente line
+/// item in V1.
+model Plan {
+  id                  String   @id @db.Uuid
+  key                 String   @unique @db.VarChar(60)
+  name                String   @db.VarChar(150)
+  description         String   @db.VarChar(500)
+  currency            String   @db.VarChar(3)
+  basePriceAmount     Decimal  @map("base_price_amount") @db.Decimal(14, 4)
+  perUserPriceAmount  Decimal  @map("per_user_price_amount") @db.Decimal(14, 4)
+  includesAppKeys     String[] @map("includes_app_keys")
+  /// Enterprise is sales-assisted only in V1 — no self-serve checkout
+  /// session is ever created for a plan with isSelfServe=false.
+  isSelfServe         Boolean  @default(true) @map("is_self_serve")
+  /// Populated once PlanCatalogSeeder has created the matching product on
+  /// Recurrente's side (idempotent — nulls until then, e.g. for a plan
+  /// with isSelfServe=false, which never needs one).
+  recurrenteProductId String?  @map("recurrente_product_id") @db.VarChar(100)
+  recurrentePriceId   String?  @map("recurrente_price_id") @db.VarChar(100)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  subscriptions TenantSubscription[]
+
+  @@map("plans")
+}
+
+enum TenantSubscriptionStatus {
+  /// A checkout session exists but Recurrente has not yet confirmed the
+  /// first payment.
+  PENDING
+  ACTIVE
+  /// Recurrente reports a failed renewal charge — per ADR-016, V1 does
+  /// nothing further automatically (no forced downgrade, no dunning
+  /// emails of our own): Recurrente's own retry schedule owns recovery,
+  /// this status is a read model of their `subscription.past_due` event.
+  PAST_DUE
+  CANCELLED
+}
+
+/// One active commercial relationship per tenant — a plan change updates
+/// this same row rather than creating a new one (no billing-history
+/// reporting need yet in V1). `tenantId` is unique for exactly this
+/// reason.
+model TenantSubscription {
+  id                       String                    @id @db.Uuid
+  tenantId                 String                    @unique @map("tenant_id") @db.Uuid
+  planId                   String                    @map("plan_id") @db.Uuid
+  status                   TenantSubscriptionStatus
+  /// Informational headcount for pricing display / manual sales
+  /// reconciliation — see the module docstring on why this is not
+  /// auto-billed.
+  seatCount                Int                       @default(1) @map("seat_count")
+  recurrenteCustomerId     String?                   @map("recurrente_customer_id") @db.VarChar(100)
+  recurrenteSubscriptionId String?                   @map("recurrente_subscription_id") @db.VarChar(100)
+  currentPeriodStart       DateTime?                 @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd         DateTime?                 @map("current_period_end") @db.Timestamptz(6)
+  cancelledAt              DateTime?                 @map("cancelled_at") @db.Timestamptz(6)
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([recurrenteSubscriptionId])
+  @@map("tenant_subscriptions")
+}
+
+/// Append-only, idempotency-enforcing log of every Recurrente webhook
+/// received. `providerEventId`'s real unique constraint (their `svix-id`)
+/// is what makes redelivery safe — the same
+/// unique-constraint-as-idempotency-guarantee pattern already used by
+/// `Payment.idempotencyKey`, deliberately not the DomainEventBus inbox
+/// (that mechanism is for consuming this platform's own outbox events,
+/// not third-party webhooks). The full raw payload is kept, mirroring
+/// AuditEntry's own precedent, so a disputed charge or a webhook bug can
+/// always be diagnosed from what Recurrente actually sent.
+model BillingWebhookEvent {
+  id              String    @id @db.Uuid
+  providerEventId String    @unique @map("provider_event_id") @db.VarChar(150)
+  eventType       String    @map("event_type") @db.VarChar(100)
+  payload         Json
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("billing_webhook_events")
 }

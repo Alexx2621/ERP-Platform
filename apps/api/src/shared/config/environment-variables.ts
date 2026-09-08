@@ -132,6 +132,29 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   COMMERCE_RATE_LIMIT_WINDOW_SECONDS: number = 60;
+
+  /**
+   * Recurrente (recurrente.com) — the recurring-payment provider for
+   * platform subscription plans (`@erp/database`'s `Plan`/
+   * `TenantSubscription`, docs/DECISIONS.md ADR-016). Both optional: when
+   * `RECURRENTE_SECRET_KEY` is unset, `PlanCatalogSeeder` still seeds the
+   * local plan catalog but attaches no real Recurrente Product/Price, and
+   * checkout/webhook handling fails closed with an explanatory reason —
+   * same "known limitation, not silently faked" pattern already used for
+   * Files/S3 and the EMAIL notification channel. `sk_test_...` selects
+   * Recurrente's sandbox; `sk_live_...` selects production — the key
+   * itself picks the environment, there is no separate flag.
+   * `RECURRENTE_WEBHOOK_SECRET` is the Svix-issued `whsec_...` signing
+   * secret shown once when a webhook endpoint is registered in
+   * Recurrente's dashboard.
+   */
+  @IsOptional()
+  @IsString()
+  RECURRENTE_SECRET_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  RECURRENTE_WEBHOOK_SECRET?: string;
 }
 
 /**

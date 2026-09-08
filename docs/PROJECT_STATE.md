@@ -4844,9 +4844,158 @@ Validación completa: `pnpm turbo run lint typecheck build` (limpio,
 contra infraestructura efímera real tras detener los tres servidores
 persistentes.
 
+### Platform Billing: catálogo de planes en GTQ + integración real con Recurrente (ADR-016)
+
+A pedido explícito del usuario ("quiero que integres recurrente y los
+planes que me indicas hazlo en quetzales, no en dolares"), tras una
+explicación previa del modelo de negocio/tenancy/precios de la
+plataforma: primer bounded context de facturación de plataforma
+(`apps/api/src/core/billing`, `docs/DECISIONS.md` ADR-016) — el catálogo
+comercial (`Plan`) y la relación comercial tenant↔plataforma
+(`TenantSubscription`) que decide *a qué está habilitado un tenant*, la
+contraparte exacta de lo que el App Registry (ADR-015) ya hacía para *qué
+puede usar técnicamente* un tenant.
+
+- **4 planes reales en Quetzales (GTQ), no dólares**: Starter (Q299/mes,
+  9 apps), Profesional (Q699/mes, 13 apps), Business (Q1,599/mes, las 15
+  apps completas), Enterprise (a medida, `isSelfServe: false`, mismas 15
+  apps que Business — sin una 16ª app real que las diferencie).
+  `includesAppKeys` de cada plan es un subconjunto real y
+  dependency-closed del grafo real de `FOUNDATION_APPS` (ADR-015),
+  validado al boot por `validatePlanCatalog` (nuevo, espeja
+  `validateAppCatalog`) contra ese mismo grafo — nunca uno mantenido a
+  mano por separado que pudiera desincronizarse.
+- **Recurrente (recurrente.com) como proveedor real de cobro
+  recurrente**, elegido explícitamente por el usuario. Su API REST real
+  se investigó contra su spec OpenAPI real antes de escribir el adapter
+  (MASTER_SPEC §91) — `RecurrenteClient`
+  (`infrastructure/recurrente-client.ts`, `fetch` nativo, sin SDK oficial
+  — no existe uno) implementa `createRecurringProduct`/`createCustomer`/
+  `createCheckout` contra la API real.
+- **Verificado de punta a punta contra el sandbox real de Recurrente del
+  propio usuario** (`RECURRENTE_SECRET_KEY` real en `apps/api/.env`,
+  nunca visto ni logueado por mí — solo confirmado presente vía grep
+  enmascarado), no simulado — encontrando y corrigiendo **tres bugs
+  reales de forma de la API real, ninguno documentado con suficiente
+  claridad en el spec por sí solo**: (1) `POST /products` exige el
+  cuerpo envuelto bajo una clave `product` (`{"product": {...}}`) —
+  omitirlo no da error, crea un Producto real sin ningún precio adjunto,
+  en silencio; (2) la propia respuesta de `POST /products` nunca incluye
+  el precio recién creado (`prices: []`) aunque el precio sí se creó
+  correctamente — un `GET /products/:id` posterior sí lo confirma;
+  `createRecurringProduct` ahora encadena ambas llamadas; (3)
+  `POST /customers` exige `full_name`, no `name`, pese a que el spec
+  lista ambos como aceptados. Los 3 hallazgos, y los productos de prueba
+  rotos limpiados del sandbox real vía `DELETE /products/:id`, quedan
+  documentados en el "Amendment" de ADR-016. Verificación real final:
+  `PlanCatalogSeeder` provisionó los 3 planes self-serve reales en el
+  sandbox (`prod_.../price_...` reales), `POST /api/v1/billing/checkout`
+  devolvió una URL real de checkout hospedado en
+  `app.recurrente.com/checkout-session/...`, y
+  `PUT /api/v1/platform/tenants/:id/subscription` (asignación manual)
+  sincronizó correctamente las 15 apps reales vía
+  `SyncTenantAppsToPlanUseCase` contra el grafo de dependencias real
+  completo — no solo contra el fixture de 3 apps de sus propios tests
+  unitarios.
+- **Webhooks: primer receptor de webhook entrante de todo este código
+  base** (`POST /api/v1/billing/webhooks/recurrente`, genuinamente
+  público, sin `SessionAuthGuard` — su propia autenticación es la
+  verificación de firma Svix). `main.ts` gana `rawBody: true`
+  (`NestFactory.create`) — necesario porque re-serializar el body ya
+  parseado rompería la firma. Verificación de firma vía el paquete
+  oficial `svix` (`^1.99.1`, la última release CommonJS antes de que la
+  serie `2.x` pasara a ser exclusivamente ESM, incompatible con este
+  código base que compila a CommonJS) — decisión explícita de usar la
+  librería oficial en vez de reimplementar HMAC-SHA256 a mano, siguiendo
+  el mismo criterio ya aplicado a `nodemailer`/`@aws-sdk/client-s3`.
+  Idempotencia real vía `BillingWebhookEvent.providerEventId`
+  (`svix-id`) con una restricción única real de base de datos — el mismo
+  patrón "unique-constraint-as-idempotency" de `Payment.idempotencyKey`,
+  deliberadamente **no** el inbox de `@erp/events` (ADR-008), reservado
+  para eventos propios de esta plataforma, no webhooks de terceros.
+  `subscription.create`/`.reactivate`/`.unpause` activan y sincronizan
+  acceso; `subscription.past_due` solo cambia el estado, nunca revoca
+  acceso automáticamente (MASTER_SPEC §90, mismo razonamiento de
+  ADR-012/014 de "no inventar una política que este código base no tiene
+  base para decidir"); `subscription.cancel` cancela y sincroniza a cero
+  apps; cualquier otro tipo de evento real se almacena pero no dispara
+  ninguna acción todavía — un límite honesto, no oculto. La correlación
+  webhook→tenant es por `customer_id` (confirmado como el campo real
+  presente en `SubscriptionWebhook`, no un campo `metadata` que no
+  existe en ese schema) — `CreateCheckoutSessionUseCase` crea/reutiliza
+  un Customer real en Recurrente *antes* del checkout específicamente
+  para que esta correlación sea posible.
+- **`SyncTenantAppsToPlanUseCase`** (nuevo): dos pasadas de punto fijo
+  (habilitar/deshabilitar) reutilizando `EnableAppUseCase`/
+  `DisableAppUseCase`/`ListTenantAppsUseCase` de App Registry
+  exactamente como ya existen, nunca duplicando su lógica de
+  dependencias — mismo patrón de iteración de punto fijo que
+  `EnableAllCatalogAppsUseCase` (sesión 35) ya estableció.
+- **`PlatformSubscriptionsController`** (nuevo, en
+  `core/platform-admin/`, gated solo por `PlatformAdminGuard`):
+  `GET`/`PUT /api/v1/platform/tenants/:tenantId/subscription` —
+  asignación manual de plan sin ningún cobro real, para comping o
+  arreglos comerciales tipo Enterprise — la única superficie de
+  administración de suscripciones en este alcance; deliberadamente
+  **sin** un portal de autoservicio para que el propio tenant vea/
+  cambie su plan más allá de iniciar un checkout (`docs/DECISIONS.md`
+  ADR-016 lo documenta como alcance futuro real, no fabricado).
+  `BillingController` (tenant-scoped, `GET .../billing/subscription`,
+  `POST .../billing/checkout`) y `BillingPlansController`
+  (`GET /api/v1/billing/plans`, genuinamente público — la segunda
+  superficie sin autenticación de todo este código base, tras el
+  storefront de Commerce, Fase 7A). 2 permisos RBAC nuevos
+  (`billing.subscription.read`, `billing.checkout.create`).
+- **Migración nueva** (`20260908174931_platform_billing`: `plans`,
+  `tenant_subscriptions`, `billing_webhook_events`), **generada y
+  aplicada directamente contra Postgres real**, cero drift confirmado.
+  `RECURRENTE_SECRET_KEY`/`RECURRENTE_WEBHOOK_SECRET` nuevos en
+  `EnvironmentVariables`, ambos opcionales — sin ellos, `PlanCatalogSeeder`
+  sigue sembrando el catálogo local sin adjuntar Producto/Precio real de
+  Recurrente, y el checkout/webhook fallan cerrados con una razón
+  explícita — mismo patrón "no simular éxito" ya usado por `EmailModule`
+  para el canal EMAIL.
+- **`@erp/api-client`**: 7 tipos y 6 métodos nuevos regenerados desde el
+  spec OpenAPI real (incluyendo `listPlans`, el único método verificado
+  explícitamente para nunca enviar `Authorization`/`X-Tenant-Slug`).
+- Tests: 62 tests unitarios nuevos en `apps/api` (dominio de `Plan`/
+  `TenantSubscription`, `validatePlanCatalog` contra el grafo real,
+  `SyncTenantAppsToPlanUseCase` con un fixture propio de 3 apps,
+  `CreateCheckoutSessionUseCase`/`AssignTenantPlanUseCase`/
+  `HandleRecurrenteWebhookUseCase` con dobles en memoria, y
+  `SvixWebhookVerifier` verificado con firmas reales construidas con el
+  propio `Webhook.sign()` del paquete oficial, nunca HMAC hecho a mano)
+  — 1118 tests unitarios totales en `apps/api`. `app.module.spec.ts`
+  ampliado confirmando que el grafo real de DI resuelve sin ciclos con
+  `BillingModule` importando `AppRegistryModule` (leaf) y
+  `PlatformAdminModule` importando `BillingModule`. 4 tests nuevos en
+  `@erp/api-client` (27/27 en total).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31
+  tareas, monorepo completo), `apps/api` 1118/1118 vía `npx jest`
+  directo, `@erp/api-client` 27/27, `@erp/notifications` 33/33
+  (verificado en aislamiento tras un fallo real de contención de memoria
+  bajo `turbo run test` concurrente — mismo patrón de contención de
+  recursos ya documentado repetidamente en este proyecto, no una
+  regresión real). Alcance deliberadamente fuera de este bloque, per
+  ADR-016: portal de autoservicio de facturación para el propio tenant,
+  facturación anual, sobrecargo automático por asiento (Recurrente no
+  tiene una primitiva real de medición por cantidad que este código base
+  pueda usar honestamente), y revocación automática de acceso ante
+  `PAST_DUE`.
+
 ## In Progress
 
-Ninguno activo — **Fase 10 (Manufactura) quedó formalmente cerrada en la
+Ninguno activo — el bloque más reciente fue **Platform Billing con
+Recurrente en GTQ (ADR-016)**, cerrado en un solo bloque de trabajo a
+pedido explícito del usuario (ver "Platform Billing: catálogo de planes
+en GTQ + integración real con Recurrente" arriba). Sin trabajo pendiente
+dentro de ese bloque — lo único fuera de su alcance deliberado (portal de
+autoservicio, facturación anual, sobrecargo por asiento, revocación
+automática ante `PAST_DUE`) queda documentado en `docs/DECISIONS.md`
+ADR-016, no iniciado. El resto de esta sección documenta el estado previo
+a ese bloque.
+
+Antes de Platform Billing: **Fase 10 (Manufactura) quedó formalmente cerrada en la
 sesión 34** y **Fase 11 (Plugin Platform) quedó formalmente cerrada en la
 sesión 35**, ambas en un solo bloque de trabajo cada una (ver Completed
 arriba y "Hecho — sesión 34"/"Hecho — sesión 35" en `docs/WORK_QUEUE.md`).

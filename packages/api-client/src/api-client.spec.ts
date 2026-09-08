@@ -1786,4 +1786,61 @@ describe("ApiClient", () => {
       code: "NETWORK_ERROR",
     });
   });
+
+  it("listPlans is genuinely public — no Authorization/X-Tenant-Slug/X-Company-Id sent", async () => {
+    const plans = [{ key: "starter", name: "Starter" }];
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(plans), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.listPlans()).resolves.toEqual(plans);
+
+    const request = fetchMock.mock.calls[0]?.[1];
+    const headers = new Headers(request?.headers);
+    expect(headers.has("Authorization")).toBe(false);
+    expect(headers.has("X-Tenant-Slug")).toBe(false);
+    expect(headers.has("X-Company-Id")).toBe(false);
+  });
+
+  it("createCheckoutSession posts to the tenant-scoped billing checkout endpoint", async () => {
+    const result = { checkoutUrl: "https://app.recurrente.com/checkout-session/ch_1" };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(result), { status: 201 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(
+      client.createCheckoutSession("access-token", "grupo-aurora", {
+        planKey: "starter",
+        successUrl: "https://example.com/success",
+        cancelUrl: "https://example.com/cancel",
+      }),
+    ).resolves.toEqual(result);
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/billing/checkout");
+    const headers = new Headers(request?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer access-token");
+    expect(headers.get("X-Tenant-Slug")).toBe("grupo-aurora");
+  });
+
+  it("getTenantSubscription returns null for a tenant with no subscription yet", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("null", { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(client.getTenantSubscription("access-token", "grupo-aurora")).resolves.toBeNull();
+  });
+
+  it("assignTenantPlan puts to the platform-admin subscription endpoint", async () => {
+    const subscription = { tenantId: "tenant-1", planKey: "business", status: "ACTIVE" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(subscription), { status: 200 }));
+    const client = new ApiClient({ fetch: fetchMock });
+
+    await expect(
+      client.assignTenantPlan("access-token", "tenant-1", { planKey: "business" }),
+    ).resolves.toEqual(subscription);
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/platform/tenants/tenant-1/subscription");
+    expect(request?.method).toBe("PUT");
+  });
 });

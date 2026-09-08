@@ -18,6 +18,7 @@ import { FilesModule } from "./core/files";
 import { NotificationsModule } from "./core/notifications";
 import { PlatformAdminModule } from "./core/platform-admin";
 import { AppRegistryModule } from "./core/app-registry";
+import { BillingModule } from "./core/billing";
 import { CatalogModule } from "./modules/catalog";
 import { CustomersModule } from "./modules/customers";
 import { SuppliersModule } from "./modules/suppliers";
@@ -56,6 +57,7 @@ import { ManufacturingModule } from "./modules/manufacturing";
     NotificationsModule,
     PlatformAdminModule,
     AppRegistryModule,
+    BillingModule,
     CatalogModule,
     CustomersModule,
     SuppliersModule,

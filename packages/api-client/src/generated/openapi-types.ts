@@ -671,6 +671,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{tenantId}/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** View any tenant's subscription, across the whole platform. */
+        get: operations["PlatformSubscriptionsController_get"];
+        /** Manually assign or change a tenant's plan (comping, Enterprise sales arrangement) — no Recurrente charge. */
+        put: operations["PlatformSubscriptionsController_assign"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every plan in the commercial catalog. */
+        get: operations["BillingPlansController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** View this tenant's own subscription, if any. */
+        get: operations["BillingController_getSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a real, hosted Recurrente checkout session for this tenant to subscribe or change plan. */
+        post: operations["BillingController_checkout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/units-of-measure": {
         parameters: {
             query?: never;
@@ -3313,6 +3382,66 @@ export interface components {
             value: Record<string, never>;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PlatformSubscriptionResponseDto: {
+            tenantId: string;
+            /** @example starter */
+            planKey: string;
+            /** @enum {string} */
+            status: "PENDING" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
+            seatCount: number;
+            recurrenteCustomerId: string | null;
+            recurrenteSubscriptionId: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AssignTenantPlanDto: {
+            /** @example business */
+            planKey: string;
+        };
+        PlanResponseDto: {
+            /** @example starter */
+            key: string;
+            name: string;
+            description: string;
+            /** @example GTQ */
+            currency: string;
+            /** @example 299.0000 */
+            basePriceAmount: string;
+            /**
+             * @description Informational per-seat guidance — never auto-billed.
+             * @example 29.0000
+             */
+            perUserPriceAmount: string;
+            includesAppKeys: string[];
+            isSelfServe: boolean;
+        };
+        TenantSubscriptionResponseDto: {
+            tenantId: string;
+            /** @example starter */
+            planKey: string;
+            /** @enum {string} */
+            status: "PENDING" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
+            seatCount: number;
+            /** Format: date-time */
+            currentPeriodStart: string | null;
+            /** Format: date-time */
+            currentPeriodEnd: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateCheckoutSessionDto: {
+            /** @example profesional */
+            planKey: string;
+            /** @example https://app.example.com/billing/success */
+            successUrl: string;
+            /** @example https://app.example.com/billing/cancelled */
+            cancelUrl: string;
+        };
+        CheckoutSessionResponseDto: {
+            checkoutUrl: string;
         };
         UnitOfMeasureResponseDto: {
             id: string;
@@ -6233,6 +6362,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEntryResponseDto"][];
+                };
+            };
+        };
+    };
+    PlatformSubscriptionsController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformSubscriptionResponseDto"];
+                };
+            };
+        };
+    };
+    PlatformSubscriptionsController_assign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignTenantPlanDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformSubscriptionResponseDto"];
+                };
+            };
+        };
+    };
+    BillingPlansController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponseDto"][];
+                };
+            };
+        };
+    };
+    BillingController_getSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Or 204 if the tenant never subscribed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantSubscriptionResponseDto"];
+                };
+            };
+        };
+    };
+    BillingController_checkout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slug of the tenant to operate in. */
+                "X-Tenant-Slug": string;
+                /** @description Optional company scope within the tenant. */
+                "X-Company-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCheckoutSessionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSessionResponseDto"];
                 };
             };
         };

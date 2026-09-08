@@ -144,4 +144,6 @@ export const FOUNDATION_PERMISSIONS: readonly PermissionDefinition[] = [
     key: "manufacturing.orders.manage",
     description: "Create, confirm, close, and cancel production orders; issue/return materials; record finished goods; manage operations.",
   },
+  { key: "billing.subscription.read", description: "View the tenant's own subscription and plan." },
+  { key: "billing.checkout.create", description: "Start a real, hosted Recurrente checkout to subscribe or change plan." },
 ];

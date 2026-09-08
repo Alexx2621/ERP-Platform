@@ -83,6 +83,15 @@ import { StorefrontsController, StorefrontPublicController, ListPublishedProduct
 import { AccountsController, FiscalPeriodsController, JournalEntriesController, AccountingReportsController, CreateJournalEntryUseCase } from "./modules/accounting";
 import { LeadsController, PipelinesController, OpportunitiesController, ActivitiesController, CreateActivityUseCase } from "./modules/crm";
 import { BillsOfMaterialController, ProductionOrdersController, GetProductionOrderUseCase } from "./modules/manufacturing";
+import {
+  BillingPlansController,
+  BillingController,
+  BillingWebhooksController,
+  ListPlansUseCase,
+  GetTenantSubscriptionUseCase,
+  PlanCatalogSeeder,
+} from "./core/billing";
+import { PlatformSubscriptionsController } from "./core/platform-admin/presentation/platform-subscriptions.controller";
 
 /**
  * Boots the real AppModule graph (Auth + Users + Tenants + Organizations +
@@ -195,6 +204,13 @@ describe("AppModule wiring", () => {
     expect(moduleRef.get(BillsOfMaterialController)).toBeInstanceOf(BillsOfMaterialController);
     expect(moduleRef.get(ProductionOrdersController)).toBeInstanceOf(ProductionOrdersController);
     expect(moduleRef.get(GetProductionOrderUseCase)).toBeInstanceOf(GetProductionOrderUseCase);
+    expect(moduleRef.get(BillingPlansController)).toBeInstanceOf(BillingPlansController);
+    expect(moduleRef.get(BillingController)).toBeInstanceOf(BillingController);
+    expect(moduleRef.get(BillingWebhooksController)).toBeInstanceOf(BillingWebhooksController);
+    expect(moduleRef.get(ListPlansUseCase)).toBeInstanceOf(ListPlansUseCase);
+    expect(moduleRef.get(GetTenantSubscriptionUseCase)).toBeInstanceOf(GetTenantSubscriptionUseCase);
+    expect(moduleRef.get(PlanCatalogSeeder)).toBeInstanceOf(PlanCatalogSeeder);
+    expect(moduleRef.get(PlatformSubscriptionsController)).toBeInstanceOf(PlatformSubscriptionsController);
 
     await moduleRef.close();
   });

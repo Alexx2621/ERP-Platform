@@ -80,6 +80,9 @@ export type {
   ProductionOrderMaterialMovement,
   ProductionOrderOperation,
   ProductionOrderFinishedGoodsReceipt,
+  Plan,
+  TenantSubscription,
+  BillingWebhookEvent,
 } from "../generated/prisma/client";
 export {
   UserStatus,
@@ -119,6 +122,7 @@ export {
   ActivityType,
   ProductionOrderStatus,
   ProductionOrderMaterialMovementType,
+  TenantSubscriptionStatus,
 } from "../generated/prisma/enums";
 export { PrismaClient };
 

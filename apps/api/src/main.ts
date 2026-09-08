@@ -12,7 +12,13 @@ const SWAGGER_PATH = "api/docs";
 // Route paths already carry the "api/v1" prefix explicitly (MASTER_SPEC §25),
 // so Nest's own versioning system is deliberately not layered on top of it.
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // `rawBody: true` exposes `request.rawBody` (a `Buffer`) alongside the
+  // normal parsed JSON body — required by `BillingWebhooksController` to
+  // verify Recurrente's Svix signature (docs/DECISIONS.md ADR-016), which
+  // re-serializing a parsed object would silently break. The first real
+  // inbound webhook receiver in this codebase; every route unaffected by
+  // this flag keeps behaving exactly as before.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService<EnvironmentVariables, true>);
 
   app.useGlobalPipes(

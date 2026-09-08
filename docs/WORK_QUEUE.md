@@ -97,6 +97,19 @@ aislada y explícitamente asignada; al terminar no selecciona trabajo adicional.
 
 ### Próximo
 
+**Platform Billing con Recurrente en GTQ (ADR-016) quedó cerrado en un
+solo bloque de trabajo** — ver "Hecho — Platform Billing con Recurrente
+(ADR-016)" abajo para el detalle completo: catálogo real de 4 planes en
+Quetzales, `RecurrenteClient` verificado contra el sandbox real del
+usuario (3 bugs reales de forma de la API encontrados y corregidos),
+webhooks entrantes con verificación real de firma Svix, y
+`SyncTenantAppsToPlanUseCase` conectando la suscripción de un tenant a su
+propio App Registry. Alcance deliberadamente fuera de este bloque, sin
+fabricar nada: portal de autoservicio de facturación para el tenant,
+facturación anual, sobrecargo automático por asiento, y revocación
+automática de acceso ante `PAST_DUE` — los cuatro documentados en
+`docs/DECISIONS.md` ADR-016 como trabajo futuro real, no iniciado.
+
 **Fase 12 (Scale) fue evaluada explícitamente y cerrada formalmente sin
 implementar ninguna iniciativa** — ver "Hecho — sesión 36" abajo. Esa fase
 es, por diseño del propio `docs/ROADMAP.md` §16, "solo por evidencia":
@@ -257,6 +270,47 @@ y aún diferido de sesiones previas, sin cambios: precios de lista por
 variante, asociación Warehouse↔Branch/Location, e import/export masivo —
 ver "Known limitations" en "Catalog", "Customers / Suppliers" y
 "Taxes / Warehouses / Pricing" de `docs/SECURITY.md`.
+
+### Hecho — Platform Billing con Recurrente (ADR-016)
+
+A pedido explícito del usuario, tras explicarle el modelo de negocio/
+tenancy/precios de la plataforma: primer bounded context de facturación
+de plataforma completo (`apps/api/src/core/billing`, `docs/DECISIONS.md`
+ADR-016) — ver el detalle completo (planes reales en GTQ, integración
+real con Recurrente, los 3 bugs reales de forma de API encontrados y
+corregidos contra el sandbox real, webhooks entrantes con verificación
+Svix real, `SyncTenantAppsToPlanUseCase`, y las cifras exactas de tests)
+en la entrada "Platform Billing: catálogo de planes en GTQ + integración
+real con Recurrente" de `docs/PROJECT_STATE.md` — no se repite aquí para
+no duplicar.
+
+- Migración nueva (`20260908174931_platform_billing`), generada y
+  aplicada directamente contra Postgres real, cero drift.
+- `svix@^1.99.1` agregado como dependencia real de `apps/api` (pinneado
+  deliberadamente por debajo de la serie `2.x`, ESM-only e incompatible
+  con este código base CommonJS).
+- `main.ts` gana `rawBody: true` — primer receptor de webhook entrante de
+  todo este código base.
+- 2 permisos RBAC nuevos (`billing.subscription.read`,
+  `billing.checkout.create`).
+- `@erp/api-client` regenerado desde el spec OpenAPI real: 7 tipos y 6
+  métodos nuevos, incluyendo `listPlans` verificado explícitamente como
+  genuinamente público.
+- Tests: 62 tests unitarios nuevos en `apps/api` (1118 en total),
+  incluyendo `SvixWebhookVerifier` verificado con firmas reales
+  construidas por el propio paquete oficial `svix`, nunca HMAC hecho a
+  mano. 4 tests nuevos en `@erp/api-client` (27 en total).
+- Validación completa: `pnpm turbo run lint typecheck build` (31/31
+  tareas), `apps/api` 1118/1118 vía `npx jest` directo, `@erp/api-client`
+  27/27, `@erp/notifications` 33/33 verificado en aislamiento tras un
+  fallo real de contención de memoria bajo `turbo run test` concurrente
+  (mismo patrón de contención de recursos ya documentado repetidamente en
+  este proyecto, no una regresión).
+- Alcance deliberadamente fuera de este bloque, documentado en
+  `docs/DECISIONS.md` ADR-016, no fabricado: portal de autoservicio de
+  facturación para el propio tenant, facturación anual, sobrecargo
+  automático por asiento, y revocación automática de acceso ante
+  `PAST_DUE`.
 
 ### Hecho — sesión 36 (Home dashboard: grilla libre real + sombra de drop fija + 3 perfiles)
 

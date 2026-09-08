@@ -512,6 +512,14 @@ export interface ListProductionOrdersFilter {
   limit?: number;
 }
 
+export type PlanResponse = components["schemas"]["PlanResponseDto"];
+export type TenantSubscriptionStatus = components["schemas"]["TenantSubscriptionResponseDto"]["status"];
+export type TenantSubscriptionResponse = components["schemas"]["TenantSubscriptionResponseDto"];
+export type PlatformSubscriptionResponse = components["schemas"]["PlatformSubscriptionResponseDto"];
+export type CreateCheckoutSessionInput = components["schemas"]["CreateCheckoutSessionDto"];
+export type CheckoutSessionResponse = components["schemas"]["CheckoutSessionResponseDto"];
+export type AssignTenantPlanInput = components["schemas"]["AssignTenantPlanDto"];
+
 export interface ApiErrorEnvelope {
   statusCode: number;
   code: string;

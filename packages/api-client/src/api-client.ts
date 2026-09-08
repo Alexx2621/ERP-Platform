@@ -126,6 +126,12 @@ import type {
   ProductionOrderMaterialResponse,
   ProductionOrderOperationResponse,
   ProductionOrderResponse,
+  PlanResponse,
+  TenantSubscriptionResponse,
+  PlatformSubscriptionResponse,
+  CreateCheckoutSessionInput,
+  CheckoutSessionResponse,
+  AssignTenantPlanInput,
   ProductResponse,
   ProductVariantResponse,
   ProvisionTenantInput,
@@ -3034,6 +3040,58 @@ export class ApiClient {
     return this.request<ProductionOrderOperationResponse>(
       `/manufacturing/orders/${encodeURIComponent(productionOrderId)}/operations/${encodeURIComponent(operationId)}/complete`,
       { method: "POST", accessToken, tenantSlug, companyId },
+    );
+  }
+
+  /** Genuinely public — no `accessToken`/`tenantSlug`/`companyId` sent. */
+  async listPlans(signal?: AbortSignal): Promise<PlanResponse[]> {
+    return this.request<PlanResponse[]>("/billing/plans", { signal });
+  }
+
+  async getTenantSubscription(
+    accessToken: string,
+    tenantSlug: string,
+    signal?: AbortSignal,
+  ): Promise<TenantSubscriptionResponse | null> {
+    return this.request<TenantSubscriptionResponse | null>("/billing/subscription", {
+      accessToken,
+      tenantSlug,
+      signal,
+    });
+  }
+
+  async createCheckoutSession(
+    accessToken: string,
+    tenantSlug: string,
+    input: CreateCheckoutSessionInput,
+  ): Promise<CheckoutSessionResponse> {
+    return this.request<CheckoutSessionResponse>("/billing/checkout", {
+      method: "POST",
+      accessToken,
+      tenantSlug,
+      body: input,
+    });
+  }
+
+  async getPlatformTenantSubscription(
+    accessToken: string,
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<PlatformSubscriptionResponse | null> {
+    return this.request<PlatformSubscriptionResponse | null>(
+      `/platform/tenants/${encodeURIComponent(tenantId)}/subscription`,
+      { accessToken, signal },
+    );
+  }
+
+  async assignTenantPlan(
+    accessToken: string,
+    tenantId: string,
+    input: AssignTenantPlanInput,
+  ): Promise<PlatformSubscriptionResponse> {
+    return this.request<PlatformSubscriptionResponse>(
+      `/platform/tenants/${encodeURIComponent(tenantId)}/subscription`,
+      { method: "PUT", accessToken, body: input },
     );
   }
 
